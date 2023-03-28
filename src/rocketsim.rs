@@ -28,7 +28,7 @@ fn step_arena(mut arena: NonSendMut<UniquePtr<Arena>>, time: Res<Time>) {
 
 impl Plugin for RocketSimPlugin {
     fn build(&self, app: &mut App) {
-        rocketsim_rs::init();
+        rocketsim_rs::init(None);
 
         app.insert_non_send_resource(Arena::default_standard())
             .add_startup_system(setup_arena)
