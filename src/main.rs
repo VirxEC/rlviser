@@ -1,7 +1,9 @@
 mod camera;
+mod mesh;
 mod rocketsim;
 
 use camera::CameraPlugin;
+use mesh::FieldLoaderPlugin;
 use rocketsim::RocketSimPlugin;
 
 use bevy::{
@@ -16,5 +18,6 @@ fn main() {
         .add_plugin(FrameTimeDiagnosticsPlugin::default())
         .add_plugin(RocketSimPlugin)
         .add_plugin(CameraPlugin)
+        .add_plugin(FieldLoaderPlugin)
         .run();
 }

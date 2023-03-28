@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 bevy = { version = "0.10.0", features = ["wayland"] }
 bevy_atmosphere = "0.6.0"
+byteorder = "1.4.3"
 rocketsim_rs = "0.10.0"
 smooth-bevy-cameras = "0.8.0"
 

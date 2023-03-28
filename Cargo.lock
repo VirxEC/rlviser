@@ -2981,6 +2981,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "bevy_atmosphere",
+ "byteorder",
  "rocketsim_rs",
  "smooth-bevy-cameras",
 ]

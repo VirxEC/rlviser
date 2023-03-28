@@ -8,40 +8,46 @@ use smooth_bevy_cameras::{
     LookTransformPlugin,
 };
 
-fn grab_mouse(
-    mut windows: Query<&mut Window, With<PrimaryWindow>>,
-    mouse: Res<Input<MouseButton>>,
-    key: Res<Input<KeyCode>>,
-) {
+fn grab_mouse(mut windows: Query<&mut Window, With<PrimaryWindow>>, mouse: Res<Input<MouseButton>>, key: Res<Input<KeyCode>>) {
     let mut window = windows.single_mut();
     if mouse.just_pressed(MouseButton::Left) {
         window.cursor.visible = false;
-        window.cursor.grab_mode = if cfg!(windows) {
-            CursorGrabMode::Confined
-        } else {
-            CursorGrabMode::Locked
-        };
+        window.cursor.grab_mode = if cfg!(windows) { CursorGrabMode::Confined } else { CursorGrabMode::Locked };
     }
     if key.just_pressed(KeyCode::Escape) {
         window.cursor.visible = true;
         window.cursor.grab_mode = CursorGrabMode::None;
     }
 }
- 
+
 fn setup(mut commands: Commands) {
+    commands.spawn(SpotLightBundle {
+        spot_light: SpotLight {
+            range: 10000.,
+            intensity: 100000.,
+            shadows_enabled: true,
+            ..default()
+        },
+        transform: Transform::from_xyz(200., 70., 0.).looking_at(Vec3::ZERO, Vec3::Y),
+        ..default()
+    });
+
     commands
         .spawn(FpsCameraBundle::new(
             FpsCameraController {
                 enabled: true,
                 mouse_rotate_sensitivity: Vec2::splat(0.75),
-                translate_sensitivity: 2.0,
+                translate_sensitivity: 20.0,
                 smoothing_weight: 0.9,
             },
-            Vec3::default(),
+            Vec3::new(0., 10., 0.),
             Vec3::X,
             Vec3::Y,
         ))
-        .insert(Camera3dBundle::default())
+        .insert(Camera3dBundle {
+            transform: Transform::from_xyz(0., 10., 0.).looking_to(Vec3::X, Vec3::Y),
+            ..default()
+        })
         .insert(AtmosphereCamera::default());
 }
 
