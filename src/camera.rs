@@ -21,31 +21,46 @@ fn grab_mouse(mut windows: Query<&mut Window, With<PrimaryWindow>>, mouse: Res<I
 }
 
 fn setup(mut commands: Commands) {
+    // commands.spawn(DirectionalLightBundle {
+    //     directional_light: DirectionalLight {
+    //         illuminance: 100000.,
+    //         shadows_enabled: true,
+    //         ..default()
+    //     },
+    //     transform: Transform::from_xyz(1000000., 100000., 1000000.).looking_at(Vec3::ZERO, Vec3::Y),
+    //     ..default()
+    // });
+    // commands.spawn(PointLightBundle::default());
     commands.spawn(SpotLightBundle {
         spot_light: SpotLight {
-            range: 10000.,
-            intensity: 100000.,
+            range: 6000.,
+            intensity: 5000.,
             shadows_enabled: true,
             ..default()
         },
-        transform: Transform::from_xyz(200., 70., 0.).looking_at(Vec3::ZERO, Vec3::Y),
+        transform: Transform::from_xyz(0., 2000., 0.).looking_to(-Vec3::Y, Vec3::Y),
         ..default()
     });
+
+    // commands.insert_resource(AmbientLight { brightness: 0.2, ..default() });
+
+    let camera_start_pos = Vec3::new(0., 200., 0.);
 
     commands
         .spawn(FpsCameraBundle::new(
             FpsCameraController {
                 enabled: true,
                 mouse_rotate_sensitivity: Vec2::splat(0.75),
-                translate_sensitivity: 20.0,
+                translate_sensitivity: 2000.0,
                 smoothing_weight: 0.9,
             },
-            Vec3::new(0., 10., 0.),
-            Vec3::X,
+            camera_start_pos,
+            camera_start_pos + Vec3::X,
             Vec3::Y,
         ))
         .insert(Camera3dBundle {
-            transform: Transform::from_xyz(0., 10., 0.).looking_to(Vec3::X, Vec3::Y),
+            projection: Projection::Perspective(PerspectiveProjection { far: 20000., ..default() }),
+            transform: Transform::from_translation(camera_start_pos).looking_to(Vec3::X, Vec3::Y),
             ..default()
         })
         .insert(AtmosphereCamera::default());

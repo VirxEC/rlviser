@@ -27,49 +27,80 @@ fn load_field(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut mate
             .flat_map(|entry| MeshBuilder::from_file(entry.path()))
             .collect::<Vec<MeshBuilder>>(),
     )
-    .build_mesh(0.5);
+    .build_mesh(50.);
 
-    let wall_material = StandardMaterial {
-        base_color: Color::rgba(0.2, 0.2, 0.2, 0.98),
-        alpha_mode: AlphaMode::Blend,
-        cull_mode: None,
-        double_sided: true,
-        ..default()
-    };
+    // load the files into the game with their material
 
     commands.spawn(PbrBundle {
         mesh: meshes.add(mesh),
-        material: materials.add(wall_material),
-        transform: Transform::default().looking_to(-Vec3::Y, Vec3::Z),
+        material: materials.add(StandardMaterial {
+            base_color: Color::rgb(0.2, 0.2, 0.2),
+            alpha_mode: AlphaMode::Opaque,
+            cull_mode: None,
+            double_sided: true,
+            ..default()
+        }),
+        transform: Transform::from_xyz(0., 1., 0.).looking_to(-Vec3::Y, Vec3::Z),
         ..default()
     });
 
-    let floor_material = StandardMaterial {
-        base_color: Color::rgb(0.7, 1., 0.7),
-        alpha_mode: AlphaMode::Blend,
-        cull_mode: None,
-        double_sided: true,
-        ..default()
-    };
+    // load the side walls
 
+    let mut side_wall_1_transform = Transform::from_xyz(4096., 900., 0.);
+    side_wall_1_transform.rotate_local_y(-PI / 2.);
     commands.spawn(PbrBundle {
-        mesh: meshes.add(Mesh::from(shape::Plane::from_size(100.))),
-        material: materials.add(Color::rgb(0.7, 1., 0.7).into()),
+        mesh: meshes.add(Mesh::from(shape::Quad::new(Vec2::new(7000., 1200.)))),
+        material: materials.add(StandardMaterial {
+            base_color: Color::rgba(0.2, 0.2, 0.2, 0.95),
+            alpha_mode: AlphaMode::Blend,
+            cull_mode: None,
+            double_sided: true,
+            ..default()
+        }),
+        transform: side_wall_1_transform,
         ..default()
     });
+
+    let mut side_wall_2_transform = Transform::from_xyz(-4096., 900., 0.);
+    side_wall_2_transform.rotate_local_y(PI / 2.);
+    commands.spawn(PbrBundle {
+        mesh: meshes.add(Mesh::from(shape::Quad::new(Vec2::new(7000., 1200.)))),
+        material: materials.add(StandardMaterial {
+            base_color: Color::rgba(0.2, 0.2, 0.2, 0.95),
+            alpha_mode: AlphaMode::Blend,
+            cull_mode: None,
+            double_sided: true,
+            ..default()
+        }),
+        transform: side_wall_2_transform,
+        ..default()
+    });
+
+    // load floor
+
+    let mut floor_transform = Transform::default();
+    floor_transform.rotate_local_x(-PI / 2.);
+    commands.spawn(PbrBundle {
+        mesh: meshes.add(Mesh::from(shape::Quad::new(Vec2::new(7500., 10800.)))),
+        material: materials.add(Color::rgb(0.7, 1., 0.7).into()),
+        transform: floor_transform,
+        ..default()
+    });
+
+    // load ceiling
 
     let ceiling_material = StandardMaterial {
-        base_color: Color::rgba(0.2, 0.2, 0.2, 0.9),
+        base_color: Color::rgba(0.2, 0.2, 0.2, 0.99),
         alpha_mode: AlphaMode::Blend,
         cull_mode: None,
         double_sided: true,
         ..default()
     };
 
-    let mut ceiling_transform = Transform::from_xyz(0., 20., 0.);
-    ceiling_transform.rotate_local_x(PI);
+    let mut ceiling_transform = Transform::from_xyz(0., 2049., 0.);
+    ceiling_transform.rotate_local_x(PI / 2.);
     commands.spawn(PbrBundle {
-        mesh: meshes.add(Mesh::from(shape::Plane::from_size(100.))),
+        mesh: meshes.add(Mesh::from(shape::Quad::new(Vec2::new(6950., 8670.)))),
         material: materials.add(ceiling_material),
         transform: ceiling_transform,
         ..default()
@@ -116,9 +147,9 @@ impl MeshBuilder {
             id_offset += m.verts.len() as u32 / 3;
         }
 
-        let vertices: Vec<f32> = other_meshes.iter().flat_map(|m| &m.verts).copied().collect();
+        let verts: Vec<f32> = other_meshes.iter().flat_map(|m| m.verts.clone()).collect();
 
-        Self { ids, verts: vertices }
+        Self { ids, verts }
     }
 
     #[must_use]
@@ -130,8 +161,6 @@ impl MeshBuilder {
             Mesh::ATTRIBUTE_POSITION,
             self.verts.chunks(3).map(|chunk| [chunk[0] * scale, chunk[1] * scale, chunk[2] * scale]).collect::<Vec<_>>(),
         );
-        mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, (0..self.verts.len() / 3).map(|_| [0.0, 1.0, 0.0]).collect::<Vec<_>>());
-        mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, (0..self.verts.len() / 3).map(|_| [1.0, 1.0]).collect::<Vec<_>>());
         mesh
     }
 }
