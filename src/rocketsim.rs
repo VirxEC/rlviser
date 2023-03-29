@@ -7,6 +7,7 @@ use rocketsim_rs::{
         arena::Arena,
         ball::BallState,
         car::{CarConfig, Team},
+        CarControls,
     },
 };
 
@@ -35,8 +36,8 @@ impl ToBevy for Vec3A {
 }
 
 fn setup_arena(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>, mut arena: NonSendMut<UniquePtr<Arena>>) {
-    arena.pin_mut().add_car(Team::BLUE, CarConfig::octane());
-    arena.pin_mut().add_car(Team::ORANGE, CarConfig::octane());
+    arena.pin_mut().add_car(Team::BLUE, CarConfig::merc());
+    arena.pin_mut().add_car(Team::ORANGE, CarConfig::plank());
     arena.pin_mut().set_ball(BallState {
         pos: RVec::new(0., 0., 1500.),
         vel: RVec::new(0., 0., 1.),
@@ -49,6 +50,11 @@ fn setup_arena(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut mat
         },
         0,
     );
+
+    arena
+        .pin_mut()
+        .set_all_controls(&[(1, CarControls { throttle: 1., ..default() }), (2, CarControls { throttle: 1., ..default() })])
+        .unwrap();
 
     let game_state = arena.pin_mut().get_game_state().to_glam();
 
