@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use rocketsim_rs::{
     cxx::UniquePtr,
-    glam_ext::{glam::Vec3A, BallA, CarA, GameStateA},
+    glam_ext::{glam::Vec3A, GameStateA},
     math::Vec3 as RVec,
     sim::{
         arena::Arena,
@@ -11,13 +11,16 @@ use rocketsim_rs::{
 };
 
 #[derive(Component)]
-pub struct Ball(BallA);
+struct Ball;
 
 #[derive(Component)]
-pub struct Car(CarA);
+struct Car {
+    pub id: u32,
+    pub team: Team,
+}
 
 #[derive(Resource, Default)]
-pub struct State(GameStateA);
+struct State(GameStateA);
 
 pub struct RocketSimPlugin;
 
@@ -50,7 +53,7 @@ fn setup_arena(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut mat
     let game_state = arena.pin_mut().get_game_state().to_glam();
 
     commands.spawn((
-        Ball(game_state.ball),
+        Ball,
         PbrBundle {
             mesh: meshes.add(Mesh::from(shape::UVSphere {
                 radius: arena.get_ball_radius(),
@@ -61,6 +64,24 @@ fn setup_arena(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut mat
             ..default()
         },
     ));
+
+    for (id, team, state, config) in game_state.cars {
+        let hitbox = config.hitbox_size.to_bevy();
+        let color = match team {
+            Team::BLUE => Color::rgb(0.4, 0.4, 0.9),
+            Team::ORANGE => Color::rgb(0.9, 0.4, 0.4),
+        };
+
+        commands.spawn((
+            Car { id, team },
+            PbrBundle {
+                mesh: meshes.add(Mesh::from(shape::Box::new(hitbox.x, hitbox.y, hitbox.z))),
+                material: materials.add(StandardMaterial::from(color)),
+                transform: Transform::from_translation(state.pos.to_bevy().into()),
+                ..default()
+            },
+        ));
+    }
 }
 
 fn step_arena(time: Res<Time>, mut arena: NonSendMut<UniquePtr<Arena>>, mut state: ResMut<State>) {
@@ -74,8 +95,13 @@ fn step_arena(time: Res<Time>, mut arena: NonSendMut<UniquePtr<Arena>>, mut stat
     }
 }
 
-fn use_game_state(state: Res<State>, mut ball: Query<&mut Transform, With<Ball>>) {
-    ball.single_mut().translation = state.0.ball.pos.to_bevy().into()
+fn use_game_state(state: Res<State>, mut ball: Query<&mut Transform, With<Ball>>, mut cars: Query<(&mut Transform, &Car), Without<Ball>>) {
+    ball.single_mut().translation = state.0.ball.pos.to_bevy().into();
+
+    for (mut transform, car) in cars.iter_mut() {
+        let car_state = state.0.cars.iter().find(|&(id, _, _, _)| car.id == *id).unwrap().2;
+        transform.translation = car_state.pos.to_bevy().into();
+    }
 }
 
 impl Plugin for RocketSimPlugin {
