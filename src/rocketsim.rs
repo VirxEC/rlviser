@@ -1,21 +1,44 @@
 use bevy::prelude::*;
 use rocketsim_rs::{
     cxx::UniquePtr,
-    glam_ext::GameStateA,
+    glam_ext::{glam::Vec3A, BallA, CarA, GameStateA},
+    math::Vec3 as RVec,
     sim::{
         arena::Arena,
+        ball::BallState,
         car::{CarConfig, Team},
     },
 };
+
+#[derive(Component)]
+pub struct Ball(BallA);
+
+#[derive(Component)]
+pub struct Car(CarA);
 
 #[derive(Resource, Default)]
 pub struct State(GameStateA);
 
 pub struct RocketSimPlugin;
 
-fn setup_arena(mut arena: NonSendMut<UniquePtr<Arena>>) {
+trait ToBevy {
+    fn to_bevy(self) -> Self;
+}
+
+impl ToBevy for Vec3A {
+    fn to_bevy(self) -> Self {
+        Self::new(self.x, self.z, self.y)
+    }
+}
+
+fn setup_arena(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>, mut arena: NonSendMut<UniquePtr<Arena>>) {
     arena.pin_mut().add_car(Team::BLUE, CarConfig::octane());
     arena.pin_mut().add_car(Team::ORANGE, CarConfig::octane());
+    arena.pin_mut().set_ball(BallState {
+        pos: RVec::new(0., 0., 1500.),
+        vel: RVec::new(0., 0., 1.),
+        ..default()
+    });
 
     arena.pin_mut().set_goal_scored_callback(
         |arena, _, _| {
@@ -23,6 +46,21 @@ fn setup_arena(mut arena: NonSendMut<UniquePtr<Arena>>) {
         },
         0,
     );
+
+    let game_state = arena.pin_mut().get_game_state().to_glam();
+
+    commands.spawn((
+        Ball(game_state.ball),
+        PbrBundle {
+            mesh: meshes.add(Mesh::from(shape::UVSphere {
+                radius: arena.get_ball_radius(),
+                ..default()
+            })),
+            material: materials.add(StandardMaterial::from(Color::rgb(0.95, 0.16, 0.45))),
+            transform: Transform::from_translation(game_state.ball.pos.to_bevy().into()),
+            ..default()
+        },
+    ));
 }
 
 fn step_arena(time: Res<Time>, mut arena: NonSendMut<UniquePtr<Arena>>, mut state: ResMut<State>) {
@@ -36,8 +74,8 @@ fn step_arena(time: Res<Time>, mut arena: NonSendMut<UniquePtr<Arena>>, mut stat
     }
 }
 
-fn use_game_state(_state: Res<State>) {
-    // todo!
+fn use_game_state(state: Res<State>, mut ball: Query<&mut Transform, With<Ball>>) {
+    ball.single_mut().translation = state.0.ball.pos.to_bevy().into()
 }
 
 impl Plugin for RocketSimPlugin {

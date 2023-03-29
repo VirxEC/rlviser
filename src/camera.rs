@@ -50,7 +50,7 @@ fn setup(mut commands: Commands) {
         transform: Transform::from_xyz(0., 2000., -4000.).looking_at(Vec3::new(0., 700., -5120.), Vec3::Z),
         ..default()
     });
-    
+
     // lights in the goals
     commands.spawn(PointLightBundle {
         point_light: PointLight {
@@ -91,7 +91,7 @@ fn setup(mut commands: Commands) {
 
     commands.insert_resource(AmbientLight { brightness: 0.5, ..default() });
 
-    let camera_start_pos = Vec3::new(0., 200., 0.);
+    let camera_start_pos = Vec3::new(-3000., 1000., 0.);
 
     commands
         .spawn(FpsCameraBundle::new(
