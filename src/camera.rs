@@ -1,3 +1,5 @@
+use std::f32::consts::PI;
+
 use bevy::{
     prelude::*,
     window::{CursorGrabMode, PrimaryWindow},
@@ -21,28 +23,73 @@ fn grab_mouse(mut windows: Query<&mut Window, With<PrimaryWindow>>, mouse: Res<I
 }
 
 fn setup(mut commands: Commands) {
-    // commands.spawn(DirectionalLightBundle {
-    //     directional_light: DirectionalLight {
-    //         illuminance: 100000.,
-    //         shadows_enabled: true,
-    //         ..default()
-    //     },
-    //     transform: Transform::from_xyz(1000000., 100000., 1000000.).looking_at(Vec3::ZERO, Vec3::Y),
-    //     ..default()
-    // });
-    // commands.spawn(PointLightBundle::default());
     commands.spawn(SpotLightBundle {
         spot_light: SpotLight {
-            range: 6000.,
-            intensity: 5000.,
+            range: 10000.,
+            radius: 5000.,
+            intensity: 20000000.,
             shadows_enabled: true,
+            inner_angle: PI / 4.,
+            outer_angle: PI / 3.,
             ..default()
         },
-        transform: Transform::from_xyz(0., 2000., 0.).looking_to(-Vec3::Y, Vec3::Y),
+        transform: Transform::from_xyz(0., 2000., 4000.).looking_at(Vec3::new(0., 700., 5120.), Vec3::Z),
         ..default()
     });
 
-    // commands.insert_resource(AmbientLight { brightness: 0.2, ..default() });
+    commands.spawn(SpotLightBundle {
+        spot_light: SpotLight {
+            range: 10000.,
+            radius: 5000.,
+            intensity: 20000000.,
+            shadows_enabled: true,
+            inner_angle: PI / 4.,
+            outer_angle: PI / 3.,
+            ..default()
+        },
+        transform: Transform::from_xyz(0., 2000., -4000.).looking_at(Vec3::new(0., 700., -5120.), Vec3::Z),
+        ..default()
+    });
+    
+    // lights in the goals
+    commands.spawn(PointLightBundle {
+        point_light: PointLight {
+            range: 10000.,
+            radius: 100.,
+            intensity: 10000000.,
+            shadows_enabled: true,
+            ..default()
+        },
+        transform: Transform::from_xyz(0., 300., 5500.),
+        ..default()
+    });
+
+    commands.spawn(PointLightBundle {
+        point_light: PointLight {
+            range: 10000.,
+            radius: 100.,
+            intensity: 10000000.,
+            shadows_enabled: true,
+            ..default()
+        },
+        transform: Transform::from_xyz(0., 300., -5500.),
+        ..default()
+    });
+
+    // light in the middle of the field
+    commands.spawn(PointLightBundle {
+        point_light: PointLight {
+            range: 10000.,
+            radius: 5000.,
+            intensity: 10000000.,
+            shadows_enabled: true,
+            ..default()
+        },
+        transform: Transform::from_xyz(0., 1200., 0.),
+        ..default()
+    });
+
+    commands.insert_resource(AmbientLight { brightness: 0.5, ..default() });
 
     let camera_start_pos = Vec3::new(0., 200., 0.);
 

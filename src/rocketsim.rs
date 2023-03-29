@@ -17,9 +17,12 @@ fn setup_arena(mut arena: NonSendMut<UniquePtr<Arena>>) {
     arena.pin_mut().add_car(Team::BLUE, CarConfig::octane());
     arena.pin_mut().add_car(Team::ORANGE, CarConfig::octane());
 
-    arena.pin_mut().set_goal_scored_callback(|arena, _| {
-        arena.reset_to_random_kickoff(None);
-    });
+    arena.pin_mut().set_goal_scored_callback(
+        |arena, _, _| {
+            arena.reset_to_random_kickoff(None);
+        },
+        0,
+    );
 }
 
 fn step_arena(time: Res<Time>, mut arena: NonSendMut<UniquePtr<Arena>>, mut state: ResMut<State>) {

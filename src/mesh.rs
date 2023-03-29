@@ -36,8 +36,6 @@ fn load_field(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut mate
         material: materials.add(StandardMaterial {
             base_color: Color::rgb(0.2, 0.2, 0.2),
             alpha_mode: AlphaMode::Opaque,
-            cull_mode: None,
-            double_sided: true,
             ..default()
         }),
         transform: Transform::from_xyz(0., 1., 0.).looking_to(-Vec3::Y, Vec3::Z),
@@ -51,7 +49,7 @@ fn load_field(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut mate
     commands.spawn(PbrBundle {
         mesh: meshes.add(Mesh::from(shape::Quad::new(Vec2::new(7000., 1200.)))),
         material: materials.add(StandardMaterial {
-            base_color: Color::rgba(0.2, 0.2, 0.2, 0.95),
+            base_color: Color::rgba(0.2, 0.2, 0.2, 0.92),
             alpha_mode: AlphaMode::Blend,
             cull_mode: None,
             double_sided: true,
@@ -66,7 +64,7 @@ fn load_field(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut mate
     commands.spawn(PbrBundle {
         mesh: meshes.add(Mesh::from(shape::Quad::new(Vec2::new(7000., 1200.)))),
         material: materials.add(StandardMaterial {
-            base_color: Color::rgba(0.2, 0.2, 0.2, 0.95),
+            base_color: Color::rgba(0.2, 0.2, 0.2, 0.92),
             alpha_mode: AlphaMode::Blend,
             cull_mode: None,
             double_sided: true,
@@ -90,7 +88,7 @@ fn load_field(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut mate
     // load ceiling
 
     let ceiling_material = StandardMaterial {
-        base_color: Color::rgba(0.2, 0.2, 0.2, 0.99),
+        base_color: Color::rgba(0.2, 0.2, 0.2, 0.95),
         alpha_mode: AlphaMode::Blend,
         cull_mode: None,
         double_sided: true,
@@ -161,6 +159,8 @@ impl MeshBuilder {
             Mesh::ATTRIBUTE_POSITION,
             self.verts.chunks(3).map(|chunk| [chunk[0] * scale, chunk[1] * scale, chunk[2] * scale]).collect::<Vec<_>>(),
         );
+        mesh.duplicate_vertices();
+        mesh.compute_flat_normals();
         mesh
     }
 }
