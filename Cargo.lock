@@ -922,6 +922,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bevy_spectator"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f2adb1267bcfe9fb59d83b49da4d4d7f29e4966f68cc90180f456e7588e22226"
+dependencies = [
+ "bevy",
+]
+
+[[package]]
 name = "bevy_sprite"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3017,10 +3026,10 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "bevy_atmosphere",
+ "bevy_spectator",
  "byteorder",
  "rand",
  "rocketsim_rs",
- "smooth-bevy-cameras",
 ]
 
 [[package]]
@@ -3223,16 +3232,6 @@ dependencies = [
  "wayland-client",
  "wayland-cursor",
  "wayland-protocols",
-]
-
-[[package]]
-name = "smooth-bevy-cameras"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9aeb233071a219a5eb6357e2e48a284ba891da6b8ed92c1c26774fe184146af6"
-dependencies = [
- "approx",
- "bevy",
 ]
 
 [[package]]

@@ -20,14 +20,16 @@ impl Plugin for FieldLoaderPlugin {
 
 fn load_field(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
     // Get all files in ./collision_meshes/soccar/*.cmf
-    let mesh = MeshBuilder::combine(
+    let raw_mesh = MeshBuilder::combine(
         &read_dir("./collision_meshes/soccar")
             .unwrap()
             .flatten()
             .flat_map(|entry| MeshBuilder::from_file(entry.path()))
             .collect::<Vec<MeshBuilder>>(),
-    )
-    .build_mesh(50.);
+    );
+
+    let inverted_mesh = raw_mesh.clone().invert_indices().build_mesh(50.);
+    let mesh = raw_mesh.build_mesh(50.);
 
     // load the files into the game with their material
 
@@ -36,6 +38,17 @@ fn load_field(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut mate
         material: materials.add(StandardMaterial {
             base_color: Color::rgb(0.2, 0.2, 0.2),
             alpha_mode: AlphaMode::Opaque,
+            ..default()
+        }),
+        transform: Transform::from_xyz(0., 1., 0.).looking_to(-Vec3::Y, Vec3::Z),
+        ..default()
+    });
+
+    commands.spawn(PbrBundle {
+        mesh: meshes.add(inverted_mesh),
+        material: materials.add(StandardMaterial {
+            base_color: Color::rgba(0.2, 0.2, 0.2, 0.85),
+            alpha_mode: AlphaMode::Blend,
             ..default()
         }),
         transform: Transform::from_xyz(0., 1., 0.).looking_to(-Vec3::Y, Vec3::Z),
@@ -95,10 +108,10 @@ fn load_field(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut mate
         ..default()
     };
 
-    let mut ceiling_transform = Transform::from_xyz(0., 2049., 0.);
+    let mut ceiling_transform = Transform::from_xyz(0., 2060., 0.);
     ceiling_transform.rotate_local_x(PI / 2.);
     commands.spawn(PbrBundle {
-        mesh: meshes.add(Mesh::from(shape::Quad::new(Vec2::new(6950., 8670.)))),
+        mesh: meshes.add(Mesh::from(shape::Quad::new(Vec2::new(6950., 8725.)))),
         material: materials.add(ceiling_material),
         transform: ceiling_transform,
         ..default()
@@ -148,6 +161,15 @@ impl MeshBuilder {
         let verts: Vec<f32> = other_meshes.iter().flat_map(|m| m.verts.clone()).collect();
 
         Self { ids, verts }
+    }
+
+    #[must_use]
+    pub fn invert_indices(self) -> Self {
+        let mut ids = self.ids;
+        for chunk in ids.chunks_exact_mut(3) {
+            chunk.swap(1, 2);
+        }
+        Self { ids, verts: self.verts }
     }
 
     #[must_use]

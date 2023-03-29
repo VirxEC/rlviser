@@ -1,26 +1,14 @@
-use std::f32::consts::PI;
+use std::{f32::consts::PI, time::Duration};
 
-use bevy::{
-    prelude::*,
-    window::{CursorGrabMode, PrimaryWindow},
-};
+use bevy::prelude::*;
 use bevy_atmosphere::prelude::*;
-use smooth_bevy_cameras::{
-    controllers::fps::{FpsCameraBundle, FpsCameraController, FpsCameraPlugin},
-    LookTransformPlugin,
-};
+use bevy_spectator::*;
 
-fn grab_mouse(mut windows: Query<&mut Window, With<PrimaryWindow>>, mouse: Res<Input<MouseButton>>, key: Res<Input<KeyCode>>) {
-    let mut window = windows.single_mut();
-    if mouse.just_pressed(MouseButton::Left) {
-        window.cursor.visible = false;
-        window.cursor.grab_mode = if cfg!(windows) { CursorGrabMode::Confined } else { CursorGrabMode::Locked };
-    }
-    if key.just_pressed(KeyCode::Escape) {
-        window.cursor.visible = true;
-        window.cursor.grab_mode = CursorGrabMode::None;
-    }
-}
+#[derive(Component)]
+struct Sun;
+
+#[derive(Resource)]
+struct CycleTimer(Timer);
 
 fn setup(mut commands: Commands) {
     commands.spawn(SpotLightBundle {
@@ -77,50 +65,72 @@ fn setup(mut commands: Commands) {
     });
 
     // light in the middle of the field
-    commands.spawn(PointLightBundle {
-        point_light: PointLight {
-            range: 10000.,
-            radius: 5000.,
-            intensity: 10000000.,
-            shadows_enabled: true,
+    // commands.spawn(PointLightBundle {
+    //     point_light: PointLight {
+    //         range: 10000.,
+    //         radius: 5000.,
+    //         intensity: 10000000.,
+    //         shadows_enabled: true,
+    //         ..default()
+    //     },
+    //     transform: Transform::from_xyz(0., 1200., 0.),
+    //     ..default()
+    // });
+
+    commands.insert_resource(AmbientLight { brightness: 0.2, ..default() });
+
+    commands.spawn((DirectionalLightBundle::default(), Sun));
+
+    commands.spawn((
+        Camera3dBundle {
+            projection: Projection::Perspective(PerspectiveProjection { far: 20000., ..default() }),
+            transform: Transform::from_translation(Vec3::new(-3000., 1000., 0.)).looking_to(Vec3::X, Vec3::Y),
             ..default()
         },
-        transform: Transform::from_xyz(0., 1200., 0.),
-        ..default()
-    });
+        AtmosphereCamera::default(),
+        Spectator,
+    ));
+}
 
-    commands.insert_resource(AmbientLight { brightness: 0.5, ..default() });
+fn daylight_cycle(
+    mut atmosphere: AtmosphereMut<Nishita>,
+    mut query: Query<(&mut Transform, &mut DirectionalLight), With<Sun>>,
+    mut timer: ResMut<CycleTimer>,
+    time: Res<Time>,
+) {
+    timer.0.tick(time.delta());
 
-    let camera_start_pos = Vec3::new(-3000., 1000., 0.);
+    if timer.0.finished() {
+        let mut t = time.elapsed_seconds_wrapped() / 200.;
 
-    commands
-        .spawn(FpsCameraBundle::new(
-            FpsCameraController {
-                enabled: true,
-                mouse_rotate_sensitivity: Vec2::splat(0.75),
-                translate_sensitivity: 2000.0,
-                smoothing_weight: 0.9,
-            },
-            camera_start_pos,
-            camera_start_pos + Vec3::X,
-            Vec3::Y,
-        ))
-        .insert(Camera3dBundle {
-            projection: Projection::Perspective(PerspectiveProjection { far: 20000., ..default() }),
-            transform: Transform::from_translation(camera_start_pos).looking_to(Vec3::X, Vec3::Y),
-            ..default()
-        })
-        .insert(AtmosphereCamera::default());
+        if t.sin() < 0. {
+            t *= 20.;
+        }
+
+        atmosphere.sun_position = Vec3::new(0., t.sin(), t.cos());
+
+        if let Some((mut light_trans, mut directional)) = query.single_mut().into() {
+            light_trans.rotation = Quat::from_rotation_x(-t.sin().atan2(t.cos()));
+            directional.illuminance = t.sin().max(0.0).powf(2.0) * 100000.0;
+        }
+    }
 }
 
 pub struct CameraPlugin;
 
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugin(LookTransformPlugin)
-            .add_plugin(AtmospherePlugin)
-            .add_plugin(FpsCameraPlugin::default())
-            .add_startup_system(setup)
-            .add_system(grab_mouse);
+        app.insert_resource(SpectatorSettings {
+            base_speed: 25.,
+            alt_speed: 10.,
+            sensitivity: 0.75,
+            ..default()
+        })
+        .insert_resource(AtmosphereModel::default())
+        .insert_resource(CycleTimer(Timer::new(Duration::from_secs_f32(1. / 60.), TimerMode::Repeating)))
+        .add_plugin(SpectatorPlugin)
+        .add_plugin(AtmospherePlugin)
+        .add_startup_system(setup)
+        .add_system(daylight_cycle);
     }
 }
