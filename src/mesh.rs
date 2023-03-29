@@ -49,7 +49,7 @@ fn load_field(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut mate
     commands.spawn(PbrBundle {
         mesh: meshes.add(Mesh::from(shape::Quad::new(Vec2::new(7000., 1200.)))),
         material: materials.add(StandardMaterial {
-            base_color: Color::rgba(0.2, 0.2, 0.2, 0.92),
+            base_color: Color::rgba(0.2, 0.2, 0.2, 0.9),
             alpha_mode: AlphaMode::Blend,
             cull_mode: None,
             double_sided: true,
@@ -64,7 +64,7 @@ fn load_field(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut mate
     commands.spawn(PbrBundle {
         mesh: meshes.add(Mesh::from(shape::Quad::new(Vec2::new(7000., 1200.)))),
         material: materials.add(StandardMaterial {
-            base_color: Color::rgba(0.2, 0.2, 0.2, 0.92),
+            base_color: Color::rgba(0.2, 0.2, 0.2, 0.9),
             alpha_mode: AlphaMode::Blend,
             cull_mode: None,
             double_sided: true,
@@ -88,7 +88,7 @@ fn load_field(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut mate
     // load ceiling
 
     let ceiling_material = StandardMaterial {
-        base_color: Color::rgba(0.2, 0.2, 0.2, 0.95),
+        base_color: Color::rgba(0.2, 0.2, 0.2, 0.85),
         alpha_mode: AlphaMode::Blend,
         cull_mode: None,
         double_sided: true,
