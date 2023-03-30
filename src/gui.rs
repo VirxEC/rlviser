@@ -5,7 +5,10 @@ use bevy::{
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
 use warbler_grass::prelude::*;
 
-use crate::mesh::{get_grass, GrassLod};
+use crate::{
+    camera::DaylightOffset,
+    mesh::{get_grass, GrassLod},
+};
 
 pub struct DebugOverlayPlugin;
 
@@ -17,7 +20,9 @@ impl Plugin for DebugOverlayPlugin {
             .add_system(toggle_vsync.after(ui_system))
             .add_system(toggle_vsync)
             .add_system(update_grass.after(ui_system))
-            .add_system(update_grass);
+            .add_system(update_grass)
+            .add_system(update_daytime.after(ui_system))
+            .add_system(update_daytime);
     }
 }
 
@@ -27,6 +32,9 @@ struct Options {
     vsync: bool,
     fps: (usize, [f32; 25]),
     grass_lod: u8,
+    stop_day: bool,
+    daytime: f32,
+    day_speed: f32,
 }
 
 impl Default for Options {
@@ -36,6 +44,9 @@ impl Default for Options {
             vsync: true,
             fps: Default::default(),
             grass_lod: 2,
+            stop_day: false,
+            daytime: 0.,
+            day_speed: 1.,
         }
     }
 }
@@ -69,8 +80,10 @@ fn ui_system(mut contexts: EguiContexts, time: Res<Time>, keys: Res<Input<KeyCod
         ui.label("Press I to hide");
         ui.label(format!("FPS: {fps:.0}"));
         ui.checkbox(&mut options.vsync, "vsync");
-        // make slider from 0 to 2 for grass lod
         ui.add(egui::Slider::new(&mut options.grass_lod, 0..=2).text("Grass LOD"));
+        ui.checkbox(&mut options.stop_day, "Stop day cycle");
+        ui.add(egui::Slider::new(&mut options.daytime, 0.0..=150.0).text("Daytime"));
+        ui.add(egui::Slider::new(&mut options.day_speed, 0.0..=10.0).text("Day speed"));
     });
 }
 
@@ -98,4 +111,10 @@ fn update_grass(options: Res<Options>, mut lod: ResMut<GrassLod>, mut query: Que
     *transform = scale;
 
     lod.set(options.grass_lod);
+}
+
+fn update_daytime(options: Res<Options>, mut daytime: ResMut<DaylightOffset>) {
+    daytime.offset = options.daytime * 10. / options.day_speed;
+    daytime.stop_day = options.stop_day;
+    daytime.day_speed = options.day_speed;
 }

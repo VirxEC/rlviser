@@ -79,20 +79,24 @@ fn setup(mut commands: Commands) {
     ));
 }
 
+#[derive(Resource, Default)]
+pub struct DaylightOffset {
+    pub offset: f32,
+    pub stop_day: bool,
+    pub day_speed: f32,
+}
+
 fn daylight_cycle(
     mut atmosphere: AtmosphereMut<Nishita>,
     mut query: Query<(&mut Transform, &mut DirectionalLight), With<Sun>>,
     mut timer: ResMut<CycleTimer>,
+    offset: Res<DaylightOffset>,
     time: Res<Time>,
 ) {
     timer.0.tick(time.delta());
 
-    if timer.0.finished() {
-        let mut t = time.elapsed_seconds_wrapped() / 200.;
-
-        if t.sin() < 0. {
-            t *= 10.;
-        }
+    if timer.0.finished() && !offset.stop_day {
+        let t = (offset.offset + time.elapsed_seconds_wrapped()) / (200. / offset.day_speed);
 
         atmosphere.sun_position = Vec3::new(0., t.sin(), t.cos());
 
@@ -115,6 +119,7 @@ impl Plugin for CameraPlugin {
         })
         .insert_resource(AtmosphereModel::default())
         .insert_resource(CycleTimer(Timer::new(Duration::from_secs_f32(1. / 60.), TimerMode::Repeating)))
+        .insert_resource(DaylightOffset::default())
         .add_plugin(SpectatorPlugin)
         .add_plugin(AtmospherePlugin)
         .add_startup_system(setup)
