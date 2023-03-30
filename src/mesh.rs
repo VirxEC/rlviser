@@ -3,18 +3,20 @@ use bevy::{
     render::mesh::{self, PrimitiveTopology},
 };
 use byteorder::{LittleEndian, ReadBytesExt};
+use rand::Rng;
 use std::{
     f32::consts::PI,
     fs::{read_dir, File},
     io,
     path::Path,
 };
+use warbler_grass::prelude::*;
 
 pub struct FieldLoaderPlugin;
 
 impl Plugin for FieldLoaderPlugin {
     fn build(&self, app: &mut App) {
-        app.add_startup_system(load_field);
+        app.add_startup_system(load_field).add_plugin(WarblersPlugin);
     }
 }
 
@@ -114,6 +116,24 @@ fn load_field(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut mate
         mesh: meshes.add(Mesh::from(shape::Quad::new(Vec2::new(6950., 8725.)))),
         material: materials.add(ceiling_material),
         transform: ceiling_transform,
+        ..default()
+    });
+
+    // load grass
+
+    let mut rand = rand::thread_rng();
+    let grass_positions = (-375 * 2..375 * 2)
+        .step_by(3)
+        .flat_map(|x| (-495 * 2..495 * 2).step_by(3).map(move |z| Vec3::new(x as f32, 1., z as f32)))
+        .map(|pos| pos + Vec3::new(rand.gen_range(-2.0..2.), 0., rand.gen_range(-2.0..2.)))
+        .collect::<Vec<_>>();
+
+    commands.spawn(WarblersExplicitBundle {
+        grass: Grass::new(grass_positions, 3.),
+        spatial: SpatialBundle {
+            transform: Transform::from_scale(Vec3::splat(5.)),
+            ..default()
+        },
         ..default()
     });
 }

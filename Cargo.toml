@@ -8,10 +8,12 @@ edition = "2021"
 [dependencies]
 bevy = { version = "0.10.0", features = ["wayland"] }
 bevy_atmosphere = "0.6.0"
+bevy_egui = "0.20.2"
 bevy_spectator = "0.2.0"
 byteorder = "1.4.3"
 rand = "0.8.5"
 rocketsim_rs = "0.11.0"
+warbler_grass = "0.3.1"
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]

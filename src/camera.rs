@@ -64,19 +64,6 @@ fn setup(mut commands: Commands) {
         ..default()
     });
 
-    // light in the middle of the field
-    // commands.spawn(PointLightBundle {
-    //     point_light: PointLight {
-    //         range: 10000.,
-    //         radius: 5000.,
-    //         intensity: 10000000.,
-    //         shadows_enabled: true,
-    //         ..default()
-    //     },
-    //     transform: Transform::from_xyz(0., 1200., 0.),
-    //     ..default()
-    // });
-
     commands.insert_resource(AmbientLight { brightness: 0.2, ..default() });
 
     commands.spawn((DirectionalLightBundle::default(), Sun));
@@ -104,14 +91,14 @@ fn daylight_cycle(
         let mut t = time.elapsed_seconds_wrapped() / 200.;
 
         if t.sin() < 0. {
-            t *= 20.;
+            t *= 10.;
         }
 
         atmosphere.sun_position = Vec3::new(0., t.sin(), t.cos());
 
         if let Some((mut light_trans, mut directional)) = query.single_mut().into() {
             light_trans.rotation = Quat::from_rotation_x(-t.sin().atan2(t.cos()));
-            directional.illuminance = t.sin().max(0.0).powf(2.0) * 100000.0;
+            directional.illuminance = t.sin().max(0.0).powf(2.0) * 100000.;
         }
     }
 }
