@@ -12,15 +12,66 @@ use std::{
 };
 use warbler_grass::prelude::*;
 
+#[derive(Resource)]
+pub struct GrassLod(u8);
+
+impl Default for GrassLod {
+    fn default() -> Self {
+        GrassLod(2)
+    }
+}
+
+impl GrassLod {
+    #[inline]
+    pub fn get(&self) -> u8 {
+        self.0
+    }
+
+    #[inline]
+    pub fn set(&mut self, lod: u8) {
+        self.0 = lod;
+    }
+}
+
+pub fn get_grass(lod: u8) -> (Vec<Vec3>, f32, Transform) {
+    if lod == 0 {
+        return (Vec::new(), 1.5, Transform::from_scale(Vec3::splat(10.)));
+    }
+
+    let mut rand = rand::thread_rng();
+
+    if lod == 1 {
+        (
+            (-375..375)
+                .step_by(3)
+                .flat_map(|x| (-495..495).step_by(3).map(move |z| Vec3::new(x as f32, 1., z as f32)))
+                .map(|pos| pos + Vec3::new(rand.gen_range(-2.0..2.), 0., rand.gen_range(-2.0..2.)))
+                .collect::<Vec<_>>(),
+            1.5,
+            Transform::from_scale(Vec3::splat(10.)),
+        )
+    } else {
+        (
+            (-375 * 2..375 * 2)
+                .step_by(3)
+                .flat_map(|x| (-495 * 2..495 * 2).step_by(3).map(move |z| Vec3::new(x as f32, 1., z as f32)))
+                .map(|pos| pos + Vec3::new(rand.gen_range(-2.0..2.), 0., rand.gen_range(-2.0..2.)))
+                .collect::<Vec<_>>(),
+            3.,
+            Transform::from_scale(Vec3::splat(5.)),
+        )
+    }
+}
+
 pub struct FieldLoaderPlugin;
 
 impl Plugin for FieldLoaderPlugin {
     fn build(&self, app: &mut App) {
-        app.add_startup_system(load_field).add_plugin(WarblersPlugin);
+        app.add_plugin(WarblersPlugin).insert_resource(GrassLod::default()).add_startup_system(load_field);
     }
 }
 
-fn load_field(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
+fn load_field(mut commands: Commands, grass_lod: Res<GrassLod>, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
     // Get all files in ./collision_meshes/soccar/*.cmf
     let raw_mesh = MeshBuilder::combine(
         &read_dir("./collision_meshes/soccar")
@@ -121,19 +172,11 @@ fn load_field(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut mate
 
     // load grass
 
-    let mut rand = rand::thread_rng();
-    let grass_positions = (-375 * 2..375 * 2)
-        .step_by(3)
-        .flat_map(|x| (-495 * 2..495 * 2).step_by(3).map(move |z| Vec3::new(x as f32, 1., z as f32)))
-        .map(|pos| pos + Vec3::new(rand.gen_range(-2.0..2.), 0., rand.gen_range(-2.0..2.)))
-        .collect::<Vec<_>>();
+    let (positions, height, transform) = get_grass(grass_lod.get());
 
     commands.spawn(WarblersExplicitBundle {
-        grass: Grass::new(grass_positions, 3.),
-        spatial: SpatialBundle {
-            transform: Transform::from_scale(Vec3::splat(5.)),
-            ..default()
-        },
+        grass: Grass::new(positions, height),
+        spatial: SpatialBundle { transform, ..default() },
         ..default()
     });
 }

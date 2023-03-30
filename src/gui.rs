@@ -3,6 +3,9 @@ use bevy::{
     window::{PresentMode, PrimaryWindow},
 };
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
+use warbler_grass::prelude::*;
+
+use crate::mesh::{get_grass, GrassLod};
 
 pub struct DebugOverlayPlugin;
 
@@ -12,7 +15,9 @@ impl Plugin for DebugOverlayPlugin {
             .insert_resource(Options::default())
             .add_system(ui_system)
             .add_system(toggle_vsync.after(ui_system))
-            .add_system(toggle_vsync);
+            .add_system(toggle_vsync)
+            .add_system(update_grass.after(ui_system))
+            .add_system(update_grass);
     }
 }
 
@@ -21,6 +26,7 @@ struct Options {
     focus: bool,
     vsync: bool,
     fps: (usize, [f32; 25]),
+    grass_lod: u8,
 }
 
 impl Default for Options {
@@ -29,6 +35,7 @@ impl Default for Options {
             focus: false,
             vsync: true,
             fps: Default::default(),
+            grass_lod: 2,
         }
     }
 }
@@ -62,6 +69,8 @@ fn ui_system(mut contexts: EguiContexts, time: Res<Time>, keys: Res<Input<KeyCod
         ui.label("Press I to hide");
         ui.label(format!("FPS: {fps:.0}"));
         ui.checkbox(&mut options.vsync, "vsync");
+        // make slider from 0 to 2 for grass lod
+        ui.add(egui::Slider::new(&mut options.grass_lod, 0..=2).text("Grass LOD"));
     });
 }
 
@@ -73,4 +82,20 @@ fn toggle_vsync(options: Res<Options>, mut windows: Query<&mut Window, With<Prim
     }
 
     windows.single_mut().present_mode = wanted_present_mode;
+}
+
+fn update_grass(options: Res<Options>, mut lod: ResMut<GrassLod>, mut query: Query<(&mut Grass, &mut Transform)>) {
+    if options.grass_lod == lod.get() {
+        return;
+    }
+
+    let (mut grass, mut transform) = query.single_mut();
+
+    let (positions, height, scale) = get_grass(options.grass_lod);
+
+    grass.positions = positions;
+    grass.height = height;
+    *transform = scale;
+
+    lod.set(options.grass_lod);
 }
