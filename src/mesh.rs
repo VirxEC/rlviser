@@ -146,7 +146,12 @@ fn load_field(mut commands: Commands, grass_lod: Res<GrassLod>, mut meshes: ResM
     floor_transform.rotate_local_x(-PI / 2.);
     commands.spawn(PbrBundle {
         mesh: meshes.add(Mesh::from(shape::Quad::new(Vec2::new(7500., 10800.)))),
-        material: materials.add(Color::rgb(0.7, 1., 0.7).into()),
+        material: materials.add(StandardMaterial {
+            base_color: Color::rgb(0.7, 1., 0.7),
+            perceptual_roughness: 0.9,
+            reflectance: 0.05,
+            ..default()
+        }),
         transform: floor_transform,
         ..default()
     });

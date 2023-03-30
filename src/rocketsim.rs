@@ -50,6 +50,9 @@ impl ToBevyMat for RotMat {
     }
 }
 
+#[derive(Component)]
+struct BoostPad;
+
 fn setup_arena(
     mut commands: Commands,
     mut state: ResMut<State>,
@@ -57,7 +60,11 @@ fn setup_arena(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut arena: NonSendMut<UniquePtr<Arena>>,
 ) {
+    arena.pin_mut().add_car(Team::BLUE, CarConfig::octane());
+    arena.pin_mut().add_car(Team::BLUE, CarConfig::dominus());
     arena.pin_mut().add_car(Team::BLUE, CarConfig::merc());
+    arena.pin_mut().add_car(Team::ORANGE, CarConfig::breakout());
+    arena.pin_mut().add_car(Team::ORANGE, CarConfig::hybrid());
     arena.pin_mut().add_car(Team::ORANGE, CarConfig::plank());
     arena.pin_mut().set_ball(BallState {
         pos: RVec::new(0., -2000., 1500.),
@@ -74,7 +81,21 @@ fn setup_arena(
 
     arena
         .pin_mut()
-        .set_all_controls(&[(1, CarControls { throttle: 1., ..default() }), (2, CarControls { throttle: 1., ..default() })])
+        .set_all_controls(
+            (1..=6u32)
+                .map(|i| {
+                    (
+                        i,
+                        CarControls {
+                            throttle: 1.,
+                            boost: true,
+                            ..default()
+                        },
+                    )
+                })
+                .collect::<Vec<_>>()
+                .as_slice(),
+        )
         .unwrap();
 
     let game_state = arena.pin_mut().get_game_state();
@@ -108,6 +129,35 @@ fn setup_arena(
                 mesh: meshes.add(Mesh::from(shape::Box::new(hitbox.x, hitbox.y, hitbox.z))),
                 material: materials.add(StandardMaterial::from(color)),
                 transform: Transform::from_translation(state.pos.to_bevy()),
+                ..default()
+            },
+        ));
+    }
+
+    for pad in &game_state.pads {
+        // nice yellow color for active pads
+        let color = Color::rgba(0.9, 0.9, 0.1, 0.6);
+
+        let shape = if pad.is_big {
+            shape::Cylinder {
+                radius: 208.,
+                height: 168.,
+                ..default()
+            }
+        } else {
+            shape::Cylinder {
+                radius: 144.,
+                height: 165.,
+                ..default()
+            }
+        };
+
+        commands.spawn((
+            BoostPad,
+            PbrBundle {
+                mesh: meshes.add(Mesh::from(shape)),
+                material: materials.add(StandardMaterial::from(color)),
+                transform: Transform::from_translation(pad.position.to_bevy() + Vec3::Y),
                 ..default()
             },
         ));
@@ -159,6 +209,18 @@ fn update_car(state: Res<State>, mut cars: Query<(&mut Transform, &Car)>) {
     }
 }
 
+fn update_pads(state: Res<State>, query: Query<&Handle<StandardMaterial>, With<BoostPad>>, mut materials: ResMut<Assets<StandardMaterial>>) {
+    for (pad, handle) in state.0.pads.iter().zip(query.iter()) {
+        let material = materials.get_mut(handle).unwrap();
+        material.base_color = if pad.state.is_active {
+            Color::rgba(0.9, 0.9, 0.1, 0.6)
+        } else {
+            // make inactive pads grey and more transparent
+            Color::rgba(0.5, 0.5, 0.5, 0.3)
+        };
+    }
+}
+
 fn listen(key: Res<Input<KeyCode>>, mut state: ResMut<State>) {
     if key.just_pressed(KeyCode::R) {
         state.0.ball.pos = RVec::new(0., -2000., 1500.);
@@ -174,9 +236,10 @@ impl Plugin for RocketSimPlugin {
             .insert_resource(State::default())
             .add_startup_system(setup_arena)
             .add_system(step_arena)
-            .add_systems((update_ball, update_car).after(step_arena).before(listen))
+            .add_systems((update_ball, update_car, update_pads).after(step_arena).before(listen))
             .add_system(update_ball.run_if(|state: Res<State>| state.is_changed()))
             .add_system(update_car.run_if(|state: Res<State>| state.is_changed()))
+            .add_system(update_pads.run_if(|state: Res<State>| state.is_changed()))
             .add_system(listen);
     }
 }
