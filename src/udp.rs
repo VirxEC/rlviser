@@ -5,7 +5,10 @@ use bevy::{
     prelude::*,
 };
 
-use crate::ServerPort;
+use crate::{
+    bytes::{FromBytes, ToBytesVec},
+    ServerPort,
+};
 
 #[derive(Component)]
 struct BoostPad;
@@ -17,57 +20,60 @@ struct Ball;
 struct Car(u32);
 
 #[derive(Clone, Copy, Default, Debug)]
-struct BallState {
-    pos: Vec3,
+pub struct BallState {
+    pub pos: Vec3,
+    pub vel: Vec3,
+    pub ang_vel: Vec3,
 }
 
 #[repr(u8)]
 #[derive(Clone, Copy, Default, Debug)]
-enum Team {
+pub enum Team {
     #[default]
     Blue,
     Orange,
 }
 
 #[derive(Clone, Copy, Default, Debug)]
-struct CarState {
-    pos: Vec3,
-    rot_mat: Mat3A,
+pub struct CarState {
+    pub pos: Vec3,
+    pub rot_mat: Mat3A,
 }
 
 #[derive(Clone, Copy, Default, Debug)]
-struct CarConfig {
-    hitbox_size: Vec3,
+pub struct CarConfig {
+    pub hitbox_size: Vec3,
 }
 
 #[derive(Clone, Copy, Default, Debug)]
-struct CarInfo {
-    id: u32,
-    team: Team,
-    state: CarState,
-    config: CarConfig,
+pub struct CarInfo {
+    pub id: u32,
+    pub team: Team,
+    pub state: CarState,
+    pub config: CarConfig,
 }
 
 #[derive(Clone, Copy, Default, Debug)]
-struct BoostPadState {
-    is_active: bool,
-    #[allow(dead_code)]
-    cooldown: f32,
+pub struct BoostPadState {
+    pub is_active: bool,
+    pub cooldown: f32,
+    pub cur_locked_car_id: u32,
+    pub prev_locked_car_id: u32,
 }
 
 #[derive(Clone, Copy, Default, Debug)]
-struct BoostPadInfo {
-    is_big: bool,
-    position: Vec3,
-    state: BoostPadState,
+pub struct BoostPadInfo {
+    pub is_big: bool,
+    pub position: Vec3,
+    pub state: BoostPadState,
 }
 
 #[derive(Resource, Default, Debug)]
-struct GameState {
-    tick_count: u64,
-    ball: BallState,
-    pads: Vec<BoostPadInfo>,
-    cars: Vec<CarInfo>,
+pub struct GameState {
+    pub tick_count: u64,
+    pub ball: BallState,
+    pub pads: Vec<BoostPadInfo>,
+    pub cars: Vec<CarInfo>,
 }
 
 #[derive(Resource)]
@@ -95,12 +101,17 @@ fn setup_arena(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut mat
     ));
 }
 
-trait ToBevyVec {
+trait ViserVec {
     fn to_bevy(self) -> Vec3;
+    fn to_rocket(self) -> Vec3;
 }
 
-impl ToBevyVec for Vec3 {
+impl ViserVec for Vec3 {
     fn to_bevy(self) -> Self {
+        Self::new(self.x, self.z, self.y)
+    }
+
+    fn to_rocket(self) -> Vec3 {
         Self::new(self.x, self.z, self.y)
     }
 }
@@ -115,190 +126,6 @@ impl ToBevyMat for Mat3A {
         // We also need to rotate 90 degrees around the X axis and 180 degrees around the Y axis
         let mat = Mat3A::from_axis_angle(Vec3::Y, PI) * Mat3A::from_axis_angle(Vec3::X, PI / 2.) * self * Mat3A::from_cols(Vec3A::X, -Vec3A::Z, Vec3A::Y);
         Quat::from_mat3a(&mat)
-    }
-}
-
-trait FromBytes {
-    fn num_bytes() -> usize;
-    fn from_bytes(bytes: &[u8]) -> Self;
-}
-
-impl FromBytes for f32 {
-    #[inline]
-    fn num_bytes() -> usize {
-        4
-    }
-
-    #[inline]
-    fn from_bytes(bytes: &[u8]) -> Self {
-        f32::from_ne_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
-    }
-}
-
-impl FromBytes for u32 {
-    #[inline]
-    fn num_bytes() -> usize {
-        4
-    }
-
-    #[inline]
-    fn from_bytes(bytes: &[u8]) -> Self {
-        u32::from_ne_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
-    }
-}
-
-impl FromBytes for u64 {
-    #[inline]
-    fn num_bytes() -> usize {
-        8
-    }
-
-    #[inline]
-    fn from_bytes(bytes: &[u8]) -> Self {
-        u64::from_ne_bytes([bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7]])
-    }
-}
-
-impl FromBytes for Vec3 {
-    #[inline]
-    fn num_bytes() -> usize {
-        f32::num_bytes() * 3
-    }
-
-    #[inline]
-    fn from_bytes(bytes: &[u8]) -> Self {
-        Vec3::new(f32::from_bytes(&bytes[..4]), f32::from_bytes(&bytes[4..8]), f32::from_bytes(&bytes[8..12]))
-    }
-}
-
-impl FromBytes for Vec3A {
-    #[inline]
-    fn num_bytes() -> usize {
-        f32::num_bytes() * 3
-    }
-
-    #[inline]
-    fn from_bytes(bytes: &[u8]) -> Self {
-        Vec3A::new(f32::from_bytes(&bytes[..4]), f32::from_bytes(&bytes[4..8]), f32::from_bytes(&bytes[8..12]))
-    }
-}
-
-impl FromBytes for Mat3A {
-    #[inline]
-    fn num_bytes() -> usize {
-        Vec3A::num_bytes() * 3
-    }
-
-    #[inline]
-    fn from_bytes(bytes: &[u8]) -> Self {
-        Mat3A::from_cols(Vec3A::from_bytes(&bytes[..12]), Vec3A::from_bytes(&bytes[12..24]), Vec3A::from_bytes(&bytes[24..36]))
-    }
-}
-
-impl FromBytes for BallState {
-    #[inline]
-    fn num_bytes() -> usize {
-        Vec3::num_bytes()
-    }
-
-    #[inline]
-    fn from_bytes(bytes: &[u8]) -> Self {
-        Self {
-            pos: Vec3::from_bytes(&bytes[..12]),
-        }
-    }
-}
-
-impl FromBytes for BoostPadState {
-    #[inline]
-    fn num_bytes() -> usize {
-        1 + f32::num_bytes()
-    }
-
-    #[inline]
-    fn from_bytes(bytes: &[u8]) -> Self {
-        Self {
-            is_active: bytes[0] != 0,
-            cooldown: f32::from_bytes(&bytes[1..Self::num_bytes()]),
-        }
-    }
-}
-
-impl FromBytes for BoostPadInfo {
-    #[inline]
-    fn num_bytes() -> usize {
-        1 + Vec3::num_bytes() + BoostPadState::num_bytes()
-    }
-
-    #[inline]
-    fn from_bytes(bytes: &[u8]) -> Self {
-        Self {
-            is_big: bytes[0] != 0,
-            position: Vec3::from_bytes(&bytes[1..13]),
-            state: BoostPadState::from_bytes(&bytes[13..Self::num_bytes()]),
-        }
-    }
-}
-
-impl FromBytes for Team {
-    #[inline]
-    fn num_bytes() -> usize {
-        1
-    }
-
-    #[inline]
-    fn from_bytes(bytes: &[u8]) -> Self {
-        match bytes[0] {
-            0 => Team::Blue,
-            1 => Team::Orange,
-            _ => unreachable!(),
-        }
-    }
-}
-
-impl FromBytes for CarState {
-    #[inline]
-    fn num_bytes() -> usize {
-        Vec3::num_bytes() + Mat3A::num_bytes()
-    }
-
-    #[inline]
-    fn from_bytes(bytes: &[u8]) -> Self {
-        Self {
-            pos: Vec3::from_bytes(&bytes[..12]),
-            rot_mat: Mat3A::from_bytes(&bytes[12..Self::num_bytes()]),
-        }
-    }
-}
-
-impl FromBytes for CarConfig {
-    #[inline]
-    fn num_bytes() -> usize {
-        Vec3::num_bytes()
-    }
-
-    #[inline]
-    fn from_bytes(bytes: &[u8]) -> Self {
-        Self {
-            hitbox_size: Vec3::from_bytes(&bytes[..12]),
-        }
-    }
-}
-
-impl FromBytes for CarInfo {
-    #[inline]
-    fn num_bytes() -> usize {
-        u32::num_bytes() + Team::num_bytes() + CarState::num_bytes() + CarConfig::num_bytes()
-    }
-
-    #[inline]
-    fn from_bytes(bytes: &[u8]) -> Self {
-        Self {
-            id: u32::from_bytes(&bytes[..4]),
-            team: Team::from_bytes(&bytes[4..5]),
-            state: CarState::from_bytes(&bytes[5..(5 + CarState::num_bytes())]),
-            config: CarConfig::from_bytes(&bytes[(5 + CarState::num_bytes())..Self::num_bytes()]),
-        }
     }
 }
 
@@ -317,28 +144,28 @@ fn step_arena(
         return;
     }
 
-    let tick_count = u64::from_bytes(&buf[..8]);
-    let num_pads = u32::from_bytes(&buf[8..12]) as usize;
-    let num_cars = u32::from_bytes(&buf[12..16]) as usize;
+    let tick_count = u64::from_bytes(&buf[..u64::NUM_BYTES]);
+    let num_pads = u32::from_bytes(&buf[u64::NUM_BYTES..u64::NUM_BYTES + u32::NUM_BYTES]) as usize;
+    let num_cars = u32::from_bytes(&buf[u64::NUM_BYTES + u32::NUM_BYTES..]) as usize;
 
     if game_state.tick_count > tick_count {
         drop(socket.0.recv_from(&mut [0]));
     }
 
-    let mut buf = vec![0; INITIAL_BUFFER.len() + BallState::num_bytes() + num_pads * BoostPadInfo::num_bytes() + num_cars * CarInfo::num_bytes()];
+    let mut buf = vec![0; INITIAL_BUFFER.len() + BallState::NUM_BYTES + num_pads * BoostPadInfo::NUM_BYTES + num_cars * CarInfo::NUM_BYTES];
     if socket.0.recv_from(&mut buf).is_err() {
         return;
     }
 
-    game_state.ball = BallState::from_bytes(&buf[INITIAL_BUFFER.len()..INITIAL_BUFFER.len() + BallState::num_bytes()]);
+    game_state.ball = BallState::from_bytes(&buf[INITIAL_BUFFER.len()..INITIAL_BUFFER.len() + BallState::NUM_BYTES]);
 
     if game_state.pads.len() != num_pads {
         game_state.pads = vec![BoostPadInfo::default(); num_pads];
     }
 
     for (i, pad) in game_state.pads.iter_mut().enumerate() {
-        let start_byte = INITIAL_BUFFER.len() + BallState::num_bytes() + i * BoostPadInfo::num_bytes();
-        *pad = BoostPadInfo::from_bytes(&buf[start_byte..(start_byte + BoostPadInfo::num_bytes())]);
+        let start_byte = INITIAL_BUFFER.len() + BallState::NUM_BYTES + i * BoostPadInfo::NUM_BYTES;
+        *pad = BoostPadInfo::from_bytes(&buf[start_byte..(start_byte + BoostPadInfo::NUM_BYTES)]);
     }
 
     if pads.iter().count() != num_pads {
@@ -385,8 +212,8 @@ fn step_arena(
     }
 
     for (i, car) in game_state.cars.iter_mut().enumerate() {
-        let start_byte = INITIAL_BUFFER.len() + BallState::num_bytes() + num_pads * BoostPadInfo::num_bytes() + i * CarInfo::num_bytes();
-        *car = CarInfo::from_bytes(&buf[start_byte..(start_byte + CarInfo::num_bytes())]);
+        let start_byte = INITIAL_BUFFER.len() + BallState::NUM_BYTES + num_pads * BoostPadInfo::NUM_BYTES + i * CarInfo::NUM_BYTES;
+        *car = CarInfo::from_bytes(&buf[start_byte..(start_byte + CarInfo::NUM_BYTES)]);
     }
 
     match cars.iter().count().cmp(&game_state.cars.len()) {
@@ -458,6 +285,19 @@ fn update_pads(state: Res<GameState>, query: Query<&Handle<StandardMaterial>, Wi
     }
 }
 
+fn listen(socket: Res<UdpConnection>, key: Res<Input<KeyCode>>, mut game_state: ResMut<GameState>) {
+    let mut changed = false;
+    if key.just_pressed(KeyCode::R) {
+        changed = true;
+
+        game_state.ball.pos = Vec3::new(0., -2000., 1500.);
+        game_state.ball.vel = Vec3::new(0., 1500., 1.);
+    }
+
+    if changed {
+        socket.0.send(&game_state.to_bytes()).unwrap();
+    }
+}
 pub struct RocketSimPlugin;
 
 impl Plugin for RocketSimPlugin {
@@ -466,9 +306,10 @@ impl Plugin for RocketSimPlugin {
             .add_startup_system(establish_connection)
             .add_startup_system(setup_arena)
             .add_system(step_arena)
-            .add_systems((update_ball, update_car, update_pads).after(step_arena))
+            .add_systems((update_ball, update_car, update_pads).after(step_arena).before(listen))
             .add_system(update_ball.run_if(|state: Res<GameState>| state.is_changed()))
             .add_system(update_car.run_if(|state: Res<GameState>| state.is_changed()))
-            .add_system(update_pads.run_if(|state: Res<GameState>| state.is_changed()));
+            .add_system(update_pads.run_if(|state: Res<GameState>| state.is_changed()))
+            .add_system(listen);
     }
 }

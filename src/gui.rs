@@ -80,7 +80,7 @@ fn ui_system(mut contexts: EguiContexts, time: Res<Time>, keys: Res<Input<KeyCod
         ui.label("Press I to hide");
         ui.label(format!("FPS: {fps:.0}"));
         ui.checkbox(&mut options.vsync, "vsync");
-        ui.add(egui::Slider::new(&mut options.grass_lod, 0..=2).text("Grass LOD"));
+        ui.add(egui::Slider::new(&mut options.grass_lod, 0..=3).text("Grass LOD"));
         ui.checkbox(&mut options.stop_day, "Stop day cycle");
         ui.add(egui::Slider::new(&mut options.daytime, 0.0..=150.0).text("Daytime"));
         ui.add(egui::Slider::new(&mut options.day_speed, 0.0..=10.0).text("Day speed"));

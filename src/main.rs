@@ -1,8 +1,8 @@
+mod bytes;
 mod camera;
 mod gui;
 mod mesh;
 mod udp;
-// mod rocketsim;
 
 use bevy::prelude::*;
 
@@ -13,8 +13,9 @@ pub struct ServerPort {
 }
 
 fn main() {
-    // read the first argument and treat is as the port to connect to (u16)
+    // read the first argument and treat it as the port to connect to (u16)
     let primary_port = std::env::args().nth(1).and_then(|s| s.parse::<u16>().ok()).unwrap_or(34254);
+    // read the second argument and treat it as the port to bind the UDP socket to (u16)
     let secondary_port = std::env::args().nth(1).and_then(|s| s.parse::<u16>().ok()).unwrap_or(45243);
 
     App::new()
@@ -27,7 +28,6 @@ fn main() {
             ..default()
         }))
         .add_plugin(bevy::diagnostic::LogDiagnosticsPlugin::default())
-        // .add_plugin(rocketsim::RocketSimPlugin)
         .add_plugin(udp::RocketSimPlugin)
         .add_plugin(camera::CameraPlugin)
         .add_plugin(gui::DebugOverlayPlugin)

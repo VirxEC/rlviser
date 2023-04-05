@@ -3,7 +3,7 @@ use bevy::{
     render::mesh::{self, PrimitiveTopology},
 };
 use byteorder::{LittleEndian, ReadBytesExt};
-use rand::Rng;
+use rand::{rngs::ThreadRng, Rng};
 use std::{
     f32::consts::PI,
     fs::{read_dir, File},
@@ -33,34 +33,50 @@ impl GrassLod {
     }
 }
 
+#[inline]
+fn filter_grass(pos: &Vec3, scale: f32) -> bool {
+    // filter out positions inside this triangle
+    let p0 = Vec2::new(380. * scale, 385. * scale);
+    let p1 = Vec2::new(265. * scale, 500. * scale);
+    let p2 = Vec2::new(380. * scale, 500. * scale);
+
+    let p = Vec2::new(pos.x.abs(), pos.z.abs());
+
+    let area = 0.5 * (-p1.y * p2.x + p0.y * (-p1.x + p2.x) + p0.x * (p1.y - p2.y) + p1.x * p2.y);
+
+    let s = 1. / (2. * area) * (p0.y * p2.x - p0.x * p2.y + (p2.y - p0.y) * p.x + (p0.x - p2.x) * p.y);
+    let t = 1. / (2. * area) * (p0.x * p1.y - p0.y * p1.x + (p0.y - p1.y) * p.x + (p1.x - p0.x) * p.y);
+
+    !(s > 0. && t > 0. && 1. - s - t > 0.)
+}
+
+#[inline]
+fn randomize_grass(rand: &mut ThreadRng) -> Vec3 {
+    Vec3::new(rand.gen_range(-2.0..2.), 0., rand.gen_range(-2.0..2.))
+}
+
+fn generate_grass(scale: i32) -> (Vec<Vec3>, f32, Transform) {
+    let mut rand = rand::thread_rng();
+    let fscale = scale as f32;
+
+    (
+        (-375 * scale..375 * scale)
+            .step_by(3)
+            .flat_map(|x| (-495 * scale..495 * scale).step_by(3).map(move |z| Vec3::new(x as f32, 1., z as f32)))
+            .filter(|pos| filter_grass(pos, fscale))
+            .map(|pos| pos + randomize_grass(&mut rand))
+            .collect::<Vec<_>>(),
+        1.5 * fscale,
+        Transform::from_scale(Vec3::splat(10. / fscale)),
+    )
+}
+
 pub fn get_grass(lod: u8) -> (Vec<Vec3>, f32, Transform) {
     if lod == 0 {
         return (Vec::new(), 1.5, Transform::from_scale(Vec3::splat(10.)));
     }
 
-    let mut rand = rand::thread_rng();
-
-    if lod == 1 {
-        (
-            (-375..375)
-                .step_by(3)
-                .flat_map(|x| (-495..495).step_by(3).map(move |z| Vec3::new(x as f32, 1., z as f32)))
-                .map(|pos| pos + Vec3::new(rand.gen_range(-2.0..2.), 0., rand.gen_range(-2.0..2.)))
-                .collect::<Vec<_>>(),
-            1.5,
-            Transform::from_scale(Vec3::splat(10.)),
-        )
-    } else {
-        (
-            (-375 * 2..375 * 2)
-                .step_by(3)
-                .flat_map(|x| (-495 * 2..495 * 2).step_by(3).map(move |z| Vec3::new(x as f32, 1., z as f32)))
-                .map(|pos| pos + Vec3::new(rand.gen_range(-2.0..2.), 0., rand.gen_range(-2.0..2.)))
-                .collect::<Vec<_>>(),
-            3.,
-            Transform::from_scale(Vec3::splat(5.)),
-        )
-    }
+    generate_grass(lod as i32)
 }
 
 pub struct FieldLoaderPlugin;
