@@ -107,6 +107,8 @@ fn load_field(mut commands: Commands, grass_lod: Res<GrassLod>, mut meshes: ResM
         material: materials.add(StandardMaterial {
             base_color: Color::rgb(0.2, 0.2, 0.2),
             alpha_mode: AlphaMode::Opaque,
+            perceptual_roughness: 0.8,
+            reflectance: 0.3,
             ..default()
         }),
         transform: Transform::from_xyz(0., 1., 0.).looking_to(-Vec3::Y, Vec3::Z),

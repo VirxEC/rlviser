@@ -6,75 +6,19 @@ use bevy::{
 };
 
 use crate::{
-    bytes::{FromBytes, ToBytesVec},
+    bytes::{FromBytes, ToBytes},
+    rocketsim::{GameState, Team},
     ServerPort,
 };
 
 #[derive(Component)]
-struct BoostPad;
+struct BoostPadI;
 
 #[derive(Component)]
 struct Ball;
 
 #[derive(Component)]
 struct Car(u32);
-
-#[derive(Clone, Copy, Default, Debug)]
-pub struct BallState {
-    pub pos: Vec3,
-    pub vel: Vec3,
-    pub ang_vel: Vec3,
-}
-
-#[repr(u8)]
-#[derive(Clone, Copy, Default, Debug)]
-pub enum Team {
-    #[default]
-    Blue,
-    Orange,
-}
-
-#[derive(Clone, Copy, Default, Debug)]
-pub struct CarState {
-    pub pos: Vec3,
-    pub rot_mat: Mat3A,
-}
-
-#[derive(Clone, Copy, Default, Debug)]
-pub struct CarConfig {
-    pub hitbox_size: Vec3,
-}
-
-#[derive(Clone, Copy, Default, Debug)]
-pub struct CarInfo {
-    pub id: u32,
-    pub team: Team,
-    pub state: CarState,
-    pub config: CarConfig,
-}
-
-#[derive(Clone, Copy, Default, Debug)]
-pub struct BoostPadState {
-    pub is_active: bool,
-    pub cooldown: f32,
-    pub cur_locked_car_id: u32,
-    pub prev_locked_car_id: u32,
-}
-
-#[derive(Clone, Copy, Default, Debug)]
-pub struct BoostPadInfo {
-    pub is_big: bool,
-    pub position: Vec3,
-    pub state: BoostPadState,
-}
-
-#[derive(Resource, Default, Debug)]
-pub struct GameState {
-    pub tick_count: u64,
-    pub ball: BallState,
-    pub pads: Vec<BoostPadInfo>,
-    pub cars: Vec<CarInfo>,
-}
 
 #[derive(Resource)]
 struct UdpConnection(UdpSocket);
@@ -88,31 +32,40 @@ fn establish_connection(port: Res<ServerPort>, mut commands: Commands) {
 }
 
 fn setup_arena(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
-    let mut ball_material = StandardMaterial::from(Color::rgb(0.3, 0.3, 0.3));
+    let initial_ball_color = Color::rgb(0.5, 0.5, 0.5);
+    let mut ball_material = StandardMaterial::from(initial_ball_color);
     ball_material.perceptual_roughness = 0.8;
 
-    commands.spawn((
-        Ball,
-        PbrBundle {
-            mesh: meshes.add(Mesh::from(shape::UVSphere { radius: 91.25, ..default() })),
-            material: materials.add(ball_material),
-            ..default()
-        },
-    ));
+    // make a glowing ball
+    commands
+        .spawn((
+            Ball,
+            PbrBundle {
+                mesh: meshes.add(Mesh::from(shape::UVSphere { radius: 91.25, ..default() })),
+                material: materials.add(ball_material),
+                ..default()
+            },
+        ))
+        .with_children(|parent| {
+            parent.spawn(PointLightBundle {
+                point_light: PointLight {
+                    color: initial_ball_color,
+                    intensity: 2_000_000.,
+                    range: 1000.,
+                    ..default()
+                },
+                ..default()
+            });
+        });
 }
 
-trait ViserVec {
+trait ToBevyVec {
     fn to_bevy(self) -> Vec3;
-    fn to_rocket(self) -> Vec3;
 }
 
-impl ViserVec for Vec3 {
-    fn to_bevy(self) -> Self {
-        Self::new(self.x, self.z, self.y)
-    }
-
-    fn to_rocket(self) -> Vec3 {
-        Self::new(self.x, self.z, self.y)
+impl ToBevyVec for Vec3A {
+    fn to_bevy(self) -> Vec3 {
+        Vec3::new(self.x, self.z, self.y)
     }
 }
 
@@ -132,43 +85,30 @@ impl ToBevyMat for Mat3A {
 fn step_arena(
     socket: Res<UdpConnection>,
     cars: Query<(Entity, &Car)>,
-    pads: Query<(Entity, &BoostPad)>,
+    pads: Query<(Entity, &BoostPadI)>,
     mut game_state: ResMut<GameState>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    const INITIAL_BUFFER: [u8; 16] = [0; 16];
-    let mut buf = INITIAL_BUFFER;
-    if socket.0.peek_from(&mut buf).is_err() {
+    const INITIAL_BUFFER: [u8; GameState::MIN_NUM_BYTES] = [0; GameState::MIN_NUM_BYTES];
+    let mut min_buf = INITIAL_BUFFER;
+    if socket.0.peek_from(&mut min_buf).is_err() {
         return;
     }
 
-    let tick_count = u64::from_bytes(&buf[..u64::NUM_BYTES]);
-    let num_pads = u32::from_bytes(&buf[u64::NUM_BYTES..u64::NUM_BYTES + u32::NUM_BYTES]) as usize;
-    let num_cars = u32::from_bytes(&buf[u64::NUM_BYTES + u32::NUM_BYTES..]) as usize;
-
-    if game_state.tick_count > tick_count {
+    if game_state.tick_count > GameState::read_tick_count(&min_buf) {
         drop(socket.0.recv_from(&mut [0]));
     }
 
-    let mut buf = vec![0; INITIAL_BUFFER.len() + BallState::NUM_BYTES + num_pads * BoostPadInfo::NUM_BYTES + num_cars * CarInfo::NUM_BYTES];
+    let mut buf = vec![0; GameState::get_num_bytes(&min_buf)];
     if socket.0.recv_from(&mut buf).is_err() {
         return;
     }
 
-    game_state.ball = BallState::from_bytes(&buf[INITIAL_BUFFER.len()..INITIAL_BUFFER.len() + BallState::NUM_BYTES]);
+    *game_state = GameState::from_bytes(&buf);
 
-    if game_state.pads.len() != num_pads {
-        game_state.pads = vec![BoostPadInfo::default(); num_pads];
-    }
-
-    for (i, pad) in game_state.pads.iter_mut().enumerate() {
-        let start_byte = INITIAL_BUFFER.len() + BallState::NUM_BYTES + i * BoostPadInfo::NUM_BYTES;
-        *pad = BoostPadInfo::from_bytes(&buf[start_byte..(start_byte + BoostPadInfo::NUM_BYTES)]);
-    }
-
-    if pads.iter().count() != num_pads {
+    if pads.iter().count() != game_state.pads.len() {
         // The number of pads shouldn't change often
         // There's also not an easy way to determine
         // if a previous pad a new pad are same pad
@@ -196,7 +136,7 @@ fn step_arena(
             };
 
             commands.spawn((
-                BoostPad,
+                BoostPadI,
                 PbrBundle {
                     mesh: meshes.add(Mesh::from(shape)),
                     material: materials.add(StandardMaterial::from(color)),
@@ -205,15 +145,6 @@ fn step_arena(
                 },
             ));
         }
-    }
-
-    if game_state.cars.len() != num_cars {
-        game_state.cars.resize_with(num_cars, Default::default);
-    }
-
-    for (i, car) in game_state.cars.iter_mut().enumerate() {
-        let start_byte = INITIAL_BUFFER.len() + BallState::NUM_BYTES + num_pads * BoostPadInfo::NUM_BYTES + i * CarInfo::NUM_BYTES;
-        *car = CarInfo::from_bytes(&buf[start_byte..(start_byte + CarInfo::NUM_BYTES)]);
     }
 
     match cars.iter().count().cmp(&game_state.cars.len()) {
@@ -250,18 +181,32 @@ fn step_arena(
     }
 }
 
-fn update_ball(state: Res<GameState>, mut ball: Query<(&mut Transform, &Handle<StandardMaterial>), With<Ball>>, mut materials: ResMut<Assets<StandardMaterial>>) {
-    let (mut transform, standard_material) = ball.single_mut();
+fn update_ball(
+    state: Res<GameState>,
+    mut ball: Query<(&mut Transform, &Handle<StandardMaterial>, &Children), With<Ball>>,
+    mut point_light: Query<&mut PointLight>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    let (mut transform, standard_material, children) = ball.single_mut();
     let new_pos = state.ball.pos.to_bevy();
     transform.translation = new_pos;
 
     let material = materials.get_mut(standard_material).unwrap();
 
-    let amount = (transform.translation.z.abs() / 3500.).min(0.55);
+    let amount = ((transform.translation.z.abs() + 1500.) / 3500.).min(0.95);
     material.base_color = if new_pos.z > 0. {
-        Color::rgb(amount.max(0.3), (amount * (2. / 3.)).max(0.3), 0.3)
+        Color::rgb(amount.max(0.5), (amount * (2. / 3.)).max(0.5), 0.5)
     } else {
-        Color::rgb(0.3, 0.3, amount.max(0.3))
+        Color::rgb(0.5, 0.5, amount.max(0.5))
+    };
+
+    let mut point_light = point_light.get_mut(children.first().copied().unwrap()).unwrap();
+
+    let amount = (transform.translation.z.abs() + 1500.) / 3500.;
+    point_light.color = if new_pos.z > 0. {
+        Color::rgb(amount.max(0.5), (amount * (2. / 3.)).max(0.5), 0.5)
+    } else {
+        Color::rgb(0.5, 0.5, amount.max(0.5))
     };
 }
 
@@ -273,7 +218,7 @@ fn update_car(state: Res<GameState>, mut cars: Query<(&mut Transform, &Car)>) {
     }
 }
 
-fn update_pads(state: Res<GameState>, query: Query<&Handle<StandardMaterial>, With<BoostPad>>, mut materials: ResMut<Assets<StandardMaterial>>) {
+fn update_pads(state: Res<GameState>, query: Query<&Handle<StandardMaterial>, With<BoostPadI>>, mut materials: ResMut<Assets<StandardMaterial>>) {
     for (pad, handle) in state.pads.iter().zip(query.iter()) {
         let material = materials.get_mut(handle).unwrap();
         material.base_color = if pad.state.is_active {
@@ -290,8 +235,8 @@ fn listen(socket: Res<UdpConnection>, key: Res<Input<KeyCode>>, mut game_state: 
     if key.just_pressed(KeyCode::R) {
         changed = true;
 
-        game_state.ball.pos = Vec3::new(0., -2000., 1500.);
-        game_state.ball.vel = Vec3::new(0., 1500., 1.);
+        game_state.ball.pos = Vec3A::new(0., -2000., 1500.);
+        game_state.ball.vel = Vec3A::new(0., 1500., 1.);
     }
 
     if changed {

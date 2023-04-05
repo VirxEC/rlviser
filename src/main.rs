@@ -2,6 +2,7 @@ mod bytes;
 mod camera;
 mod gui;
 mod mesh;
+mod rocketsim;
 mod udp;
 
 use bevy::prelude::*;
