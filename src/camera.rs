@@ -10,6 +10,9 @@ struct Sun;
 #[derive(Resource)]
 struct CycleTimer(Timer);
 
+#[derive(Component)]
+pub struct PrimaryCamera;
+
 fn setup(mut commands: Commands) {
     commands.spawn(SpotLightBundle {
         spot_light: SpotLight {
@@ -69,6 +72,7 @@ fn setup(mut commands: Commands) {
     commands.spawn((DirectionalLightBundle::default(), Sun));
 
     commands.spawn((
+        PrimaryCamera,
         Camera3dBundle {
             projection: Projection::Perspective(PerspectiveProjection { far: 20000., ..default() }),
             transform: Transform::from_translation(Vec3::new(-3000., 1000., 0.)).looking_to(Vec3::X, Vec3::Y),

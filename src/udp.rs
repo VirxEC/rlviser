@@ -32,9 +32,10 @@ fn establish_connection(port: Res<ServerPort>, mut commands: Commands) {
 }
 
 fn setup_arena(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
-    let initial_ball_color = Color::rgb(0.5, 0.5, 0.5);
+    let initial_ball_color = Color::rgb(0.3, 0.3, 0.3);
     let mut ball_material = StandardMaterial::from(initial_ball_color);
     ball_material.perceptual_roughness = 0.8;
+    ball_material.emissive = Color::rgb(0.2, 0.2, 0.2);
 
     // make a glowing ball
     commands
@@ -50,6 +51,8 @@ fn setup_arena(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut mat
             parent.spawn(PointLightBundle {
                 point_light: PointLight {
                     color: initial_ball_color,
+                    radius: 91.25,
+                    shadows_enabled: true,
                     intensity: 2_000_000.,
                     range: 1000.,
                     ..default()
@@ -193,16 +196,16 @@ fn update_ball(
 
     let material = materials.get_mut(standard_material).unwrap();
 
-    let amount = ((transform.translation.z.abs() + 1500.) / 3500.).min(0.95);
+    let amount = ((transform.translation.z.abs() + 500.) / 3500.).min(0.95);
     material.base_color = if new_pos.z > 0. {
-        Color::rgb(amount.max(0.5), (amount * (2. / 3.)).max(0.5), 0.5)
+        Color::rgb(amount.max(0.3), (amount * (2. / 3.)).max(0.3), 0.3)
     } else {
-        Color::rgb(0.5, 0.5, amount.max(0.5))
+        Color::rgb(0.3, 0.3, amount.max(0.3))
     };
 
     let mut point_light = point_light.get_mut(children.first().copied().unwrap()).unwrap();
 
-    let amount = (transform.translation.z.abs() + 1500.) / 3500.;
+    let amount = (transform.translation.z.abs() + 500.) / 3500.;
     point_light.color = if new_pos.z > 0. {
         Color::rgb(amount.max(0.5), (amount * (2. / 3.)).max(0.5), 0.5)
     } else {

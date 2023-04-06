@@ -34,7 +34,7 @@ impl GrassLod {
 }
 
 #[inline]
-fn filter_grass(pos: &Vec3, scale: f32) -> bool {
+fn trim_grass(pos: &Vec3, scale: f32) -> bool {
     // filter out positions inside this triangle
     let p0 = Vec2::new(380. * scale, 385. * scale);
     let p1 = Vec2::new(265. * scale, 500. * scale);
@@ -63,7 +63,7 @@ fn generate_grass(scale: i32) -> (Vec<Vec3>, f32, Transform) {
         (-375 * scale..375 * scale)
             .step_by(3)
             .flat_map(|x| (-495 * scale..495 * scale).step_by(3).map(move |z| Vec3::new(x as f32, 1., z as f32)))
-            .filter(|pos| filter_grass(pos, fscale))
+            .filter(|pos| trim_grass(pos, fscale))
             .map(|pos| pos + randomize_grass(&mut rand))
             .collect::<Vec<_>>(),
         1.5 * fscale,
@@ -137,6 +137,8 @@ fn load_field(mut commands: Commands, grass_lod: Res<GrassLod>, mut meshes: ResM
             alpha_mode: AlphaMode::Blend,
             cull_mode: None,
             double_sided: true,
+            perceptual_roughness: 0.3,
+            reflectance: 0.7,
             ..default()
         }),
         transform: side_wall_1_transform,
@@ -152,6 +154,8 @@ fn load_field(mut commands: Commands, grass_lod: Res<GrassLod>, mut meshes: ResM
             alpha_mode: AlphaMode::Blend,
             cull_mode: None,
             double_sided: true,
+            perceptual_roughness: 0.3,
+            reflectance: 0.7,
             ..default()
         }),
         transform: side_wall_2_transform,
@@ -181,6 +185,8 @@ fn load_field(mut commands: Commands, grass_lod: Res<GrassLod>, mut meshes: ResM
         alpha_mode: AlphaMode::Blend,
         cull_mode: None,
         double_sided: true,
+        perceptual_roughness: 0.3,
+        reflectance: 0.7,
         ..default()
     };
 

@@ -19,8 +19,8 @@ impl Plugin for DebugOverlayPlugin {
             .add_system(ui_system)
             .add_system(toggle_vsync.after(ui_system))
             .add_system(toggle_vsync)
-            .add_system(update_grass.after(ui_system))
-            .add_system(update_grass)
+            .add_system(update_grass_lod.after(ui_system))
+            .add_system(update_grass_lod)
             .add_system(update_daytime.after(ui_system))
             .add_system(update_daytime);
     }
@@ -97,7 +97,7 @@ fn toggle_vsync(options: Res<Options>, mut windows: Query<&mut Window, With<Prim
     windows.single_mut().present_mode = wanted_present_mode;
 }
 
-fn update_grass(options: Res<Options>, mut lod: ResMut<GrassLod>, mut query: Query<(&mut Grass, &mut Transform)>) {
+fn update_grass_lod(options: Res<Options>, mut lod: ResMut<GrassLod>, mut query: Query<(&mut Grass, &mut Transform)>) {
     if options.grass_lod == lod.get() {
         return;
     }
