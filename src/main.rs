@@ -1,3 +1,4 @@
+mod assets;
 mod bytes;
 mod camera;
 mod gui;
@@ -6,6 +7,16 @@ mod rocketsim;
 mod udp;
 
 use bevy::prelude::*;
+use bevy_asset_loader::prelude::*;
+
+#[derive(Clone, Eq, PartialEq, Debug, Hash, Default, States)]
+enum LoadState {
+    #[default]
+    Assets,
+    Field,
+    Connect,
+    None,
+}
 
 #[derive(Resource)]
 pub struct ServerPort {
@@ -19,7 +30,10 @@ fn main() {
     // read the second argument and treat it as the port to bind the UDP socket to (u16)
     let secondary_port = std::env::args().nth(1).and_then(|s| s.parse::<u16>().ok()).unwrap_or(45243);
 
+    assets::uncook().unwrap();
+
     App::new()
+        .add_state::<LoadState>()
         .insert_resource(ServerPort { primary_port, secondary_port })
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
@@ -28,10 +42,14 @@ fn main() {
             }),
             ..default()
         }))
+        .add_asset_loader(assets::PskxLoader)
         .add_plugin(bevy::diagnostic::LogDiagnosticsPlugin::default())
-        .add_plugin(udp::RocketSimPlugin)
+        .add_loading_state(LoadingState::new(LoadState::Assets).continue_to_state(LoadState::Field))
+        .add_collection_to_loading_state::<_, assets::ImageAssets>(LoadState::Assets)
+        .add_collection_to_loading_state::<_, assets::PskxAssets>(LoadState::Assets)
         .add_plugin(camera::CameraPlugin)
         .add_plugin(gui::DebugOverlayPlugin)
         .add_plugin(mesh::FieldLoaderPlugin)
+        .add_plugin(udp::RocketSimPlugin)
         .run();
 }

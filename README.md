@@ -6,6 +6,12 @@ Any language can communicate with the visualizer by sending UDP packets in the c
 
 ![image](https://user-images.githubusercontent.com/35614515/230228589-f8b94023-17f8-4fb0-a0b4-62a1a3b8b82f.png)
 
+### Running
+
+You must have [umodel](https://www.gildor.org/en/projects/umodel) in your root directory along with an `assets.path` file that points to your `rocketleague/TAGame/CookedPCConsole` directory so the visualizer can uncook the game assets.
+
+Precompiled versions of umodel for Windows and Linux are available on the website linked above.
+
 ### Usage
 
 To see an example of how to communicate with the visualizer, see the [example](https://github.com/VirxEC/rocketsim-rs/blob/master/examples/rlviser_socket.rs) in the [rocketsim-rs](https://github.com/VirxEC/rocketsim-rs) repository.

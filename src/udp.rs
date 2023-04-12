@@ -8,14 +8,14 @@ use bevy::{
 use crate::{
     bytes::{FromBytes, ToBytes},
     rocketsim::{GameState, Team},
-    ServerPort,
+    LoadState, ServerPort,
 };
 
 #[derive(Component)]
 struct BoostPadI;
 
 #[derive(Component)]
-struct Ball;
+pub struct Ball;
 
 #[derive(Component)]
 struct Car(u32);
@@ -23,43 +23,13 @@ struct Car(u32);
 #[derive(Resource)]
 struct UdpConnection(UdpSocket);
 
-fn establish_connection(port: Res<ServerPort>, mut commands: Commands) {
+fn establish_connection(port: Res<ServerPort>, mut commands: Commands, mut state: ResMut<NextState<LoadState>>) {
     let socket = UdpSocket::bind(("127.0.0.1", port.secondary_port)).unwrap();
     socket.connect(("127.0.0.1", port.primary_port)).unwrap();
     socket.set_nonblocking(true).unwrap();
     socket.send(&[1]).unwrap();
     commands.insert_resource(UdpConnection(socket));
-}
-
-fn setup_arena(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
-    let initial_ball_color = Color::rgb(0.3, 0.3, 0.3);
-    let mut ball_material = StandardMaterial::from(initial_ball_color);
-    ball_material.perceptual_roughness = 0.8;
-    ball_material.emissive = Color::rgb(0.2, 0.2, 0.2);
-
-    // make a glowing ball
-    commands
-        .spawn((
-            Ball,
-            PbrBundle {
-                mesh: meshes.add(Mesh::from(shape::UVSphere { radius: 91.25, ..default() })),
-                material: materials.add(ball_material),
-                ..default()
-            },
-        ))
-        .with_children(|parent| {
-            parent.spawn(PointLightBundle {
-                point_light: PointLight {
-                    color: initial_ball_color,
-                    radius: 91.25,
-                    shadows_enabled: true,
-                    intensity: 2_000_000.,
-                    range: 1000.,
-                    ..default()
-                },
-                ..default()
-            });
-        });
+    state.set(LoadState::None);
 }
 
 trait ToBevyVec {
@@ -184,24 +154,13 @@ fn step_arena(
     }
 }
 
-fn update_ball(
-    state: Res<GameState>,
-    mut ball: Query<(&mut Transform, &Handle<StandardMaterial>, &Children), With<Ball>>,
-    mut point_light: Query<&mut PointLight>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    let (mut transform, standard_material, children) = ball.single_mut();
+fn update_ball(state: Res<GameState>, time: Res<Time>, mut ball: Query<(&mut Transform, &Children), With<Ball>>, mut point_light: Query<&mut PointLight>) {
+    let Ok((mut transform, children)) = ball.get_single_mut() else {
+        return;
+    };
+
     let new_pos = state.ball.pos.to_bevy();
     transform.translation = new_pos;
-
-    let material = materials.get_mut(standard_material).unwrap();
-
-    let amount = ((transform.translation.z.abs() + 500.) / 3500.).min(0.95);
-    material.base_color = if new_pos.z > 0. {
-        Color::rgb(amount.max(0.3), (amount * (2. / 3.)).max(0.3), 0.3)
-    } else {
-        Color::rgb(0.3, 0.3, amount.max(0.3))
-    };
 
     let mut point_light = point_light.get_mut(children.first().copied().unwrap()).unwrap();
 
@@ -211,6 +170,9 @@ fn update_ball(
     } else {
         Color::rgb(0.5, 0.5, amount.max(0.5))
     };
+
+    let angular_velocity = state.ball.ang_vel.to_bevy() * time.delta_seconds();
+    transform.rotation *= Quat::from_euler(EulerRot::XYZ, -angular_velocity.x, angular_velocity.y, angular_velocity.z);
 }
 
 fn update_car(state: Res<GameState>, mut cars: Query<(&mut Transform, &Car)>) {
@@ -251,13 +213,12 @@ pub struct RocketSimPlugin;
 impl Plugin for RocketSimPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(GameState::default())
-            .add_startup_system(establish_connection)
-            .add_startup_system(setup_arena)
-            .add_system(step_arena)
+            .add_system(establish_connection.run_if(in_state(LoadState::Connect)))
+            .add_system(step_arena.run_if(in_state(LoadState::None)))
             .add_systems((update_ball, update_car, update_pads).after(step_arena).before(listen))
-            .add_system(update_ball.run_if(|state: Res<GameState>| state.is_changed()))
-            .add_system(update_car.run_if(|state: Res<GameState>| state.is_changed()))
-            .add_system(update_pads.run_if(|state: Res<GameState>| state.is_changed()))
-            .add_system(listen);
+            .add_system(update_ball)
+            .add_system(update_car)
+            .add_system(update_pads)
+            .add_system(listen.run_if(in_state(LoadState::None)));
     }
 }

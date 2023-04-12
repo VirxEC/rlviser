@@ -1,3 +1,7 @@
 /target
-collision_meshes/
-.vscode/
+/collision_meshes
+/.vscode
+/assets
+assets.path
+umodel*
+*.log

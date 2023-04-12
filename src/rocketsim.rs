@@ -13,11 +13,21 @@ pub struct BallHitInfo {
     pub tick_count_when_extra_impulse_applied: u64,
 }
 
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct BallState {
     pub pos: Vec3,
     pub vel: Vec3,
     pub ang_vel: Vec3,
+}
+
+impl Default for BallState {
+    fn default() -> Self {
+        Self {
+            pos: Vec3::new(0., 0., 92.),
+            vel: Vec3::ZERO,
+            ang_vel: Vec3::ZERO,
+        }
+    }
 }
 
 #[repr(u8)]
