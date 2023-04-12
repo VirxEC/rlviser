@@ -171,8 +171,15 @@ fn update_ball(state: Res<GameState>, time: Res<Time>, mut ball: Query<(&mut Tra
         Color::rgb(0.5, 0.5, amount.max(0.5))
     };
 
-    let angular_velocity = state.ball.ang_vel.to_bevy() * time.delta_seconds();
-    transform.rotation *= Quat::from_euler(EulerRot::XYZ, -angular_velocity.x, angular_velocity.y, angular_velocity.z);
+    // add the ball's angular velocity to transform.rotation which is a quat
+    // factor in the time since the last frame
+    // must factor in each axis
+    let angular_velocity = state.ball.ang_vel.to_bevy();
+    let rotation = transform.rotation;
+    let rotation = Quat::from_rotation_x(-angular_velocity.x * time.delta_seconds()) * rotation;
+    let rotation = Quat::from_rotation_y(angular_velocity.y * time.delta_seconds()) * rotation;
+    let rotation = Quat::from_rotation_z(-angular_velocity.z * time.delta_seconds()) * rotation;
+    transform.rotation = rotation;
 }
 
 fn update_car(state: Res<GameState>, mut cars: Query<(&mut Transform, &Car)>) {
@@ -201,7 +208,7 @@ fn listen(socket: Res<UdpConnection>, key: Res<Input<KeyCode>>, mut game_state: 
         changed = true;
 
         game_state.ball.pos = Vec3A::new(0., -2000., 1500.);
-        game_state.ball.vel = Vec3A::new(0., 1500., 1.);
+        game_state.ball.vel = Vec3A::new(50., 1500., 1.);
     }
 
     if changed {
