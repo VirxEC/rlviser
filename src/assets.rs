@@ -49,7 +49,7 @@ pub fn read_vertices(chunk_data: &[u8], data_count: usize) -> Vec<f32> {
 #[derive(Clone, Copy, Debug)]
 pub struct Wedge {
     pub vertex_id: u32,
-    pub uv: Vec2,
+    pub uv: [f32; 2],
     pub material_index: u8,
 }
 
@@ -64,7 +64,7 @@ pub fn read_wedges(chunk_data: &[u8], data_count: usize) -> Vec<Wedge> {
         let material_index = reader.read_u8().unwrap();
         wedges.push(Wedge {
             vertex_id,
-            uv: Vec2::new(u, v),
+            uv: [u, v],
             material_index,
         });
 
@@ -77,7 +77,7 @@ pub fn read_wedges(chunk_data: &[u8], data_count: usize) -> Vec<Wedge> {
     wedges
 }
 
-pub fn read_faces(chunk_data: &[u8], data_count: usize, wedges: &[Wedge]) -> Vec<[(u32, Vec2); 3]> {
+pub fn read_faces(chunk_data: &[u8], data_count: usize, wedges: &[Wedge]) -> Vec<[(u32, [f32; 2]); 3]> {
     let mut faces = Vec::with_capacity(data_count * 3);
 
     let mut reader = io::Cursor::new(chunk_data);
@@ -95,6 +95,22 @@ pub fn read_faces(chunk_data: &[u8], data_count: usize, wedges: &[Wedge]) -> Vec
     }
 
     faces
+}
+
+pub fn _read_vertex_colors(chunk_data: &[u8], data_count: usize) -> Vec<[f32; 4]> {
+    let mut vertex_colors = Vec::with_capacity(data_count);
+
+    let mut reader = io::Cursor::new(chunk_data);
+    for _ in 0..data_count {
+        vertex_colors.push([
+            reader.read_u8().unwrap() as f32,
+            reader.read_u8().unwrap() as f32,
+            reader.read_u8().unwrap() as f32,
+            reader.read_u8().unwrap() as f32,
+        ]);
+    }
+
+    vertex_colors
 }
 
 // create new asset loader for pskx files

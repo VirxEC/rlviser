@@ -9,11 +9,7 @@ use std::{
 };
 use warbler_grass::prelude::*;
 
-use crate::{
-    assets::{read_faces, read_vertices, read_wedges, ImageAssets, PskxAssets, PSK_FILE_HEADER},
-    udp::Ball,
-    LoadState,
-};
+use crate::{assets::*, udp::Ball, LoadState};
 
 #[derive(Resource)]
 pub struct GrassLod(u8);
@@ -229,11 +225,12 @@ fn load_field(
     let ball_material = StandardMaterial {
         base_color: Color::WHITE,
         base_color_texture: Some(image_assets.ball.clone()),
-        // normal_map_texture: Some(image_assets.ball_normal.clone()),
+        normal_map_texture: Some(image_assets.ball_normal.clone()),
         emissive: Color::rgb(0.02, 0.02, 0.02),
         emissive_texture: Some(image_assets.ball_emissive.clone()),
         perceptual_roughness: 0.4,
         metallic: 0.,
+        unlit: true,
         ..default()
     };
 
@@ -251,9 +248,9 @@ fn load_field(
             parent.spawn(PointLightBundle {
                 point_light: PointLight {
                     color: initial_ball_color,
-                    radius: 98.,
+                    radius: 110.,
                     shadows_enabled: true,
-                    intensity: 2_000_000.,
+                    intensity: 2.,//_000_000.,
                     range: 1000.,
                     ..default()
                 },
@@ -269,7 +266,8 @@ fn load_field(
 pub struct MeshBuilder {
     ids: Vec<u32>,
     verts: Vec<f32>,
-    uvs: Vec<Vec2>,
+    uvs: Vec<[f32; 2]>,
+    // colors: Vec<[f32; 4]>,
 }
 
 impl MeshBuilder {
@@ -290,7 +288,7 @@ impl MeshBuilder {
             }
         }
 
-        Ok(Self { ids, verts, uvs: Vec::new() })
+        Ok(Self { ids, verts, ..default() })
     }
 
     #[must_use]
@@ -307,9 +305,7 @@ impl MeshBuilder {
 
         let verts: Vec<f32> = other_meshes.iter().flat_map(|m| m.verts.clone()).collect();
 
-        let uvs = Vec::new();
-
-        Self { ids, verts, uvs }
+        Self { ids, verts, ..default() }
     }
 
     #[must_use]
@@ -344,6 +340,10 @@ impl MeshBuilder {
             mesh.generate_tangents().unwrap();
         }
 
+        // if !self.colors.is_empty() {
+        //     mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, self.ids.iter().map(|&id| self.colors[id as usize]).collect::<Vec<_>>());
+        // }
+
         mesh
     }
 
@@ -359,6 +359,7 @@ impl MeshBuilder {
         let mut ids = Vec::new();
         let mut verts = Vec::new();
         let mut uvs = Vec::new();
+        // let mut colors = Vec::new();
 
         let mut wedges = Vec::new();
 
@@ -388,29 +389,22 @@ impl MeshBuilder {
                     verts = read_vertices(&chunk_data, chunk_data_count);
                     debug_assert_eq!(verts.len() / 3, chunk_data_count);
                     debug_assert_eq!(verts.len() % 3, 0);
-
-                    verts.truncate(verts.len() - verts.len() / 3 % 3 * 3);
-                    debug_assert_eq!(verts.len(), chunk_data_count * 3 - chunk_data_count % 3 * 3);
-                    debug_assert_eq!(verts.len() / 3 % 3, 0);
                 }
                 "VTXW0000" => {
                     wedges = read_wedges(&chunk_data, chunk_data_count);
                     debug_assert_eq!(wedges.len(), chunk_data_count);
                 }
                 "FACE0000" => {
-                    let mut faces = read_faces(&chunk_data, chunk_data_count, &wedges);
-                    debug_assert_eq!(faces.len(), chunk_data_count);
-
-                    // remove faces that reference invalid verts in chunks of 3 faces
-                    let max_vert = verts.len() as u32 / 3;
-                    faces.retain(|face| face.iter().all(|(id, _)| *id < max_vert));
-
-                    (ids, uvs) = faces.into_iter().flatten().unzip();
-                    debug_assert_eq!(ids.len() / 3 % 3, 0);
+                    (ids, uvs) = read_faces(&chunk_data, chunk_data_count, &wedges).into_iter().flatten().unzip();
+                    debug_assert_eq!(ids.len() / 3, chunk_data_count);
                     debug_assert_eq!(ids.len(), uvs.len());
-                    debug_assert_eq!(ids.iter().max().unwrap(), &(verts.len() as u32 / 3 - 1));
                 }
                 "MATT0000" => assert_eq!(chunk_data_count, 1),
+                "VERTEXCO" => {
+                    // colors = read_vertex_colors(&chunk_data, chunk_data_count);
+                    // debug_assert_eq!(colors.len(), chunk_data_count);
+                    // debug_assert_eq!(colors.len(), wedges.len());
+                }
                 _ => {
                     println!("Unknown chunk: {}", chunk_id);
                 }
