@@ -26,8 +26,8 @@ struct UdpConnection(UdpSocket);
 fn establish_connection(port: Res<ServerPort>, mut commands: Commands, mut state: ResMut<NextState<LoadState>>) {
     let socket = UdpSocket::bind(("127.0.0.1", port.secondary_port)).unwrap();
     socket.connect(("127.0.0.1", port.primary_port)).unwrap();
-    socket.set_nonblocking(true).unwrap();
     socket.send(&[1]).unwrap();
+    socket.set_nonblocking(true).unwrap();
     commands.insert_resource(UdpConnection(socket));
     state.set(LoadState::None);
 }
@@ -52,6 +52,18 @@ impl ToBevyMat for Mat3A {
         // We also need to rotate 90 degrees around the X axis and 180 degrees around the Y axis
         let mat = Mat3A::from_axis_angle(Vec3::Y, PI) * Mat3A::from_axis_angle(Vec3::X, PI / 2.) * self * Mat3A::from_cols(Vec3A::X, -Vec3A::Z, Vec3A::Y);
         Quat::from_mat3a(&mat)
+    }
+}
+
+trait ToBevyQuat {
+    fn to_bevy(self) -> Quat;
+}
+
+impl ToBevyQuat for Quat {
+    fn to_bevy(self) -> Quat {
+        // In RocketSim, the Z axis is up, but in Bevy, the Z and Y axis are swapped
+        // We also need to rotate 90 degrees around the X axis and 180 degrees around the Y axis
+        Quat::from_axis_angle(Vec3::Y, PI) * Quat::from_axis_angle(Vec3::X, PI / 2.) * self * Quat::from_mat3a(&Mat3A::from_cols(Vec3A::X, -Vec3A::Z, Vec3A::Y))
     }
 }
 
@@ -154,7 +166,7 @@ fn step_arena(
     }
 }
 
-fn update_ball(state: Res<GameState>, time: Res<Time>, mut ball: Query<(&mut Transform, &Children), With<Ball>>, mut point_light: Query<&mut PointLight>) {
+fn update_ball(state: Res<GameState>, mut ball: Query<(&mut Transform, &Children), With<Ball>>, mut point_light: Query<&mut PointLight>) {
     let Ok((mut transform, children)) = ball.get_single_mut() else {
         return;
     };
@@ -171,15 +183,7 @@ fn update_ball(state: Res<GameState>, time: Res<Time>, mut ball: Query<(&mut Tra
         Color::rgb(0.5, 0.5, amount.max(0.5))
     };
 
-    // add the ball's angular velocity to transform.rotation which is a quat
-    // factor in the time since the last frame
-    // must factor in each axis
-    let angular_velocity = state.ball.ang_vel.to_bevy();
-    let rotation = transform.rotation;
-    let rotation = Quat::from_rotation_x(-angular_velocity.x * time.delta_seconds()) * rotation;
-    let rotation = Quat::from_rotation_y(angular_velocity.y * time.delta_seconds()) * rotation;
-    let rotation = Quat::from_rotation_z(-angular_velocity.z * time.delta_seconds()) * rotation;
-    transform.rotation = rotation;
+    transform.rotation = state.ball_rot.to_bevy();
 }
 
 fn update_car(state: Res<GameState>, mut cars: Query<(&mut Transform, &Car)>) {

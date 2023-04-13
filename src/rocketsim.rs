@@ -127,6 +127,7 @@ pub struct GameState {
     pub tick_count: u64,
     pub tick_rate: f32,
     pub ball: BallState,
+    pub ball_rot: Quat,
     pub pads: Vec<BoostPad>,
     pub cars: Vec<CarInfo>,
 }
