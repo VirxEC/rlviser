@@ -229,7 +229,8 @@ fn load_field(
     let ball_material = StandardMaterial {
         base_color: Color::WHITE,
         base_color_texture: Some(image_assets.ball.clone()),
-        normal_map_texture: Some(image_assets.ball_normal.clone()),
+        // normal_map_texture: Some(image_assets.ball_normal.clone()),
+        // flip_normal_map_y: true,
         emissive: Color::rgb(0.2, 0.0, 0.2),
         emissive_texture: Some(image_assets.ball_emissive.clone()),
         perceptual_roughness: 0.4,

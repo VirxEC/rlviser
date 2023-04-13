@@ -15,6 +15,7 @@ pub struct DebugOverlayPlugin;
 impl Plugin for DebugOverlayPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugin(EguiPlugin)
+            .insert_resource(Msaa::default())
             .insert_resource(Options::default())
             .add_system(ui_system)
             .add_system(toggle_vsync.after(ui_system))
@@ -22,7 +23,9 @@ impl Plugin for DebugOverlayPlugin {
             .add_system(update_grass_lod.after(ui_system))
             .add_system(update_grass_lod)
             .add_system(update_daytime.after(ui_system))
-            .add_system(update_daytime);
+            .add_system(update_daytime)
+            .add_system(update_msaa.after(ui_system))
+            .add_system(update_msaa);
     }
 }
 
@@ -35,6 +38,7 @@ struct Options {
     stop_day: bool,
     daytime: f32,
     day_speed: f32,
+    msaa: u8,
 }
 
 impl Default for Options {
@@ -47,6 +51,7 @@ impl Default for Options {
             stop_day: false,
             daytime: 0.,
             day_speed: 1.,
+            msaa: 2,
         }
     }
 }
@@ -84,6 +89,7 @@ fn ui_system(mut contexts: EguiContexts, time: Res<Time>, keys: Res<Input<KeyCod
         ui.checkbox(&mut options.stop_day, "Stop day cycle");
         ui.add(egui::Slider::new(&mut options.daytime, 0.0..=150.0).text("Daytime"));
         ui.add(egui::Slider::new(&mut options.day_speed, 0.0..=10.0).text("Day speed"));
+        ui.add(egui::Slider::new(&mut options.msaa, 0..=3).text("MSAA"));
     });
 }
 
@@ -111,6 +117,20 @@ fn update_grass_lod(options: Res<Options>, mut lod: ResMut<GrassLod>, mut query:
     *transform = scale;
 
     lod.set(options.grass_lod);
+}
+
+fn update_msaa(options: Res<Options>, mut msaa: ResMut<Msaa>) {
+    if options.msaa == msaa.samples() as u8 {
+        return;
+    }
+
+    *msaa = match options.msaa {
+        0 => Msaa::Off,
+        1 => Msaa::Sample2,
+        2 => Msaa::Sample4,
+        3 => Msaa::Sample8,
+        _ => unreachable!(),
+    };
 }
 
 fn update_daytime(options: Res<Options>, mut daytime: ResMut<DaylightOffset>) {
