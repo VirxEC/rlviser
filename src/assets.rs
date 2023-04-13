@@ -32,28 +32,6 @@ pub struct PskxAssets {
     pub ball: Handle<Mesh>,
 }
 
-// # Vertices X | Y | Z
-// def read_vertices():
-
-//     if not bImportmesh:
-//         return True
-
-//     nonlocal Vertices
-
-//     Vertices = [None] * chunk_datacount
-
-//     unpack_data = Struct('3f').unpack_from
-
-//     if bScaleDown:
-//         for counter in range( chunk_datacount ):
-//             (vec_x, vec_y, vec_z) = unpack_data(chunk_data, counter * chunk_datasize)
-//             Vertices[counter]  = (vec_x*0.01, vec_y*0.01, vec_z*0.01)
-//             # equal to gltf
-//             # Vertices[counter]  = (vec_x*0.01, vec_z*0.01, -vec_y*0.01)
-//     else:
-//         for counter in range( chunk_datacount ):
-//             Vertices[counter]  =  unpack_data(chunk_data, counter * chunk_datasize)
-
 pub fn read_vertices(chunk_data: &[u8], data_count: usize) -> Vec<f32> {
     let mut vertices = Vec::with_capacity(data_count);
 
@@ -62,32 +40,11 @@ pub fn read_vertices(chunk_data: &[u8], data_count: usize) -> Vec<f32> {
         vertices.push(reader.read_f32::<LittleEndian>().unwrap());
         let y = reader.read_f32::<LittleEndian>().unwrap();
         vertices.push(reader.read_f32::<LittleEndian>().unwrap());
-        vertices.push(y);
+        vertices.push(-y);
     }
 
     vertices
 }
-
-// # Wedges (UV)   VertexId |  U |  V | MatIdx
-// def read_wedges():
-
-//     if not bImportmesh:
-//         return True
-
-//     nonlocal Wedges
-
-//     Wedges = [None] * chunk_datacount
-
-//     unpack_data = Struct('=IffBxxx').unpack_from
-
-//     for counter in range( chunk_datacount ):
-//         (vertex_id,
-//          u, v,
-//          material_index) = unpack_data( chunk_data, counter * chunk_datasize )
-
-//         # print(vertex_id, u, v, material_index)
-//         # Wedges[counter] = (vertex_id, u, v, material_index)
-//         Wedges[counter] = [vertex_id, u, v, material_index]
 
 #[derive(Clone, Copy, Debug)]
 pub struct Wedge {
@@ -101,13 +58,6 @@ pub fn read_wedges(chunk_data: &[u8], data_count: usize) -> Vec<Wedge> {
 
     let mut reader = io::Cursor::new(chunk_data);
     for _ in 0..data_count {
-        // =IffBxxx
-        // native endian
-        // unsigned int
-        // float
-        // float
-        // unsigned char
-        // 3 bytes padding
         let vertex_id = reader.read_u32::<LittleEndian>().unwrap();
         let u = reader.read_f32::<LittleEndian>().unwrap();
         let v = reader.read_f32::<LittleEndian>().unwrap();
@@ -127,68 +77,11 @@ pub fn read_wedges(chunk_data: &[u8], data_count: usize) -> Vec<Wedge> {
     wedges
 }
 
-// # Faces WdgIdx1 | WdgIdx2 | WdgIdx3 | MatIdx | AuxMatIdx | SmthGrp
-// def read_faces():
-
-//     if not bImportmesh:
-//         return True
-
-//     nonlocal Faces, UV_by_face, WedgeIdx_by_faceIdx
-
-//     UV_by_face = [None] * chunk_datacount
-//     Faces = [None] * chunk_datacount
-//     WedgeIdx_by_faceIdx = [None] * chunk_datacount
-
-//     if len(Wedges) > 65536:
-//         unpack_format = '=IIIBBI'
-//     else:
-//         unpack_format = '=HHHBBI'
-
-//     unpack_data = Struct(unpack_format).unpack_from
-
-//     for counter in range(chunk_datacount):
-//         (WdgIdx1, WdgIdx2, WdgIdx3,
-//          MatIndex,
-//          AuxMatIndex, #unused
-//          SmoothingGroup # Umodel is not exporting SmoothingGroups
-//          ) = unpack_data(chunk_data, counter * chunk_datasize)
-
-//         # looks ugly
-//         # Wedges is (point_index, u, v, MatIdx)
-//         ((vertid0, u0, v0, matid0), (vertid1, u1, v1, matid1), (vertid2, u2, v2, matid2)) = Wedges[WdgIdx1], Wedges[WdgIdx2], Wedges[WdgIdx3]
-
-//         # note order: C,B,A
-//         # Faces[counter] = (vertid2,  vertid1, vertid0)
-
-//         Faces[counter] = (vertid1,  vertid0, vertid2)
-//         # Faces[counter] = (vertid1,  vertid2, vertid0)
-//         # Faces[counter] = (vertid0,  vertid1, vertid2)
-
-//         # uv = ( ( u2, 1.0 - v2 ), ( u1, 1.0 - v1 ), ( u0, 1.0 - v0 ) )
-//         uv = ( ( u1, 1.0 - v1 ), ( u0, 1.0 - v0 ), ( u2, 1.0 - v2 ) )
-
-//         # Mapping: FaceIndex <=> UV data <=> FaceMatIndex
-//         UV_by_face[counter] = (uv, MatIndex, (matid2, matid1, matid0))
-
-//         # We need this for EXTRA UVs
-//         WedgeIdx_by_faceIdx[counter] = (WdgIdx3, WdgIdx2, WdgIdx1)
-
 pub fn read_faces(chunk_data: &[u8], data_count: usize, wedges: &[Wedge]) -> Vec<[(u32, Vec2); 3]> {
     let mut faces = Vec::with_capacity(data_count * 3);
-    // let mut uvs = Vec::with_capacity(data_count * 3);
-    // let mut uv_by_face = Vec::with_capacity(data_count);
-    // let mut wedge_idx_by_face_idx = Vec::with_capacity(data_count);
 
     let mut reader = io::Cursor::new(chunk_data);
     for _ in 0..data_count {
-        // HHHBBI
-        // native endian
-        // u16
-        // u16
-        // u16
-        // u8
-        // u8
-        // u32
         let wdg_idx_1 = reader.read_u16::<LittleEndian>().unwrap() as usize;
         let wdg_idx_2 = reader.read_u16::<LittleEndian>().unwrap() as usize;
         let wdg_idx_3 = reader.read_u16::<LittleEndian>().unwrap() as usize;
@@ -198,22 +91,7 @@ pub fn read_faces(chunk_data: &[u8], data_count: usize, wedges: &[Wedge]) -> Vec
 
         let verts = [wedges[wdg_idx_1], wedges[wdg_idx_2], wedges[wdg_idx_3]];
 
-        faces.push([(verts[1].vertex_id, verts[1].uv), (verts[2].vertex_id, verts[2].uv), (verts[0].vertex_id, verts[0].uv)]);
-
-        // faces.push((verts[1].vertex_id, verts[1].uv));
-        // faces.push((verts[2].vertex_id, verts[2].uv));
-        // faces.push((verts[0].vertex_id, verts[0].uv));
-
-        // faces.push(verts[1].vertex_id);
-        // faces.push(verts[2].vertex_id);
-        // faces.push(verts[0].vertex_id);
-
-        // uvs.push(Vec2::new(verts[1].uv.x, verts[1].uv.y));
-        // uvs.push(Vec2::new(verts[2].uv.x, verts[2].uv.y));
-        // uvs.push(Vec2::new(verts[0].uv.x, verts[0].uv.y));
-
-        // uv_by_face.push((uv, mat_index, (verts[2].material_index, verts[1].material_index, verts[0].material_index)));
-        // wedge_idx_by_face_idx.push((wdg_idx_3, wdg_idx_2, wdg_idx_1));
+        faces.push([(verts[1].vertex_id, verts[1].uv), (verts[0].vertex_id, verts[0].uv), (verts[2].vertex_id, verts[2].uv)]);
     }
 
     faces
