@@ -267,8 +267,32 @@ fn load_field(
         ..default()
     });
 
+    let side_trim = meshes.get(&dfh_stadium.side_trim.clone()).unwrap().flip();
+    let inv_side_trim = meshes.add(side_trim);
+    let side_trim_mat = materials.add(StandardMaterial {
+        base_color: Color::rgb(0.3, 0.9, 0.3),
+        metallic: 0.1,
+        cull_mode: None,
+        double_sided: true,
+        ..default()
+    });
+
     let mut stadium_transform = Transform::default();
     for i in (-1..=1).step_by(2) {
+        commands.spawn(PbrBundle {
+            mesh: dfh_stadium.side_trim.clone(),
+            material: side_trim_mat.clone(),
+            transform: stadium_transform,
+            ..default()
+        });
+
+        commands.spawn(PbrBundle {
+            mesh: inv_side_trim.clone(),
+            material: side_trim_mat.clone(),
+            transform: stadium_transform,
+            ..default()
+        });
+
         commands.spawn(PbrBundle {
             mesh: dfh_stadium.field_frame_outer.clone(),
             material: field_frame_outer_mat.clone(),

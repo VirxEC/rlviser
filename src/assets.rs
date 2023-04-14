@@ -74,24 +74,20 @@ pub struct DfhStadium {
     pub field_center_field_team2: Handle<Mesh>,
     #[asset(path = "Stadium_P/StaticMesh3/Field_CenterVent.pskx")]
     pub field_center_vent: Handle<Mesh>,
-    // Goal_Lines.mo
     #[asset(path = "Stadium_P/StaticMesh3/Goal_Lines.pskx")]
     pub goal_lines: Handle<Mesh>,
-    // Goal_STD_Glass.mo
     #[asset(path = "Stadium_P/StaticMesh3/Goal_STD_Glass.pskx")]
     pub goal_std_glass: Handle<Mesh>,
-    // FieldFrame_Outer.mo
     #[asset(path = "Stadium_P/StaticMesh3/FieldFrame_Outer.pskx")]
     pub field_frame_outer: Handle<Mesh>,
-    // Goal_STD_Trim.mo
     #[asset(path = "Stadium_P/StaticMesh3/Goal_STD_Trim.pskx")]
     pub goal_std_trim: Handle<Mesh>,
-    // Goal_STD_Frame.mo
     #[asset(path = "Stadium_P/StaticMesh3/Goal_STD_Frame.pskx")]
     pub goal_std_frame: Handle<Mesh>,
-    // Goal_STD_Quarterpipe.mo
     #[asset(path = "Stadium_P/StaticMesh3/Goal_STD_Quarterpipe.pskx")]
     pub goal_std_quarterpipe: Handle<Mesh>,
+    #[asset(path = "Stadium_P/StaticMesh3/Side_Trim.pskx")]
+    pub side_trim: Handle<Mesh>,
 }
 
 pub fn read_vertices(chunk_data: &[u8], data_count: usize) -> Vec<f32> {
