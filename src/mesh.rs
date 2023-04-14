@@ -1,11 +1,8 @@
 use bevy::{prelude::*, render::mesh};
-use byteorder::{LittleEndian, ReadBytesExt};
 use rand::{rngs::ThreadRng, Rng};
 use std::{
     f32::consts::PI,
-    fs::{read_dir, File},
     io::{self, Read},
-    path::Path,
 };
 use warbler_grass::prelude::*;
 
@@ -35,9 +32,9 @@ impl GrassLod {
 #[inline]
 fn trim_grass(pos: &Vec3, scale: f32) -> bool {
     // filter out positions inside this triangle
-    let p0 = Vec2::new(380. * scale, 385. * scale);
-    let p1 = Vec2::new(265. * scale, 500. * scale);
-    let p2 = Vec2::new(380. * scale, 500. * scale);
+    let p0 = Vec2::new(385. * scale, 380. * scale);
+    let p1 = Vec2::new(265. * scale, 495. * scale);
+    let p2 = Vec2::new(385. * scale, 495. * scale);
 
     let p = Vec2::new(pos.x.abs(), pos.z.abs());
 
@@ -59,9 +56,9 @@ fn generate_grass(scale: i32) -> (Vec<Vec3>, f32, Transform) {
     let fscale = scale as f32;
 
     (
-        (-375 * scale..375 * scale)
+        (-380 * scale..380 * scale)
             .step_by(3)
-            .flat_map(|x| (-495 * scale..495 * scale).step_by(3).map(move |z| Vec3::new(x as f32, 1., z as f32)))
+            .flat_map(|x| (-483 * scale..483 * scale).step_by(3).map(move |z| Vec3::new(x as f32, 1., z as f32)))
             .filter(|pos| trim_grass(pos, fscale))
             .map(|pos| pos + randomize_grass(&mut rand))
             .collect::<Vec<_>>(),
@@ -94,117 +91,368 @@ fn load_field(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut state: ResMut<NextState<LoadState>>,
-    image_assets: Res<ImageAssets>,
-    pskx_assets: Res<PskxAssets>,
+    core_assets: Res<CoreAssets>,
+    dfh_stadium: Res<DfhStadium>,
 ) {
-    // Get all files in ./collision_meshes/soccar/*.cmf
-    let raw_mesh = MeshBuilder::combine(
-        &read_dir("./collision_meshes/soccar")
-            .unwrap()
-            .flatten()
-            .flat_map(|entry| MeshBuilder::from_file(entry.path()))
-            .collect::<Vec<MeshBuilder>>(),
-    );
-
-    let inverted_mesh = raw_mesh.clone().invert_indices().build_mesh(50.);
-    let mesh = raw_mesh.build_mesh(50.);
-
-    // load the files into the game with their material
-
     commands.spawn(PbrBundle {
-        mesh: meshes.add(mesh),
+        mesh: dfh_stadium.oob_floor.clone(),
         material: materials.add(StandardMaterial {
-            base_color: Color::rgb(0.2, 0.2, 0.2),
-            alpha_mode: AlphaMode::Opaque,
-            perceptual_roughness: 0.8,
-            reflectance: 0.3,
+            base_color: Color::rgb(0.3, 0.3, 0.3),
+            metallic: 0.1,
             ..default()
         }),
-        transform: Transform::from_xyz(0., 1., 0.).looking_to(-Vec3::Y, Vec3::Z),
         ..default()
     });
 
     commands.spawn(PbrBundle {
-        mesh: meshes.add(inverted_mesh),
+        mesh: dfh_stadium.oob_floor_trim.clone(),
         material: materials.add(StandardMaterial {
-            base_color: Color::rgba(0.2, 0.2, 0.2, 0.85),
+            base_color: Color::rgb(0.3, 0.3, 0.3),
+            normal_map_texture: Some(dfh_stadium.brushed_metal_normal.clone()),
+            emissive: Color::rgb(0.1, 0.1, 0.1),
+            metallic: 0.8,
+            ..default()
+        }),
+        ..default()
+    });
+
+    commands.spawn(PbrBundle {
+        mesh: dfh_stadium.field_center.clone(),
+        material: materials.add(StandardMaterial {
+            base_color: Color::rgb(0.9, 0.3, 0.3),
+            metallic: 0.1,
+            ..default()
+        }),
+        ..default()
+    });
+
+    commands.spawn(PbrBundle {
+        mesh: dfh_stadium.field_center_lines.clone(),
+        material: materials.add(StandardMaterial {
+            base_color: Color::rgb(0.9, 0.3, 0.3),
+            metallic: 0.1,
+            ..default()
+        }),
+        ..default()
+    });
+
+    // commands.spawn(PbrBundle {
+    //     mesh: dfh_stadium.field_center_trim.clone(),
+    //     material: materials.add(StandardMaterial {
+    //         base_color: Color::rgb(0.9, 0.3, 0.3),
+    //         metallic: 0.1,
+    //         cull_mode: None,
+    //         double_sided: true,
+    //         ..default()
+    //     }),
+    //     ..default()
+    // });
+
+    commands.spawn(PbrBundle {
+        mesh: dfh_stadium.field_center_field_team1.clone(),
+        material: materials.add(StandardMaterial {
+            base_color: Color::rgb(0.9, 0.3, 0.3),
+            metallic: 0.1,
+            ..default()
+        }),
+        ..default()
+    });
+
+    commands.spawn(PbrBundle {
+        mesh: dfh_stadium.field_center_field_team2.clone(),
+        material: materials.add(StandardMaterial {
+            base_color: Color::rgb(0.9, 0.3, 0.3),
+            metallic: 0.1,
+            ..default()
+        }),
+        ..default()
+    });
+
+    commands.spawn(PbrBundle {
+        mesh: dfh_stadium.field_center_vent.clone(),
+        material: materials.add(StandardMaterial {
+            base_color: Color::rgb(0.9, 0.3, 0.3),
+            metallic: 0.1,
             alpha_mode: AlphaMode::Blend,
             ..default()
         }),
-        transform: Transform::from_xyz(0., 1., 0.).looking_to(-Vec3::Y, Vec3::Z),
         ..default()
     });
 
-    // load the side walls
-
-    let mut side_wall_1_transform = Transform::from_xyz(4096., 900., 0.);
-    side_wall_1_transform.rotate_local_y(-PI / 2.);
-    commands.spawn(PbrBundle {
-        mesh: meshes.add(Mesh::from(shape::Quad::new(Vec2::new(7000., 1200.)))),
-        material: materials.add(StandardMaterial {
-            base_color: Color::rgba(0.2, 0.2, 0.2, 0.9),
-            alpha_mode: AlphaMode::Blend,
-            cull_mode: None,
-            double_sided: true,
-            perceptual_roughness: 0.3,
-            reflectance: 0.7,
-            ..default()
-        }),
-        transform: side_wall_1_transform,
-        ..default()
-    });
-
-    let mut side_wall_2_transform = Transform::from_xyz(-4096., 900., 0.);
-    side_wall_2_transform.rotate_local_y(PI / 2.);
-    commands.spawn(PbrBundle {
-        mesh: meshes.add(Mesh::from(shape::Quad::new(Vec2::new(7000., 1200.)))),
-        material: materials.add(StandardMaterial {
-            base_color: Color::rgba(0.2, 0.2, 0.2, 0.9),
-            alpha_mode: AlphaMode::Blend,
-            cull_mode: None,
-            double_sided: true,
-            perceptual_roughness: 0.3,
-            reflectance: 0.7,
-            ..default()
-        }),
-        transform: side_wall_2_transform,
-        ..default()
-    });
-
-    // load floor
-
-    let mut floor_transform = Transform::default();
-    floor_transform.rotate_local_x(-PI / 2.);
-    commands.spawn(PbrBundle {
-        mesh: meshes.add(Mesh::from(shape::Quad::new(Vec2::new(7500., 10800.)))),
-        material: materials.add(StandardMaterial {
-            base_color: Color::rgb(0.7, 1., 0.7),
-            perceptual_roughness: 0.9,
-            reflectance: 0.05,
-            ..default()
-        }),
-        transform: floor_transform,
-        ..default()
-    });
-
-    // load ceiling
-
-    let ceiling_material = StandardMaterial {
-        base_color: Color::rgba(0.2, 0.2, 0.2, 0.85),
-        alpha_mode: AlphaMode::Blend,
+    let ff_cage_full = meshes.get(&dfh_stadium.ff_cage_full.clone()).unwrap().flip();
+    let inv_ff_cage_full = meshes.add(ff_cage_full);
+    let ff_cage_full_mat = materials.add(StandardMaterial {
+        base_color: Color::rgb(0.3, 0.3, 0.3),
+        metallic: 0.1,
         cull_mode: None,
         double_sided: true,
-        perceptual_roughness: 0.3,
-        reflectance: 0.7,
         ..default()
-    };
+    });
 
-    let mut ceiling_transform = Transform::from_xyz(0., 2060., 0.);
-    ceiling_transform.rotate_local_x(PI / 2.);
+    let ff_goal = meshes.get(&dfh_stadium.ff_goal.clone()).unwrap().flip();
+    let inv_ff_goal = meshes.add(ff_goal);
+
+    let ff_roof = meshes.get(&dfh_stadium.ff_roof.clone()).unwrap().flip();
+    let inv_ff_roof = meshes.add(ff_roof);
+
+    let ff_side = meshes.get(&dfh_stadium.ff_side.clone()).unwrap().flip();
+    let inv_ff_side = meshes.add(ff_side);
+
+    let glass_mat = materials.add(StandardMaterial {
+        base_color: Color::rgb(0.3, 0.3, 0.3),
+        base_color_texture: Some(core_assets.hexagons_pack.clone()),
+        metallic: 0.1,
+        cull_mode: None,
+        double_sided: true,
+        alpha_mode: AlphaMode::Blend,
+        ..default()
+    });
+
+    let goal_lines = meshes.get(&dfh_stadium.goal_lines.clone()).unwrap().flip();
+    let inv_goal_lines = meshes.add(goal_lines);
+    let goal_lines_mat = materials.add(StandardMaterial {
+        base_color: Color::rgb(0.3, 0.3, 0.9),
+        metallic: 0.1,
+        ..default()
+    });
+
+    let goal_glass_mat = materials.add(StandardMaterial {
+        base_color: Color::rgba(0.3, 0.3, 0.3, 0.5),
+        metallic: 0.1,
+        cull_mode: None,
+        double_sided: true,
+        alpha_mode: AlphaMode::Blend,
+        ..default()
+    });
+
+    let field_frame_outer = meshes.get(&dfh_stadium.field_frame_outer.clone()).unwrap().flip();
+    let inv_field_frame_outer = meshes.add(field_frame_outer);
+    let field_frame_outer_mat = materials.add(StandardMaterial {
+        base_color: Color::rgb(0.3, 0.3, 0.3),
+        metallic: 0.1,
+        cull_mode: None,
+        double_sided: true,
+        ..default()
+    });
+
+    let goal_std_trim_mat = materials.add(StandardMaterial {
+        base_color: Color::rgb(0.3, 0.3, 0.3),
+        metallic: 0.1,
+        ..default()
+    });
+
+    let field_std_frame_mat = materials.add(StandardMaterial {
+        base_color: Color::rgb(0.3, 0.3, 0.3),
+        metallic: 0.1,
+        ..default()
+    });
+
+    let goal_std_floor_mat = materials.add(StandardMaterial {
+        base_color: Color::rgb(0.9, 0.3, 0.3),
+        metallic: 0.1,
+        ..default()
+    });
+
+    let field_std_trim_mat = materials.add(StandardMaterial {
+        base_color: Color::rgb(0.9, 0.3, 0.3),
+        metallic: 0.1,
+        ..default()
+    });
+
+    let field_std_trim_b_mat = materials.add(StandardMaterial {
+        base_color: Color::rgb(0.3, 0.3, 0.3),
+        normal_map_texture: Some(dfh_stadium.brushed_metal_normal.clone()),
+        emissive: Color::rgb(0.1, 0.1, 0.1),
+        metallic: 0.8,
+        ..default()
+    });
+
+    let mut stadium_transform = Transform::default();
+    for i in (-1..=1).step_by(2) {
+        commands.spawn(PbrBundle {
+            mesh: dfh_stadium.field_frame_outer.clone(),
+            material: field_frame_outer_mat.clone(),
+            transform: stadium_transform,
+            ..default()
+        });
+
+        commands.spawn(PbrBundle {
+            mesh: inv_field_frame_outer.clone(),
+            material: field_frame_outer_mat.clone(),
+            transform: stadium_transform,
+            ..default()
+        });
+
+        commands.spawn(PbrBundle {
+            mesh: dfh_stadium.goal_lines.clone(),
+            material: goal_lines_mat.clone(),
+            transform: stadium_transform,
+            ..default()
+        });
+
+        commands.spawn(PbrBundle {
+            mesh: inv_goal_lines.clone(),
+            material: goal_lines_mat.clone(),
+            transform: stadium_transform,
+            ..default()
+        });
+
+        commands.spawn(PbrBundle {
+            mesh: dfh_stadium.field_std_frame.clone(),
+            material: field_std_frame_mat.clone(),
+            transform: stadium_transform,
+            ..default()
+        });
+
+        commands.spawn(PbrBundle {
+            mesh: dfh_stadium.ff_cage_full.clone(),
+            material: ff_cage_full_mat.clone(),
+            transform: stadium_transform,
+            ..default()
+        });
+
+        commands.spawn(PbrBundle {
+            mesh: inv_ff_cage_full.clone(),
+            material: ff_cage_full_mat.clone(),
+            transform: stadium_transform,
+            ..default()
+        });
+
+        commands.spawn(PbrBundle {
+            mesh: dfh_stadium.ff_goal.clone(),
+            material: glass_mat.clone(),
+            transform: stadium_transform,
+            ..default()
+        });
+
+        commands.spawn(PbrBundle {
+            mesh: inv_ff_goal.clone(),
+            material: glass_mat.clone(),
+            transform: stadium_transform,
+            ..default()
+        });
+
+        commands.spawn(PbrBundle {
+            mesh: dfh_stadium.ff_roof.clone(),
+            material: glass_mat.clone(),
+            transform: stadium_transform,
+            ..default()
+        });
+
+        commands.spawn(PbrBundle {
+            mesh: inv_ff_roof.clone(),
+            material: glass_mat.clone(),
+            transform: stadium_transform,
+            ..default()
+        });
+
+        commands.spawn(PbrBundle {
+            mesh: dfh_stadium.ff_side.clone(),
+            material: glass_mat.clone(),
+            transform: stadium_transform,
+            ..default()
+        });
+
+        commands.spawn(PbrBundle {
+            mesh: inv_ff_side.clone(),
+            material: glass_mat.clone(),
+            transform: stadium_transform,
+            ..default()
+        });
+
+        let goal_transform = Transform::from_xyz(0., 0., -5120. * i as f32).with_rotation(stadium_transform.rotation);
+
+        commands.spawn(PbrBundle {
+            mesh: dfh_stadium.goal_std_trim.clone(),
+            material: goal_std_trim_mat.clone(),
+            transform: goal_transform,
+            ..default()
+        });
+
+        commands.spawn(PbrBundle {
+            mesh: dfh_stadium.goal_std_frame.clone(),
+            material: goal_glass_mat.clone(),
+            transform: goal_transform,
+            ..default()
+        });
+
+        commands.spawn(PbrBundle {
+            mesh: dfh_stadium.goal_std_quarterpipe.clone(),
+            material: goal_std_trim_mat.clone(),
+            transform: goal_transform,
+            ..default()
+        });
+
+        commands.spawn(PbrBundle {
+            mesh: dfh_stadium.goal_std_glass.clone(),
+            material: goal_glass_mat.clone(),
+            transform: goal_transform,
+            ..default()
+        });
+
+        commands.spawn(PbrBundle {
+            mesh: dfh_stadium.goal_std_floor.clone(),
+            material: goal_std_floor_mat.clone(),
+            transform: goal_transform,
+            ..default()
+        });
+
+        commands.spawn(PbrBundle {
+            mesh: dfh_stadium.field_std_trim.clone(),
+            material: field_std_trim_mat.clone(),
+            transform: stadium_transform,
+            ..default()
+        });
+
+        commands.spawn(PbrBundle {
+            mesh: dfh_stadium.field_std_trim_b.clone(),
+            material: field_std_trim_b_mat.clone(),
+            transform: stadium_transform,
+            ..default()
+        });
+
+        stadium_transform.rotate_local_y(PI);
+    }
+
     commands.spawn(PbrBundle {
-        mesh: meshes.add(Mesh::from(shape::Quad::new(Vec2::new(6950., 8725.)))),
-        material: materials.add(ceiling_material),
-        transform: ceiling_transform,
+        mesh: dfh_stadium.field_std_floor_hex.clone(),
+        material: materials.add(StandardMaterial {
+            base_color: Color::rgb(0., 0.3, 0.9),
+            metallic: 0.1,
+            ..default()
+        }),
+        ..default()
+    });
+
+    commands.spawn(PbrBundle {
+        mesh: dfh_stadium.boost_pads_01_combined.clone(),
+        material: materials.add(StandardMaterial {
+            base_color: Color::rgb(0.3, 0.9, 0.3),
+            metallic: 0.1,
+            ..default()
+        }),
+        transform: Transform::from_xyz(0., 0., -3250.),
+        ..default()
+    });
+
+    commands.spawn(PbrBundle {
+        mesh: dfh_stadium.boost_pads_02_combined.clone(),
+        material: materials.add(StandardMaterial {
+            base_color: Color::rgb(0.3, 0.9, 0.3),
+            metallic: 0.1,
+            ..default()
+        }),
+        ..default()
+    });
+
+    commands.spawn(PbrBundle {
+        mesh: dfh_stadium.boost_pads_03_combined.clone(),
+        material: materials.add(StandardMaterial {
+            base_color: Color::rgb(0.3, 0.9, 0.3),
+            metallic: 0.1,
+            ..default()
+        }),
+        transform: Transform::from_xyz(0., 0., 3250.),
         ..default()
     });
 
@@ -224,10 +472,10 @@ fn load_field(
 
     let ball_material = StandardMaterial {
         base_color: Color::WHITE,
-        base_color_texture: Some(image_assets.ball.clone()),
-        normal_map_texture: Some(image_assets.ball_normal.clone()),
+        base_color_texture: Some(core_assets.ball_diffuse.clone()),
+        normal_map_texture: Some(core_assets.ball_normal.clone()),
         emissive: Color::rgb(0.02, 0.02, 0.02),
-        emissive_texture: Some(image_assets.ball_emissive.clone()),
+        emissive_texture: Some(core_assets.ball_emissive.clone()),
         perceptual_roughness: 0.4,
         metallic: 0.,
         unlit: true,
@@ -238,7 +486,7 @@ fn load_field(
         .spawn((
             Ball,
             PbrBundle {
-                mesh: pskx_assets.ball.clone(),
+                mesh: core_assets.ball.clone(),
                 material: materials.add(ball_material),
                 transform: Transform::from_xyz(0., 92., 0.),
                 ..default()
@@ -250,7 +498,7 @@ fn load_field(
                     color: initial_ball_color,
                     radius: 110.,
                     shadows_enabled: true,
-                    intensity: 2.,//_000_000.,
+                    intensity: 2_000_000.,
                     range: 1000.,
                     ..default()
                 },
@@ -261,59 +509,53 @@ fn load_field(
     state.set(LoadState::Connect);
 }
 
+trait Flip {
+    fn flip(&self) -> Self;
+}
+
+impl Flip for Mesh {
+    fn flip(&self) -> Self {
+        let mut ids = self.indices().unwrap().iter().map(|i| i as u32).collect::<Vec<_>>();
+        ids.chunks_exact_mut(3).for_each(|c| c.swap(1, 2));
+
+        let verts = self
+            .attribute(Mesh::ATTRIBUTE_POSITION)
+            .unwrap()
+            .as_float3()
+            .unwrap()
+            .iter()
+            .flat_map(|v| [v[0], v[1], -v[2]])
+            .collect::<Vec<_>>();
+
+        let uvs = if let Some(mesh::VertexAttributeValues::Float32x2(values)) = self.attribute(Mesh::ATTRIBUTE_UV_0) {
+            values.clone()
+        } else {
+            Vec::new()
+        };
+
+        let colors = if let Some(mesh::VertexAttributeValues::Float32x4(values)) = self.attribute(Mesh::ATTRIBUTE_COLOR) {
+            values.clone()
+        } else {
+            Vec::new()
+        };
+
+        MeshBuilder { ids, verts, uvs, colors }.build_mesh(1.)
+    }
+}
+
+// Add name of mesh here if you want to view the colored vertices
+const SKIP_VERTEXCO: [&str; 1] = ["Goal_STD_Trim.pskx"];
+
 /// A collection of inter-connected triangles.
 #[derive(Clone, Debug, Default)]
 pub struct MeshBuilder {
     ids: Vec<u32>,
     verts: Vec<f32>,
     uvs: Vec<[f32; 2]>,
-    // colors: Vec<[f32; 4]>,
+    colors: Vec<[f32; 4]>,
 }
 
 impl MeshBuilder {
-    pub fn from_file<P: AsRef<Path>>(path: P) -> io::Result<Self> {
-        let mut file = File::open(path)?;
-
-        let ids_len = file.read_i32::<LittleEndian>()? * 3;
-        let verts_len = file.read_i32::<LittleEndian>()? * 3;
-
-        let ids = (0..ids_len).map(|_| file.read_i32::<LittleEndian>().map(|x| x as u32)).collect::<io::Result<Vec<_>>>()?;
-        let verts = (0..verts_len - verts_len % 3).map(|_| file.read_f32::<LittleEndian>()).collect::<io::Result<Vec<_>>>()?;
-
-        // Verify that the triangle data is correct
-        let max_vert = verts.len() as u32 / 3;
-        for &id in &ids {
-            if id >= max_vert {
-                return Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid triangle data"));
-            }
-        }
-
-        Ok(Self { ids, verts, ..default() })
-    }
-
-    #[must_use]
-    /// Combine different meshes all into one
-    pub fn combine(other_meshes: &[Self]) -> Self {
-        let n_ids = other_meshes.iter().map(|mesh| mesh.ids.len()).sum();
-        let mut ids: Vec<u32> = Vec::with_capacity(n_ids);
-        let mut id_offset = 0;
-
-        for m in other_meshes {
-            ids.extend(m.ids.iter().map(|id| id + id_offset));
-            id_offset += m.verts.len() as u32 / 3;
-        }
-
-        let verts: Vec<f32> = other_meshes.iter().flat_map(|m| m.verts.clone()).collect();
-
-        Self { ids, verts, ..default() }
-    }
-
-    #[must_use]
-    pub fn invert_indices(mut self) -> Self {
-        self.ids.chunks_exact_mut(3).for_each(|chunk| chunk.swap(1, 2));
-        self
-    }
-
     #[must_use]
     // Build the Bevy Mesh
     pub fn build_mesh(self, scale: f32) -> Mesh {
@@ -340,15 +582,15 @@ impl MeshBuilder {
             mesh.generate_tangents().unwrap();
         }
 
-        // if !self.colors.is_empty() {
-        //     mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, self.ids.iter().map(|&id| self.colors[id as usize]).collect::<Vec<_>>());
-        // }
+        if !self.colors.is_empty() {
+            mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, self.ids.iter().map(|&id| self.colors[id as usize]).collect::<Vec<_>>());
+        }
 
         mesh
     }
 
     /// Create a mesh from a Rocket League .pskx file
-    pub fn from_pskx(bytes: &[u8]) -> Result<Self, bevy::asset::Error> {
+    pub fn from_pskx(name: &str, bytes: &[u8]) -> Result<Self, bevy::asset::Error> {
         let mut cursor = io::Cursor::new(bytes);
 
         // ensure file header matches PSK_FILE_HEADER
@@ -359,9 +601,12 @@ impl MeshBuilder {
         let mut ids = Vec::new();
         let mut verts = Vec::new();
         let mut uvs = Vec::new();
-        // let mut colors = Vec::new();
+        let mut colors = Vec::new();
 
         let mut wedges = Vec::new();
+        let mut num_materials = 0;
+        let mut mat_ids = Vec::new();
+        let mut extra_uvs = Vec::new();
 
         // read chunks
         loop {
@@ -395,22 +640,52 @@ impl MeshBuilder {
                     debug_assert_eq!(wedges.len(), chunk_data_count);
                 }
                 "FACE0000" => {
-                    (ids, uvs) = read_faces(&chunk_data, chunk_data_count, &wedges).into_iter().flatten().unzip();
+                    read_faces(&chunk_data, chunk_data_count, &wedges).into_iter().flatten().for_each(|(id, uv, mat_id)| {
+                        ids.push(id);
+                        uvs.push(uv);
+                        mat_ids.push(mat_id);
+                    });
                     debug_assert_eq!(ids.len() / 3, chunk_data_count);
-                    debug_assert_eq!(ids.len(), uvs.len());
                 }
-                "MATT0000" => assert_eq!(chunk_data_count, 1),
+                "MATT0000" => {
+                    let materials = read_materials(&chunk_data, chunk_data_count);
+                    num_materials = materials.len();
+                    println!("{name} uses materials: {materials:?}");
+                }
                 "VERTEXCO" => {
-                    // colors = read_vertex_colors(&chunk_data, chunk_data_count);
-                    // debug_assert_eq!(colors.len(), chunk_data_count);
-                    // debug_assert_eq!(colors.len(), wedges.len());
+                    if !SKIP_VERTEXCO.contains(&name) {
+                        println!("{name} has unused colored vertices");
+                        continue;
+                    }
+
+                    colors = read_vertex_colors(&chunk_data, chunk_data_count);
+                    debug_assert_eq!(colors.len(), chunk_data_count);
+                    debug_assert_eq!(colors.len(), wedges.len());
+                }
+                "EXTRAUVS" => {
+                    extra_uvs.push(read_extra_uvs(&chunk_data, chunk_data_count));
                 }
                 _ => {
-                    println!("Unknown chunk: {}", chunk_id);
+                    println!("Unknown chunk: {chunk_id}");
                 }
             }
         }
 
-        Ok(Self { ids, verts, uvs })
+        if !extra_uvs.is_empty() {
+            if uvs.is_empty() {
+                debug_assert_eq!(ids.len(), extra_uvs.iter().flatten().count());
+                uvs = vec![[0.0, 0.0]; ids.len()];
+            }
+
+            let mut last_euv = vec![0; num_materials];
+            for (uv, mat_id) in uvs.iter_mut().zip(mat_ids).filter(|(_, mat_id)| *mat_id < extra_uvs.len()) {
+                if last_euv[mat_id] < extra_uvs[mat_id].len() {
+                    *uv = extra_uvs[mat_id][last_euv[mat_id]];
+                    last_euv[mat_id] += 1;
+                }
+            }
+        }
+
+        Ok(Self { ids, verts, uvs, colors })
     }
 }

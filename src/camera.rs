@@ -1,4 +1,4 @@
-use std::{f32::consts::PI, time::Duration};
+use std::time::Duration;
 
 use bevy::prelude::*;
 use bevy_atmosphere::prelude::*;
@@ -14,58 +14,30 @@ struct CycleTimer(Timer);
 pub struct PrimaryCamera;
 
 fn setup(mut commands: Commands) {
-    commands.spawn(SpotLightBundle {
-        spot_light: SpotLight {
-            range: 10000.,
-            radius: 5000.,
-            intensity: 20000000.,
-            shadows_enabled: true,
-            inner_angle: PI / 4.,
-            outer_angle: PI / 3.,
-            ..default()
-        },
-        transform: Transform::from_xyz(0., 2000., 4000.).looking_at(Vec3::new(0., 700., 5120.), Vec3::Z),
-        ..default()
-    });
-
-    commands.spawn(SpotLightBundle {
-        spot_light: SpotLight {
-            range: 10000.,
-            radius: 5000.,
-            intensity: 20000000.,
-            shadows_enabled: true,
-            inner_angle: PI / 4.,
-            outer_angle: PI / 3.,
-            ..default()
-        },
-        transform: Transform::from_xyz(0., 2000., -4000.).looking_at(Vec3::new(0., 700., -5120.), Vec3::Z),
-        ..default()
-    });
-
     // lights in the goals
-    commands.spawn(PointLightBundle {
-        point_light: PointLight {
-            range: 10000.,
-            radius: 100.,
-            intensity: 10000000.,
-            shadows_enabled: true,
-            ..default()
-        },
-        transform: Transform::from_xyz(0., 300., 5500.),
-        ..default()
-    });
+    // commands.spawn(PointLightBundle {
+    //     point_light: PointLight {
+    //         range: 10000.,
+    //         radius: 100.,
+    //         intensity: 10000000.,
+    //         shadows_enabled: true,
+    //         ..default()
+    //     },
+    //     transform: Transform::from_xyz(0., 300., 5500.),
+    //     ..default()
+    // });
 
-    commands.spawn(PointLightBundle {
-        point_light: PointLight {
-            range: 10000.,
-            radius: 100.,
-            intensity: 10000000.,
-            shadows_enabled: true,
-            ..default()
-        },
-        transform: Transform::from_xyz(0., 300., -5500.),
-        ..default()
-    });
+    // commands.spawn(PointLightBundle {
+    //     point_light: PointLight {
+    //         range: 10000.,
+    //         radius: 100.,
+    //         intensity: 10000000.,
+    //         shadows_enabled: true,
+    //         ..default()
+    //     },
+    //     transform: Transform::from_xyz(0., 300., -5500.),
+    //     ..default()
+    // });
 
     commands.insert_resource(AmbientLight { brightness: 0.2, ..default() });
 
