@@ -32,8 +32,14 @@ fn establish_connection(port: Res<ServerPort>, mut commands: Commands, mut state
     state.set(LoadState::None);
 }
 
-trait ToBevyVec {
+pub trait ToBevyVec {
     fn to_bevy(self) -> Vec3;
+}
+
+impl ToBevyVec for [f32; 3] {
+    fn to_bevy(self) -> Vec3 {
+        Vec3::new(self[0], self[2], self[1])
+    }
 }
 
 impl ToBevyVec for Vec3A {

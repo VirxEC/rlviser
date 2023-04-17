@@ -15,31 +15,31 @@ pub struct PrimaryCamera;
 
 fn setup(mut commands: Commands) {
     // lights in the goals
-    // commands.spawn(PointLightBundle {
-    //     point_light: PointLight {
-    //         range: 10000.,
-    //         radius: 100.,
-    //         intensity: 10000000.,
-    //         shadows_enabled: true,
-    //         ..default()
-    //     },
-    //     transform: Transform::from_xyz(0., 300., 5500.),
-    //     ..default()
-    // });
+    commands.spawn(PointLightBundle {
+        point_light: PointLight {
+            range: 10000.,
+            radius: 100.,
+            intensity: 10000000.,
+            shadows_enabled: true,
+            ..default()
+        },
+        transform: Transform::from_xyz(0., 300., 5500.),
+        ..default()
+    });
 
-    // commands.spawn(PointLightBundle {
-    //     point_light: PointLight {
-    //         range: 10000.,
-    //         radius: 100.,
-    //         intensity: 10000000.,
-    //         shadows_enabled: true,
-    //         ..default()
-    //     },
-    //     transform: Transform::from_xyz(0., 300., -5500.),
-    //     ..default()
-    // });
+    commands.spawn(PointLightBundle {
+        point_light: PointLight {
+            range: 10000.,
+            radius: 100.,
+            intensity: 10000000.,
+            shadows_enabled: true,
+            ..default()
+        },
+        transform: Transform::from_xyz(0., 300., -5500.),
+        ..default()
+    });
 
-    commands.insert_resource(AmbientLight { brightness: 0.2, ..default() });
+    commands.insert_resource(AmbientLight { brightness: 0.1, ..default() });
 
     commands.spawn((DirectionalLightBundle::default(), Sun));
 

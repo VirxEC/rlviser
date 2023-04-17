@@ -47,7 +47,7 @@ impl Default for Options {
             focus: false,
             vsync: true,
             fps: Default::default(),
-            grass_lod: 2,
+            grass_lod: GrassLod::default().get(),
             stop_day: false,
             daytime: 0.,
             day_speed: 1.,

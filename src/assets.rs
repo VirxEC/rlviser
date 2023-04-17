@@ -1,93 +1,298 @@
 use byteorder::{LittleEndian, ReadBytesExt};
+use once_cell::sync::Lazy;
 use std::{
+    collections::HashMap,
     fs,
     io::{self, Read, Write},
     path::Path,
     process::{Command, Stdio},
+    sync::Mutex,
 };
 
 use bevy::{
-    asset::{AssetLoader, LoadedAsset},
+    asset::{Asset, AssetLoader, LoadedAsset},
     prelude::*,
 };
 use bevy_asset_loader::prelude::*;
 
 use crate::mesh::MeshBuilder;
 
-#[derive(AssetCollection, Resource)]
-pub struct CoreAssets {
-    #[asset(path = "MENU_Main_p/Texture2D/Ball_Default00_D.tga")]
-    pub ball_diffuse: Handle<Image>,
-    #[asset(path = "MENU_Main_p/Texture2D/Ball_Default00_N.tga")]
-    pub ball_normal: Handle<Image>,
-    #[asset(path = "MENU_Main_p/Texture2D/Ball_Default00_RGB.tga")]
-    pub ball_emissive: Handle<Image>,
-    #[asset(path = "MENU_Main_p/StaticMesh3/Ball_DefaultBall00.pskx")]
-    pub ball: Handle<Mesh>,
-    #[asset(path = "Startup/Texture2D/Hexagons_Pack.tga")]
-    pub hexagons_pack: Handle<Image>,
+pub trait GetMeshInfoFromName<T: Asset> {
+    fn get(&self, name: &str) -> Option<(&Handle<T>, bool)>;
+}
+
+pub trait GetTextureFromName {
+    fn get(&self, name: &str) -> Option<&Handle<Image>>;
 }
 
 #[derive(AssetCollection, Resource)]
-pub struct DfhStadium {
-    #[asset(path = "Stadium_P/Texture2D/Hexagons_Pack_B.tga")]
+pub struct BallAssets {
+    #[asset(path = "Ball_Default_Textures/Texture2D/Ball_Default00_D.dds")]
+    pub ball_diffuse: Handle<Image>,
+    #[asset(path = "Ball_Default_Textures/Texture2D/Ball_Default00_N.dds")]
+    pub ball_normal: Handle<Image>,
+    #[asset(path = "Ball_Default_Textures/Texture2D/Ball_Default00_RGB.dds")]
+    pub ball_occlude: Handle<Image>,
+    #[asset(path = "Ball_Default/StaticMesh3/Ball_DefaultBall00.pskx")]
+    pub ball: Handle<Mesh>,
+}
+
+#[derive(AssetCollection, Resource)]
+pub struct TiledPatterns {
+    #[asset(path = "TiledPatterns/Texture2D/Hexagons_N.tga")]
+    pub hexagons_normal: Handle<Image>,
+    #[asset(path = "TiledPatterns/Texture2D/Hexagons_Pack.dds")]
+    pub hexagons_pack: Handle<Image>,
+    #[asset(path = "TiledPatterns/Texture2D/Hexagons_Pack_B.dds")]
     pub hexagons_pack_b: Handle<Image>,
-    #[asset(path = "Stadium_P/Texture2D/BrushedMetal_N.tga")]
+}
+
+impl GetTextureFromName for TiledPatterns {
+    fn get(&self, name: &str) -> Option<&Handle<Image>> {
+        match name {
+            "Hexagons_N" => Some(&self.hexagons_normal),
+            "Hexagons_Pack" | "ForcefieldHex" => Some(&self.hexagons_pack),
+            "Hexagons_Pack_B" => Some(&self.hexagons_pack_b),
+            _ => None,
+        }
+    }
+}
+
+#[derive(AssetCollection, Resource)]
+pub struct Details {
+    #[asset(path = "Stadiums_DetailNormals/Texture2D/ENV_BrushedMetal_N.dds")]
     pub brushed_metal_normal: Handle<Image>,
-    #[asset(path = "Stadium_P/StaticMesh3/OOBFloor.pskx")]
-    pub oob_floor: Handle<Mesh>,
-    #[asset(path = "Stadium_P/StaticMesh3/OOBFloor_Trim.pskx")]
-    pub oob_floor_trim: Handle<Mesh>,
-    #[asset(path = "Stadium_P/StaticMesh3/Field_STD_Floor_Hex.pskx")]
-    pub field_std_floor_hex: Handle<Mesh>,
-    #[asset(path = "Stadium_P/StaticMesh3/FFCage_Full.pskx")]
-    pub ff_cage_full: Handle<Mesh>,
-    #[asset(path = "Stadium_P/StaticMesh3/Field_STD_Frame.pskx")]
-    pub field_std_frame: Handle<Mesh>,
-    #[asset(path = "Stadium_P/StaticMesh3/FF_Goal.pskx")]
-    pub ff_goal: Handle<Mesh>,
-    #[asset(path = "Stadium_P/StaticMesh3/FF_Roof.pskx")]
-    pub ff_roof: Handle<Mesh>,
-    #[asset(path = "Stadium_P/StaticMesh3/FF_Side.pskx")]
-    pub ff_side: Handle<Mesh>,
-    #[asset(path = "Stadium_P/StaticMesh3/Goal_STD_Floor.pskx")]
-    pub goal_std_floor: Handle<Mesh>,
-    #[asset(path = "Stadium_P/StaticMesh3/BoostPads_01_Combined.pskx")]
+    #[asset(path = "Stadiums_DetailNormals/Texture2D/ENV_CarbonFiber_N.dds")]
+    pub carbon_fiber: Handle<Image>,
+    #[asset(path = "Vehicle_Parent_Textures/Texture2D/ENVPack.dds")]
+    pub env_pack: Handle<Image>,
+}
+
+impl GetTextureFromName for Details {
+    fn get(&self, name: &str) -> Option<&Handle<Image>> {
+        match name {
+            "EnvPack" => Some(&self.env_pack),
+            _ => None,
+        }
+    }
+}
+
+#[derive(AssetCollection, Resource)]
+pub struct ParkStadium {
+    #[asset(path = "Park_Assets/StaticMesh3/BoostPads_01_Combined.pskx")]
     pub boost_pads_01_combined: Handle<Mesh>,
-    #[asset(path = "Stadium_P/StaticMesh3/BoostPads_02_Combined.pskx")]
+    #[asset(path = "Park_Assets/StaticMesh3/BoostPads_02_Combined.pskx")]
     pub boost_pads_02_combined: Handle<Mesh>,
-    #[asset(path = "Stadium_P/StaticMesh3/BoostPads_03_Combined.pskx")]
+    #[asset(path = "Park_Assets/StaticMesh3/BoostPads_03_Combined.pskx")]
     pub boost_pads_03_combined: Handle<Mesh>,
-    #[asset(path = "Stadium_P/StaticMesh3/Field_STD_Trim.pskx")]
+}
+
+impl GetMeshInfoFromName<Mesh> for ParkStadium {
+    fn get(&self, name: &str) -> Option<(&Handle<Mesh>, bool)> {
+        const START: &str = "Park_Assets.Meshes.";
+        if name.len() < START.len() {
+            return None;
+        }
+
+        match name.split_at(START.len()).1 {
+            "BoostPads_01_Combined" => Some((&self.boost_pads_01_combined, false)),
+            "BoostPads_02_Combined" => Some((&self.boost_pads_02_combined, false)),
+            "BoostPads_03_Combined" => Some((&self.boost_pads_03_combined, false)),
+            _ => None,
+        }
+    }
+}
+
+#[derive(AssetCollection, Resource)]
+pub struct FutureStadium {
+    // #[asset(path = "FutureTech_Textures/Texture2D/ForcefieldHex.dds")]
+    // pub forecefield_hex: Handle<Image>,
+    #[asset(path = "FutureStadium_Assets/StaticMesh3/OOBFloor.pskx")]
+    pub oob_floor: Handle<Mesh>,
+    #[asset(path = "FutureStadium_Assets/StaticMesh3/OOBFloor_Trim.pskx")]
+    pub oob_floor_trim: Handle<Mesh>,
+    #[asset(path = "FutureStadium_Assets/StaticMesh3/Field_STD_Floor_Hex.pskx")]
+    pub field_std_floor_hex: Handle<Mesh>,
+    #[asset(path = "FutureStadium_Assets/StaticMesh3/FFCage_Full.pskx")]
+    pub ff_cage_full: Handle<Mesh>,
+    #[asset(path = "FutureStadium_Assets/StaticMesh3/Field_STD_Frame.pskx")]
+    pub field_std_frame: Handle<Mesh>,
+    #[asset(path = "FutureStadium_Assets/StaticMesh3/FF_Goal.pskx")]
+    pub ff_goal: Handle<Mesh>,
+    #[asset(path = "FutureStadium_Assets/StaticMesh3/FF_Roof.pskx")]
+    pub ff_roof: Handle<Mesh>,
+    #[asset(path = "FutureStadium_Assets/StaticMesh3/FF_Side.pskx")]
+    pub ff_side: Handle<Mesh>,
+    #[asset(path = "FutureStadium_Assets/StaticMesh3/Goal_STD_Floor.pskx")]
+    pub goal_std_floor: Handle<Mesh>,
+    #[asset(path = "FutureStadium_Assets/StaticMesh3/Field_STD_Trim.pskx")]
     pub field_std_trim: Handle<Mesh>,
-    #[asset(path = "Stadium_P/StaticMesh3/Field_STD_TrimB.pskx")]
+    #[asset(path = "FutureStadium_Assets/StaticMesh3/Field_STD_TrimB.pskx")]
     pub field_std_trim_b: Handle<Mesh>,
-    #[asset(path = "Stadium_P/StaticMesh3/Field_Center.pskx")]
+    #[asset(path = "FutureStadium_Assets/StaticMesh3/Field_Center.pskx")]
     pub field_center: Handle<Mesh>,
-    #[asset(path = "Stadium_P/StaticMesh3/Field_Center_Lines.pskx")]
+    #[asset(path = "FutureStadium_Assets/StaticMesh3/Field_Center_Lines.pskx")]
     pub field_center_lines: Handle<Mesh>,
-    #[asset(path = "Stadium_P/StaticMesh3/Field_Center_Trim.pskx")]
+    #[asset(path = "FutureStadium_Assets/StaticMesh3/Field_Center_Trim.pskx")]
     pub field_center_trim: Handle<Mesh>,
-    #[asset(path = "Stadium_P/StaticMesh3/Field_CenterField_Team1.pskx")]
+    #[asset(path = "FutureStadium_Assets/StaticMesh3/Field_CenterField_Team1.pskx")]
     pub field_center_field_team1: Handle<Mesh>,
-    #[asset(path = "Stadium_P/StaticMesh3/Field_CenterField_Team2.pskx")]
+    #[asset(path = "FutureStadium_Assets/StaticMesh3/Field_CenterField_Team2.pskx")]
     pub field_center_field_team2: Handle<Mesh>,
-    #[asset(path = "Stadium_P/StaticMesh3/Field_CenterVent.pskx")]
+    #[asset(path = "FutureStadium_Assets/StaticMesh3/Field_CenterVent.pskx")]
     pub field_center_vent: Handle<Mesh>,
-    #[asset(path = "Stadium_P/StaticMesh3/Goal_Lines.pskx")]
+    #[asset(path = "FutureStadium_Assets/StaticMesh3/Goal_Lines.pskx")]
     pub goal_lines: Handle<Mesh>,
-    #[asset(path = "Stadium_P/StaticMesh3/Goal_STD_Glass.pskx")]
+    #[asset(path = "FutureStadium_Assets/StaticMesh3/Goal_STD_Glass.pskx")]
     pub goal_std_glass: Handle<Mesh>,
-    #[asset(path = "Stadium_P/StaticMesh3/FieldFrame_Outer.pskx")]
+    #[asset(path = "FutureStadium_Assets/StaticMesh3/FieldFrame_Outer.pskx")]
     pub field_frame_outer: Handle<Mesh>,
-    #[asset(path = "Stadium_P/StaticMesh3/Goal_STD_Trim.pskx")]
+    #[asset(path = "FutureStadium_Assets/StaticMesh3/Goal_STD_Trim.pskx")]
     pub goal_std_trim: Handle<Mesh>,
-    #[asset(path = "Stadium_P/StaticMesh3/Goal_STD_Frame.pskx")]
+    #[asset(path = "FutureStadium_Assets/StaticMesh3/Goal_STD_Frame.pskx")]
     pub goal_std_frame: Handle<Mesh>,
-    #[asset(path = "Stadium_P/StaticMesh3/Goal_STD_Quarterpipe.pskx")]
+    #[asset(path = "FutureStadium_Assets/StaticMesh3/Goal_STD_Quarterpipe.pskx")]
     pub goal_std_quarterpipe: Handle<Mesh>,
-    #[asset(path = "Stadium_P/StaticMesh3/Side_Trim.pskx")]
+    #[asset(path = "FutureStadium_Assets/StaticMesh3/Side_Trim.pskx")]
     pub side_trim: Handle<Mesh>,
+    #[asset(path = "FutureStadium_Assets/StaticMesh3/Field_STD_Floor_Team1.pskx")]
+    pub field_std_floor_team1: Handle<Mesh>,
+    #[asset(path = "FutureStadium_Assets/StaticMesh3/Field_STD_Floor_Team2.pskx")]
+    pub field_std_floor_team2: Handle<Mesh>,
+    #[asset(path = "FutureStadium_Assets/StaticMesh3/Field_Side_Lines.pskx")]
+    pub field_side_lines: Handle<Mesh>,
+}
+
+impl GetTextureFromName for FutureStadium {
+    fn get(&self, name: &str) -> Option<&Handle<Image>> {
+        // match name {
+        //     "ForcefieldHex" => Some(&self.forecefield_hex),
+        //     _ => None,
+        // }
+        None
+    }
+}
+
+impl GetMeshInfoFromName<Mesh> for FutureStadium {
+    fn get(&self, name: &str) -> Option<(&Handle<Mesh>, bool)> {
+        const START: &str = "FutureStadium_Assets.Meshes.Modular.";
+        if name.len() < START.len() {
+            return None;
+        }
+
+        match name.split_at(START.len()).1 {
+            "OOBFloor" => Some((&self.oob_floor, false)),
+            "OOBFloor_Trim" => Some((&self.oob_floor_trim, false)),
+            "Field_STD_Floor_Hex" => Some((&self.field_std_floor_hex, false)),
+            "FFCage_Full" => Some((&self.ff_cage_full, true)),
+            "Field_STD_Frame" => Some((&self.field_std_frame, true)),
+            "FF_Goal" => Some((&self.ff_goal, true)),
+            "FF_Roof" => Some((&self.ff_roof, true)),
+            _ => None,
+        }
+    }
+}
+
+pub fn get_mesh_info<'a>(name: &str, query: &[&'a dyn GetMeshInfoFromName<Mesh>]) -> Option<(&'a Handle<Mesh>, bool)> {
+    query.iter().find_map(|x| x.get(name))
+}
+
+static MATERIALS: Mutex<Lazy<HashMap<String, Handle<StandardMaterial>>>> = Mutex::new(Lazy::new(HashMap::new));
+
+const DOUBLE_SIDED_MATS: [&str; 2] = ["FutureTech.Materials.ForceField_Mat", "FutureTech.Materials.ForceField_HexGage_MIC"];
+const TRANSPARENT_MATS: [&str; 2] = ["FutureTech.Materials.ForceField_Mat", "FutureTech.Materials.ForceField_HexGage_MIC"];
+
+fn retreive_material(name: &str, query: &[&dyn GetTextureFromName]) -> Option<StandardMaterial> {
+    // replace "." with "/" in the name and append "assets/" to the start
+    dbg!(name);
+
+    let material_folder = if name.ends_with("MIC") {
+        "MaterialInstanceConstant"
+    } else {
+        "Material3"
+    };
+
+    let path = format!("assets/{}.mat", name.replace("Materials", material_folder).replace('.', "/"));
+    let mat_file = fs::read_to_string(&path).ok()?;
+
+    let mut diffuse = None;
+    let mut normal = None;
+
+    for line in mat_file.lines() {
+        // dbg!(&line);
+        // split at the first "="
+        let mut split = line.split('=');
+        if let Some(key) = split.next() {
+            let Some(value) = split.next() else {
+                println!("No value for {key} in {path}");
+                continue;
+            };
+
+            match key {
+                "Diffuse" => {
+                    diffuse = Some(value);
+                }
+                "Normal" => {
+                    normal = Some(value);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    dbg!(diffuse);
+    dbg!(normal);
+
+    let mut material = StandardMaterial {
+        base_color: Color::rgb(0.3, 0.3, 0.3),
+        metallic: 0.1,
+        ..default()
+    };
+
+    if TRANSPARENT_MATS.contains(&name) {
+        material.alpha_mode = AlphaMode::Blend;
+    }
+
+    if DOUBLE_SIDED_MATS.contains(&name) {
+        material.cull_mode = None;
+        material.double_sided = true;
+    }
+
+    if let Some(texture_name) = diffuse {
+        if let Some(texture) = query.iter().find_map(|x| x.get(texture_name)) {
+            println!("Found texture for {name}");
+            material.base_color_texture = Some(texture.clone());
+        }
+    }
+
+    if let Some(texture_name) = normal {
+        if let Some(texture) = query.iter().find_map(|x| x.get(texture_name)) {
+            material.normal_map_texture = Some(texture.clone());
+        }
+    }
+
+    Some(material)
+}
+
+pub fn get_material(name: &str, materials: &mut ResMut<Assets<StandardMaterial>>, query: &[&dyn GetTextureFromName]) -> Handle<StandardMaterial> {
+    let mut material_names = MATERIALS.lock().unwrap();
+
+    if let Some(material) = material_names.get(name) {
+        return material.clone();
+    }
+
+    material_names
+        .entry(name.to_string())
+        .or_insert_with(|| {
+            materials.add(retreive_material(name, query).unwrap_or(StandardMaterial {
+                base_color: Color::rgb(0.3, 0.3, 0.3),
+                metallic: 0.1,
+                cull_mode: None,
+                double_sided: true,
+                ..default()
+            }))
+        })
+        .clone()
 }
 
 pub fn read_vertices(chunk_data: &[u8], data_count: usize) -> Vec<f32> {
@@ -263,23 +468,6 @@ pub fn uncook() -> io::Result<()> {
     println!("Uncooking assets from Rocket League...");
 
     let upk_files = ["Startup.upk", "MENU_Main_p.upk", "Stadium_P.upk"];
-    // let upk_files = std::fs::read_dir(&input_dir)
-    //         .unwrap()
-    //         .flatten()
-    //         .filter_map(|file| {
-    //             let file_str = file.file_name().to_str().unwrap().to_string();
-    //             if file_str.ends_with(".upk") {
-    //                 Some(file_str)
-    //             } else {
-    //                 None
-    //             }
-    //         })
-    //         .collect::<Vec<_>>();
-
-    if upk_files.is_empty() {
-        println!("No UPK files found in input directory");
-        return Ok(());
-    }
 
     let num_files = upk_files.len();
 
@@ -296,26 +484,11 @@ pub fn uncook() -> io::Result<()> {
                 "-export".to_string(),
                 "-nooverwrite".to_string(),
                 "-nolightmap".to_string(),
+                "-uncook".to_string(),
+                "-dds".to_string(),
+                "-uc".to_string(),
                 file.to_string(),
             ])
-            .stderr(Stdio::null())
-            .stdout(Stdio::null())
-            .spawn()?;
-        child.wait()?;
-
-        // call umodel to uncook all the map files
-        let mut child = Command::new(if cfg!(windows) { "umodel.exe" } else { "./umodel" })
-            .args([
-                format!("-path={}", input_dir),
-                format!("-out={}", OUT_DIR),
-                "-game=rocketleague".to_string(),
-                "-export".to_string(),
-                "-nooverwrite".to_string(),
-                "-nolightmap".to_string(),
-                "-gltf".to_string(),
-                file.to_string(),
-            ])
-            .stderr(Stdio::null())
             .stdout(Stdio::null())
             .spawn()?;
         child.wait()?;

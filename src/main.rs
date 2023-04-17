@@ -14,6 +14,7 @@ enum LoadState {
     #[default]
     Assets,
     Field,
+    FieldExtra,
     Connect,
     None,
 }
@@ -45,8 +46,11 @@ fn main() {
         .add_asset_loader(assets::PskxLoader)
         .add_plugin(bevy::diagnostic::LogDiagnosticsPlugin::default())
         .add_loading_state(LoadingState::new(LoadState::Assets).continue_to_state(LoadState::Field))
-        .add_collection_to_loading_state::<_, assets::CoreAssets>(LoadState::Assets)
-        .add_collection_to_loading_state::<_, assets::DfhStadium>(LoadState::Assets)
+        .add_collection_to_loading_state::<_, assets::BallAssets>(LoadState::Assets)
+        .add_collection_to_loading_state::<_, assets::TiledPatterns>(LoadState::Assets)
+        .add_collection_to_loading_state::<_, assets::Details>(LoadState::Assets)
+        .add_collection_to_loading_state::<_, assets::ParkStadium>(LoadState::Assets)
+        .add_collection_to_loading_state::<_, assets::FutureStadium>(LoadState::Assets)
         .add_plugin(camera::CameraPlugin)
         .add_plugin(gui::DebugOverlayPlugin)
         .add_plugin(mesh::FieldLoaderPlugin)
