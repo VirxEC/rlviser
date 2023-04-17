@@ -146,7 +146,7 @@ fn load_extra_field(
     state.set(LoadState::Connect);
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 struct InfoNode {
     name: String,
     #[serde(rename = "Translation")]
@@ -192,17 +192,42 @@ struct ObjectNode {
 
 impl ObjectNode {
     #[inline]
-    fn get_transform(&self) -> Transform {
-        Transform {
-            translation: self.location.unwrap_or_default().to_bevy(),
-            rotation: {
-                let [a, b, c] = self.rotation.unwrap_or_default();
-                Quat::from_euler(EulerRot::ZYX, c.to_radians(), b.to_radians(), a.to_radians())
-            },
-            scale: self.scale.unwrap_or_default().to_bevy(),
+    fn get_info_node(&self) -> Option<InfoNode> {
+        if self.location.is_none() && self.rotation.is_none() && self.scale.is_none() {
+            return None;
         }
+
+        let (materials, invisitek_materials) = self.sub_nodes.first().map(|node| (node.materials.clone(), node.invisitek_materials.clone()))?;
+
+        Some(InfoNode {
+            name: self.name.clone(),
+            translation: self.location,
+            rotation: self.rotation,
+            scale: self.scale,
+            static_mesh: String::new(),
+            materials,
+            invisitek_materials,
+        })
     }
 }
+
+// impl ObjectNode {
+//     #[inline]
+//     fn get_transform(&self) -> Option<Transform> {
+//         if self.location.is_none() && self.rotation.is_none() && self.scale.is_none() {
+//             return None;
+//         }
+
+//         Some(Transform {
+//             translation: self.location.unwrap_or_default().to_bevy(),
+//             rotation: {
+//                 let [a, b, c] = self.rotation.unwrap_or_default();
+//                 Quat::from_euler(EulerRot::ZYX, c.to_radians(), b.to_radians(), a.to_radians())
+//             },
+//             scale: self.scale.unwrap_or_default().to_bevy(),
+//         })
+//     }
+// }
 
 #[derive(Debug, Deserialize)]
 struct Section {
@@ -240,7 +265,11 @@ fn load_field(
     debug_assert!(the_world.name == "TheWorld");
     let persistent_level = &the_world.sub_nodes[0];
     debug_assert!(persistent_level.name == "PersistentLevel");
-    let nodes = persistent_level.sub_nodes.iter().flat_map(|node| node.sub_nodes.iter());
+
+    let nodes = persistent_level.sub_nodes.iter().flat_map(|node| match node.get_info_node() {
+        Some(node) => vec![node],
+        None => node.sub_nodes.clone(),
+    });
 
     for node in nodes {
         if let Some((mesh, should_flip)) = get_mesh_info(&node.static_mesh, &[park_stadium, future_stadium]) {

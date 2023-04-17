@@ -27,11 +27,11 @@ pub trait GetTextureFromName {
 
 #[derive(AssetCollection, Resource)]
 pub struct BallAssets {
-    #[asset(path = "Ball_Default_Textures/Texture2D/Ball_Default00_D.dds")]
+    #[asset(path = "Ball_Default_Textures/Texture2D/Ball_Default00_D.tga")]
     pub ball_diffuse: Handle<Image>,
-    #[asset(path = "Ball_Default_Textures/Texture2D/Ball_Default00_N.dds")]
+    #[asset(path = "Ball_Default_Textures/Texture2D/Ball_Default00_N.tga")]
     pub ball_normal: Handle<Image>,
-    #[asset(path = "Ball_Default_Textures/Texture2D/Ball_Default00_RGB.dds")]
+    #[asset(path = "Ball_Default_Textures/Texture2D/Ball_Default00_RGB.tga")]
     pub ball_occlude: Handle<Image>,
     #[asset(path = "Ball_Default/StaticMesh3/Ball_DefaultBall00.pskx")]
     pub ball: Handle<Mesh>,
@@ -41,9 +41,9 @@ pub struct BallAssets {
 pub struct TiledPatterns {
     #[asset(path = "TiledPatterns/Texture2D/Hexagons_N.tga")]
     pub hexagons_normal: Handle<Image>,
-    #[asset(path = "TiledPatterns/Texture2D/Hexagons_Pack.dds")]
+    #[asset(path = "TiledPatterns/Texture2D/Hexagons_Pack.tga")]
     pub hexagons_pack: Handle<Image>,
-    #[asset(path = "TiledPatterns/Texture2D/Hexagons_Pack_B.dds")]
+    #[asset(path = "TiledPatterns/Texture2D/Hexagons_Pack_B.tga")]
     pub hexagons_pack_b: Handle<Image>,
 }
 
@@ -51,7 +51,7 @@ impl GetTextureFromName for TiledPatterns {
     fn get(&self, name: &str) -> Option<&Handle<Image>> {
         match name {
             "Hexagons_N" => Some(&self.hexagons_normal),
-            "Hexagons_Pack" | "ForcefieldHex" => Some(&self.hexagons_pack),
+            "Hexagons_Pack" => Some(&self.hexagons_pack),
             "Hexagons_Pack_B" => Some(&self.hexagons_pack_b),
             _ => None,
         }
@@ -59,18 +59,38 @@ impl GetTextureFromName for TiledPatterns {
 }
 
 #[derive(AssetCollection, Resource)]
+pub struct FxTextures {
+    #[asset(path = "FX_Textures/Texture2D/Curve_Fire_01_Pack.tga")]
+    pub curve_fire_01_pack: Handle<Image>,
+    #[asset(path = "FX_Textures/Texture2D/Curve_Smoke_01_Pack.tga")]
+    pub curve_smoke_01_pack: Handle<Image>,
+}
+
+impl GetTextureFromName for FxTextures {
+    fn get(&self, name: &str) -> Option<&Handle<Image>> {
+        match name {
+            "Curve_Fire_01_Pack" => Some(&self.curve_fire_01_pack),
+            "Curve_Smoke_01_Pack" => Some(&self.curve_smoke_01_pack),
+            _ => None,
+        }
+    }
+}
+
+#[derive(AssetCollection, Resource)]
 pub struct Details {
-    #[asset(path = "Stadiums_DetailNormals/Texture2D/ENV_BrushedMetal_N.dds")]
-    pub brushed_metal_normal: Handle<Image>,
-    #[asset(path = "Stadiums_DetailNormals/Texture2D/ENV_CarbonFiber_N.dds")]
-    pub carbon_fiber: Handle<Image>,
-    #[asset(path = "Vehicle_Parent_Textures/Texture2D/ENVPack.dds")]
+    #[asset(path = "Stadiums_DetailNormals/Texture2D/ENV_BrushedMetal_N.tga")]
+    pub env_brushed_metal_n: Handle<Image>,
+    #[asset(path = "Stadiums_DetailNormals/Texture2D/ENV_CarbonFiber_N.tga")]
+    pub env_carbon_fiber_n: Handle<Image>,
+    #[asset(path = "Vehicle_Parent_Textures/Texture2D/ENVPack.tga")]
     pub env_pack: Handle<Image>,
 }
 
 impl GetTextureFromName for Details {
     fn get(&self, name: &str) -> Option<&Handle<Image>> {
         match name {
+            "ENV_BrushedMetal_N" => Some(&self.env_brushed_metal_n),
+            "ENV_CarbonFiber_N" => Some(&self.env_carbon_fiber_n),
             "EnvPack" => Some(&self.env_pack),
             _ => None,
         }
@@ -105,8 +125,10 @@ impl GetMeshInfoFromName<Mesh> for ParkStadium {
 
 #[derive(AssetCollection, Resource)]
 pub struct FutureStadium {
-    // #[asset(path = "FutureTech_Textures/Texture2D/ForcefieldHex.dds")]
-    // pub forecefield_hex: Handle<Image>,
+    #[asset(path = "FutureTech_Textures/Texture2D/FrameTexture_N.tga")]
+    pub frame_texture_n: Handle<Image>,
+    #[asset(path = "FutureTech_Textures/Texture2D/ForcefieldHex.tga")]
+    pub forecefield_hex: Handle<Image>,
     #[asset(path = "FutureStadium_Assets/StaticMesh3/OOBFloor.pskx")]
     pub oob_floor: Handle<Mesh>,
     #[asset(path = "FutureStadium_Assets/StaticMesh3/OOBFloor_Trim.pskx")]
@@ -165,11 +187,11 @@ pub struct FutureStadium {
 
 impl GetTextureFromName for FutureStadium {
     fn get(&self, name: &str) -> Option<&Handle<Image>> {
-        // match name {
-        //     "ForcefieldHex" => Some(&self.forecefield_hex),
-        //     _ => None,
-        // }
-        None
+        match name {
+            "FrameTexture_N" => Some(&self.frame_texture_n),
+            "ForcefieldHex" => Some(&self.forecefield_hex),
+            _ => None,
+        }
     }
 }
 
@@ -184,10 +206,23 @@ impl GetMeshInfoFromName<Mesh> for FutureStadium {
             "OOBFloor" => Some((&self.oob_floor, false)),
             "OOBFloor_Trim" => Some((&self.oob_floor_trim, false)),
             "Field_STD_Floor_Hex" => Some((&self.field_std_floor_hex, false)),
-            "FFCage_Full" => Some((&self.ff_cage_full, true)),
+            "FFCage_Full" => Some((&self.ff_cage_full, false)),
             "Field_STD_Frame" => Some((&self.field_std_frame, true)),
-            "FF_Goal" => Some((&self.ff_goal, true)),
-            "FF_Roof" => Some((&self.ff_roof, true)),
+            "FF_Goal" => Some((&self.ff_goal, false)),
+            "FF_Roof" => Some((&self.ff_roof, false)),
+            "FF_Side" => Some((&self.ff_side, false)),
+            "Goal_STD_Floor" => Some((&self.goal_std_floor, false)),
+            "Field_STD_Trim" => Some((&self.field_std_trim, false)),
+            "Field_STD_TrimB" => Some((&self.field_std_trim_b, false)),
+            "Field_Center" => Some((&self.field_center, false)),
+            "Field_Center_Lines" => Some((&self.field_center_lines, false)),
+            "Field_Center_Trim" => Some((&self.field_center_trim, false)),
+            "Field_CenterField_Team1" => Some((&self.field_center_field_team1, false)),
+            "Field_CenterField_Team2" => Some((&self.field_center_field_team2, false)),
+            "Field_CenterVent" => Some((&self.field_center_vent, false)),
+            "Goal_Lines" => Some((&self.goal_lines, false)),
+            // "Goal_STD_Glass" => Some((&self.goal_std_glass, false)),
+            // "FieldFrame_Outer" => Some((&self.field_frame_outer, false)),
             _ => None,
         }
     }
@@ -206,11 +241,7 @@ fn retreive_material(name: &str, query: &[&dyn GetTextureFromName]) -> Option<St
     // replace "." with "/" in the name and append "assets/" to the start
     dbg!(name);
 
-    let material_folder = if name.ends_with("MIC") {
-        "MaterialInstanceConstant"
-    } else {
-        "Material3"
-    };
+    let material_folder = if name.ends_with("MIC") { "MaterialInstanceConstant" } else { "Material3" };
 
     let path = format!("assets/{}.mat", name.replace("Materials", material_folder).replace('.', "/"));
     let mat_file = fs::read_to_string(&path).ok()?;
@@ -485,7 +516,6 @@ pub fn uncook() -> io::Result<()> {
                 "-nooverwrite".to_string(),
                 "-nolightmap".to_string(),
                 "-uncook".to_string(),
-                "-dds".to_string(),
                 "-uc".to_string(),
                 file.to_string(),
             ])

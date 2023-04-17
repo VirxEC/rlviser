@@ -6,7 +6,10 @@ mod mesh;
 mod rocketsim;
 mod udp;
 
-use bevy::prelude::*;
+use bevy::{
+    prelude::*,
+    render::render_resource::{AddressMode, SamplerDescriptor},
+};
 use bevy_asset_loader::prelude::*;
 
 #[derive(Clone, Eq, PartialEq, Debug, Hash, Default, States)]
@@ -36,13 +39,24 @@ fn main() {
     App::new()
         .add_state::<LoadState>()
         .insert_resource(ServerPort { primary_port, secondary_port })
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "RLViser-rs".into(),
-                ..default()
-            }),
-            ..default()
-        }))
+        .add_plugins(
+            DefaultPlugins
+                .set(ImagePlugin {
+                    default_sampler: SamplerDescriptor {
+                        address_mode_u: AddressMode::Repeat,
+                        address_mode_v: AddressMode::Repeat,
+                        address_mode_w: AddressMode::Repeat,
+                        ..Default::default()
+                    },
+                })
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        title: "RLViser-rs".into(),
+                        ..default()
+                    }),
+                    ..default()
+                }),
+        )
         .add_asset_loader(assets::PskxLoader)
         .add_plugin(bevy::diagnostic::LogDiagnosticsPlugin::default())
         .add_loading_state(LoadingState::new(LoadState::Assets).continue_to_state(LoadState::Field))

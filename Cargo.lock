@@ -168,7 +168,7 @@ version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cab112f0a86d568ea0e627cc1d6be74a1e9cd55214684db5561995f6dad897c6"
 dependencies = [
- "num-traits 0.2.15",
+ "num-traits",
 ]
 
 [[package]]
@@ -694,7 +694,6 @@ dependencies = [
  "bevy_window",
  "bitflags",
  "codespan-reporting",
- "ddsfile",
  "downcast-rs",
  "encase",
  "futures-lite",
@@ -1170,17 +1169,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ddsfile"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "594ecd967c2f40db5dde8da4c356975fc1fe030e951c7c3962f6dc2e80042e87"
-dependencies = [
- "bitflags",
- "byteorder",
- "enum_primitive",
-]
-
-[[package]]
 name = "dirs"
 version = "4.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1283,15 +1271,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "enum_primitive"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be4551092f4d519593039259a9ed8daedf0da12e5109c5280338073eaeb81180"
-dependencies = [
- "num-traits 0.1.43",
-]
-
-[[package]]
 name = "epaint"
 version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1332,7 +1311,7 @@ version = "0.22.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "87f253bc5c813ca05792837a0ff4b3a580336b224512d48f7eda1d7dd9210787"
 dependencies = [
- "num-traits 0.2.15",
+ "num-traits",
 ]
 
 [[package]]
@@ -1609,7 +1588,7 @@ dependencies = [
  "byteorder",
  "color_quant",
  "num-rational",
- "num-traits 0.2.15",
+ "num-traits",
  "png",
  "tiff",
 ]
@@ -1845,7 +1824,7 @@ dependencies = [
  "hexf-parse",
  "indexmap",
  "log",
- "num-traits 0.2.15",
+ "num-traits",
  "petgraph",
  "pp-rs",
  "rustc-hash",
@@ -1951,7 +1930,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "225d3389fb3509a24c93f5c29eb6bde2586b98d9f016636dff58d7c6f7569cd9"
 dependencies = [
  "autocfg",
- "num-traits 0.2.15",
+ "num-traits",
 ]
 
 [[package]]
@@ -1962,16 +1941,7 @@ checksum = "0638a1c9d0a3c0914158145bc76cff373a75a627e6ecbfb71cbe6f453a5a19b0"
 dependencies = [
  "autocfg",
  "num-integer",
- "num-traits 0.2.15",
-]
-
-[[package]]
-name = "num-traits"
-version = "0.1.43"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92e5113e9fd4cc14ded8e499429f396a20f98c772a47cc8622a736e1ec843c31"
-dependencies = [
- "num-traits 0.2.15",
+ "num-traits",
 ]
 
 [[package]]
@@ -2506,7 +2476,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "246bfa38fe3db3f1dfc8ca5a2cdeb7348c78be2112740cc0ec8ef18b6d94f830"
 dependencies = [
  "bitflags",
- "num-traits 0.2.15",
+ "num-traits",
 ]
 
 [[package]]
@@ -2570,7 +2540,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fab62c50c3d17993e7f0c72932e51ceeac5ec2b51c225fda8529d606159c99d8"
 dependencies = [
  "arrayvec",
- "num-traits 0.2.15",
+ "num-traits",
  "slotmap",
 ]
 
