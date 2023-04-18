@@ -18,7 +18,7 @@ use bevy_asset_loader::prelude::*;
 use crate::mesh::MeshBuilder;
 
 pub trait GetMeshInfoFromName<T: Asset> {
-    fn get(&self, name: &str) -> Option<(&Handle<T>, bool)>;
+    fn get(&self, name: &str) -> Option<&Handle<T>>;
 }
 
 pub trait GetTextureFromName {
@@ -51,7 +51,7 @@ impl GetTextureFromName for TiledPatterns {
     fn get(&self, name: &str) -> Option<&Handle<Image>> {
         match name {
             "Hexagons_N" => Some(&self.hexagons_normal),
-            "Hexagons_Pack" => Some(&self.hexagons_pack),
+            "Hexagons_Pack" | "ForcefieldHex" => Some(&self.hexagons_pack),
             "Hexagons_Pack_B" => Some(&self.hexagons_pack_b),
             _ => None,
         }
@@ -71,6 +71,43 @@ impl GetTextureFromName for FxTextures {
         match name {
             "Curve_Fire_01_Pack" => Some(&self.curve_fire_01_pack),
             "Curve_Smoke_01_Pack" => Some(&self.curve_smoke_01_pack),
+            _ => None,
+        }
+    }
+}
+
+#[derive(AssetCollection, Resource)]
+pub struct StandardCP {
+    #[asset(path = "Pickup_Boost/StaticMesh3/BoostPad_Large.pskx")]
+    pub boostpad_large: Handle<Mesh>,
+    #[asset(path = "Pickup_Boost_Textures/Texture2D/BoostPad_Large_D.tga")]
+    pub boostpad_large_d: Handle<Image>,
+    #[asset(path = "Pickup_Boost/StaticMesh3/BoostPad_Small_02_SM.pskx")]
+    pub boostpad_small_02_sm: Handle<Mesh>,
+    #[asset(path = "Pickup_Boost_Textures/Texture2D/BoostPad_Small_D.tga")]
+    pub boostpad_small_d: Handle<Image>,
+}
+
+impl GetMeshInfoFromName<Mesh> for StandardCP {
+    fn get(&self, name: &str) -> Option<&Handle<Mesh>> {
+        const START: &str = "Pickup_Boost.";
+        if name.len() < START.len() {
+            return None;
+        }
+
+        match name.split_at(START.len()).1 {
+            "BoostPad_Large" => Some(&self.boostpad_large),
+            "BoostPad_Small_02_SM" => Some(&self.boostpad_small_02_sm),
+            _ => None,
+        }
+    }
+}
+
+impl GetTextureFromName for StandardCP {
+    fn get(&self, name: &str) -> Option<&Handle<Image>> {
+        match name {
+            "BoostPad_Large" => Some(&self.boostpad_large_d),
+            "BoostPad_Small" => Some(&self.boostpad_small_d),
             _ => None,
         }
     }
@@ -108,16 +145,16 @@ pub struct ParkStadium {
 }
 
 impl GetMeshInfoFromName<Mesh> for ParkStadium {
-    fn get(&self, name: &str) -> Option<(&Handle<Mesh>, bool)> {
+    fn get(&self, name: &str) -> Option<&Handle<Mesh>> {
         const START: &str = "Park_Assets.Meshes.";
         if name.len() < START.len() {
             return None;
         }
 
         match name.split_at(START.len()).1 {
-            "BoostPads_01_Combined" => Some((&self.boost_pads_01_combined, false)),
-            "BoostPads_02_Combined" => Some((&self.boost_pads_02_combined, false)),
-            "BoostPads_03_Combined" => Some((&self.boost_pads_03_combined, false)),
+            "BoostPads_01_Combined" => Some(&self.boost_pads_01_combined),
+            "BoostPads_02_Combined" => Some(&self.boost_pads_02_combined),
+            "BoostPads_03_Combined" => Some(&self.boost_pads_03_combined),
             _ => None,
         }
     }
@@ -189,68 +226,79 @@ impl GetTextureFromName for FutureStadium {
     fn get(&self, name: &str) -> Option<&Handle<Image>> {
         match name {
             "FrameTexture_N" => Some(&self.frame_texture_n),
-            "ForcefieldHex" => Some(&self.forecefield_hex),
+            // "ForcefieldHex" => Some(&self.forecefield_hex),
             _ => None,
         }
     }
 }
 
 impl GetMeshInfoFromName<Mesh> for FutureStadium {
-    fn get(&self, name: &str) -> Option<(&Handle<Mesh>, bool)> {
+    fn get(&self, name: &str) -> Option<&Handle<Mesh>> {
         const START: &str = "FutureStadium_Assets.Meshes.Modular.";
         if name.len() < START.len() {
             return None;
         }
 
         match name.split_at(START.len()).1 {
-            "OOBFloor" => Some((&self.oob_floor, false)),
-            "OOBFloor_Trim" => Some((&self.oob_floor_trim, false)),
-            "Field_STD_Floor_Hex" => Some((&self.field_std_floor_hex, false)),
-            "FFCage_Full" => Some((&self.ff_cage_full, false)),
-            "Field_STD_Frame" => Some((&self.field_std_frame, true)),
-            "FF_Goal" => Some((&self.ff_goal, false)),
-            "FF_Roof" => Some((&self.ff_roof, false)),
-            "FF_Side" => Some((&self.ff_side, false)),
-            "Goal_STD_Floor" => Some((&self.goal_std_floor, false)),
-            "Field_STD_Trim" => Some((&self.field_std_trim, false)),
-            "Field_STD_TrimB" => Some((&self.field_std_trim_b, false)),
-            "Field_Center" => Some((&self.field_center, false)),
-            "Field_Center_Lines" => Some((&self.field_center_lines, false)),
-            "Field_Center_Trim" => Some((&self.field_center_trim, false)),
-            "Field_CenterField_Team1" => Some((&self.field_center_field_team1, false)),
-            "Field_CenterField_Team2" => Some((&self.field_center_field_team2, false)),
-            "Field_CenterVent" => Some((&self.field_center_vent, false)),
-            "Goal_Lines" => Some((&self.goal_lines, false)),
-            // "Goal_STD_Glass" => Some((&self.goal_std_glass, false)),
-            // "FieldFrame_Outer" => Some((&self.field_frame_outer, false)),
+            "OOBFloor" => Some(&self.oob_floor),
+            "OOBFloor_Trim" => Some(&self.oob_floor_trim),
+            "Field_STD_Floor_Hex" => Some(&self.field_std_floor_hex),
+            "FFCage_Full" => Some(&self.ff_cage_full),
+            "Field_STD_Frame" => Some(&self.field_std_frame),
+            "FF_Goal" => Some(&self.ff_goal),
+            "FF_Roof" => Some(&self.ff_roof),
+            "FF_Side" => Some(&self.ff_side),
+            "Goal_STD_Floor" => Some(&self.goal_std_floor),
+            "Field_STD_TrimB" => Some(&self.field_std_trim_b),
+            "Field_STD_Trim" => Some(&self.field_std_trim),
+            "Field_Center" => Some(&self.field_center),
+            "Field_Center_Lines" => Some(&self.field_center_lines),
+            "Field_Center_Trim" => Some(&self.field_center_trim),
+            "Field_CenterField_Team1" => Some(&self.field_center_field_team1),
+            "Field_CenterField_Team2" => Some(&self.field_center_field_team2),
+            "Field_CenterVent" => Some(&self.field_center_vent),
+            "Goal_Lines" => Some(&self.goal_lines),
+            "Goal_STD_Glass" => Some(&self.goal_std_glass),
+            "FieldFrame_Outer" => Some(&self.field_frame_outer),
+            "Goal_STD_Trim" => Some(&self.goal_std_trim),
+            "Goal_STD_Frame" => Some(&self.goal_std_frame),
+            "Goal_STD_Quarterpipe" => Some(&self.goal_std_quarterpipe),
+            "Side_Trim" => Some(&self.side_trim),
+            "Field_STD_Floor_Team1" => Some(&self.field_std_floor_team1),
+            "Field_STD_Floor_Team2" => Some(&self.field_std_floor_team2),
+            "Field_Side_Lines" => Some(&self.field_side_lines),
             _ => None,
         }
     }
 }
 
-pub fn get_mesh_info<'a>(name: &str, query: &[&'a dyn GetMeshInfoFromName<Mesh>]) -> Option<(&'a Handle<Mesh>, bool)> {
+pub fn get_mesh_info<'a>(name: &str, query: &[&'a dyn GetMeshInfoFromName<Mesh>]) -> Option<&'a Handle<Mesh>> {
     query.iter().find_map(|x| x.get(name))
 }
 
 static MATERIALS: Mutex<Lazy<HashMap<String, Handle<StandardMaterial>>>> = Mutex::new(Lazy::new(HashMap::new));
 
-const DOUBLE_SIDED_MATS: [&str; 2] = ["FutureTech.Materials.ForceField_Mat", "FutureTech.Materials.ForceField_HexGage_MIC"];
+const DOUBLE_SIDED_MATS: [&str; 4] = [
+    "FutureTech.Materials.ForceField_Mat",
+    "FutureTech.Materials.ForceField_HexGage_MIC",
+    "FutureTech.Materials.Frame_01_V2_Mat",
+    "FutureTech.Materials.Reflective_Floor_V2_Mat",
+];
 const TRANSPARENT_MATS: [&str; 2] = ["FutureTech.Materials.ForceField_Mat", "FutureTech.Materials.ForceField_HexGage_MIC"];
 
 fn retreive_material(name: &str, query: &[&dyn GetTextureFromName]) -> Option<StandardMaterial> {
-    // replace "." with "/" in the name and append "assets/" to the start
-    dbg!(name);
-
     let material_folder = if name.ends_with("MIC") { "MaterialInstanceConstant" } else { "Material3" };
 
     let path = format!("assets/{}.mat", name.replace("Materials", material_folder).replace('.', "/"));
-    let mat_file = fs::read_to_string(&path).ok()?;
+    let Ok(mat_file) = fs::read_to_string(&path) else {
+        println!("Failed to read {path} ({name})");
+        return None;
+    };
 
     let mut diffuse = None;
     let mut normal = None;
 
     for line in mat_file.lines() {
-        // dbg!(&line);
         // split at the first "="
         let mut split = line.split('=');
         if let Some(key) = split.next() {
@@ -266,13 +314,12 @@ fn retreive_material(name: &str, query: &[&dyn GetTextureFromName]) -> Option<St
                 "Normal" => {
                     normal = Some(value);
                 }
-                _ => {}
+                x => {
+                    println!("Unknown key {x} is {value} in {path} ({name})");
+                }
             }
         }
     }
-
-    dbg!(diffuse);
-    dbg!(normal);
 
     let mut material = StandardMaterial {
         base_color: Color::rgb(0.3, 0.3, 0.3),
@@ -292,13 +339,20 @@ fn retreive_material(name: &str, query: &[&dyn GetTextureFromName]) -> Option<St
     if let Some(texture_name) = diffuse {
         if let Some(texture) = query.iter().find_map(|x| x.get(texture_name)) {
             println!("Found texture for {name}");
+            if texture_name == "ForcefieldHex" {
+                material.base_color = Color::rgba(0.3, 0.3, 0.3, 0.3);
+            }
             material.base_color_texture = Some(texture.clone());
+        } else {
+            println!("Failed to find texture for {name}");
         }
     }
 
     if let Some(texture_name) = normal {
         if let Some(texture) = query.iter().find_map(|x| x.get(texture_name)) {
             material.normal_map_texture = Some(texture.clone());
+        } else {
+            println!("Failed to find normal map for {name}");
         }
     }
 

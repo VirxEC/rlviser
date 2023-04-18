@@ -65,6 +65,7 @@ fn main() {
         .add_collection_to_loading_state::<_, assets::Details>(LoadState::Assets)
         .add_collection_to_loading_state::<_, assets::ParkStadium>(LoadState::Assets)
         .add_collection_to_loading_state::<_, assets::FutureStadium>(LoadState::Assets)
+        .add_collection_to_loading_state::<_, assets::FxTextures>(LoadState::Assets)
         .add_plugin(camera::CameraPlugin)
         .add_plugin(gui::DebugOverlayPlugin)
         .add_plugin(mesh::FieldLoaderPlugin)

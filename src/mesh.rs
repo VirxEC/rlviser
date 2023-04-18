@@ -1,8 +1,6 @@
 use bevy::{prelude::*, render::mesh};
-use rand::{rngs::ThreadRng, Rng};
 use serde::Deserialize;
 use std::io::{self, Read};
-use warbler_grass::prelude::*;
 
 use crate::{
     assets::*,
@@ -10,101 +8,16 @@ use crate::{
     LoadState,
 };
 
-#[derive(Resource)]
-pub struct GrassLod(u8);
-
-impl Default for GrassLod {
-    fn default() -> Self {
-        GrassLod(1)
-    }
-}
-
-impl GrassLod {
-    #[inline]
-    pub fn get(&self) -> u8 {
-        self.0
-    }
-
-    #[inline]
-    pub fn set(&mut self, lod: u8) {
-        self.0 = lod;
-    }
-}
-
-#[inline]
-fn trim_grass(pos: &Vec3, scale: f32) -> bool {
-    // filter out positions inside this triangle
-    let p0 = Vec2::new(385. * scale, 380. * scale);
-    let p1 = Vec2::new(265. * scale, 495. * scale);
-    let p2 = Vec2::new(385. * scale, 495. * scale);
-
-    let p = Vec2::new(pos.x.abs(), pos.z.abs());
-
-    let area = 0.5 * (-p1.y * p2.x + p0.y * (-p1.x + p2.x) + p0.x * (p1.y - p2.y) + p1.x * p2.y);
-
-    let s = 1. / (2. * area) * (p0.y * p2.x - p0.x * p2.y + (p2.y - p0.y) * p.x + (p0.x - p2.x) * p.y);
-    let t = 1. / (2. * area) * (p0.x * p1.y - p0.y * p1.x + (p0.y - p1.y) * p.x + (p1.x - p0.x) * p.y);
-
-    !(s > 0. && t > 0. && 1. - s - t > 0.)
-}
-
-#[inline]
-fn randomize_grass(rand: &mut ThreadRng) -> Vec3 {
-    Vec3::new(rand.gen_range(-2.0..2.), 0., rand.gen_range(-2.0..2.))
-}
-
-fn generate_grass(scale: i32) -> (Vec<Vec3>, f32, Transform) {
-    let mut rand = rand::thread_rng();
-    let fscale = scale as f32;
-
-    (
-        (-380 * scale..380 * scale)
-            .step_by(3)
-            .flat_map(|x| (-483 * scale..483 * scale).step_by(3).map(move |z| Vec3::new(x as f32, 1., z as f32)))
-            .filter(|pos| trim_grass(pos, fscale))
-            .map(|pos| pos + randomize_grass(&mut rand))
-            .collect::<Vec<_>>(),
-        1.5 * fscale,
-        Transform::from_scale(Vec3::splat(10. / fscale)),
-    )
-}
-
-pub fn get_grass(lod: u8) -> (Vec<Vec3>, f32, Transform) {
-    if lod == 0 {
-        return (Vec::new(), 1.5, Transform::from_scale(Vec3::splat(10.)));
-    }
-
-    generate_grass(lod as i32)
-}
-
 pub struct FieldLoaderPlugin;
 
 impl Plugin for FieldLoaderPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugin(WarblersPlugin)
-            .insert_resource(GrassLod::default())
-            .add_system(load_field.run_if(in_state(LoadState::Field)))
+        app.add_system(load_field.run_if(in_state(LoadState::Field)))
             .add_system(load_extra_field.run_if(in_state(LoadState::FieldExtra)));
     }
 }
 
-fn load_extra_field(
-    mut commands: Commands,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut state: ResMut<NextState<LoadState>>,
-    grass_lod: Res<GrassLod>,
-    ball_assets: Res<BallAssets>,
-) {
-    // load grass
-
-    let (positions, height, transform) = get_grass(grass_lod.get());
-
-    commands.spawn(WarblersExplicitBundle {
-        grass: Grass::new(positions, height),
-        spatial: SpatialBundle { transform, ..default() },
-        ..default()
-    });
-
+fn load_extra_field(mut commands: Commands, mut materials: ResMut<Assets<StandardMaterial>>, mut state: ResMut<NextState<LoadState>>, ball_assets: Res<BallAssets>) {
     // load a glowing ball
 
     let initial_ball_color = Color::rgb(0.3, 0.3, 0.3);
@@ -148,7 +61,7 @@ fn load_extra_field(
 
 #[derive(Clone, Debug, Deserialize)]
 struct InfoNode {
-    name: String,
+    // name: String,
     #[serde(rename = "Translation")]
     translation: Option<[f32; 3]>,
     #[serde(rename = "Rotation")]
@@ -179,7 +92,7 @@ impl InfoNode {
 
 #[derive(Debug, Deserialize)]
 struct ObjectNode {
-    name: String,
+    // name: String,
     #[serde(rename = "Location")]
     location: Option<[f32; 3]>,
     #[serde(rename = "Rotation")]
@@ -200,7 +113,7 @@ impl ObjectNode {
         let (materials, invisitek_materials) = self.sub_nodes.first().map(|node| (node.materials.clone(), node.invisitek_materials.clone()))?;
 
         Some(InfoNode {
-            name: self.name.clone(),
+            // name: self.name.clone(),
             translation: self.location,
             rotation: self.rotation,
             scale: self.scale,
@@ -210,24 +123,6 @@ impl ObjectNode {
         })
     }
 }
-
-// impl ObjectNode {
-//     #[inline]
-//     fn get_transform(&self) -> Option<Transform> {
-//         if self.location.is_none() && self.rotation.is_none() && self.scale.is_none() {
-//             return None;
-//         }
-
-//         Some(Transform {
-//             translation: self.location.unwrap_or_default().to_bevy(),
-//             rotation: {
-//                 let [a, b, c] = self.rotation.unwrap_or_default();
-//                 Quat::from_euler(EulerRot::ZYX, c.to_radians(), b.to_radians(), a.to_radians())
-//             },
-//             scale: self.scale.unwrap_or_default().to_bevy(),
-//         })
-//     }
-// }
 
 #[derive(Debug, Deserialize)]
 struct Section {
@@ -246,18 +141,19 @@ struct Node {
 #[allow(clippy::too_many_arguments)]
 fn load_field(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut state: ResMut<NextState<LoadState>>,
     tiled_patterns: Res<TiledPatterns>,
     detail_normals: Res<Details>,
     park_stadium: Res<ParkStadium>,
     future_stadium: Res<FutureStadium>,
+    fx_textures: Res<FxTextures>,
 ) {
     let detail_normals = detail_normals.as_ref();
     let tiled_patterns = tiled_patterns.as_ref();
     let park_stadium = park_stadium.as_ref();
     let future_stadium = future_stadium.as_ref();
+    let fx_textures = fx_textures.as_ref();
 
     let (pickup_boost, standard_common_prefab, the_world): (Section, Node, Node) = serde_json::from_str(include_str!("../stadiums/Stadium_P_MeshObjects.json")).unwrap();
     debug_assert!(pickup_boost.name == "Pickup_Boost");
@@ -266,15 +162,31 @@ fn load_field(
     let persistent_level = &the_world.sub_nodes[0];
     debug_assert!(persistent_level.name == "PersistentLevel");
 
-    let nodes = persistent_level.sub_nodes.iter().flat_map(|node| match node.get_info_node() {
+    dbg!(&standard_common_prefab.sub_nodes[0]);
+    let prefab_nodes = standard_common_prefab.sub_nodes[0].sub_nodes.iter().flat_map(|node| node.get_info_node());
+    let world_nodes = persistent_level.sub_nodes.iter().flat_map(|node| match node.get_info_node() {
         Some(node) => vec![node],
         None => node.sub_nodes.clone(),
     });
 
-    for node in nodes {
-        if let Some((mesh, should_flip)) = get_mesh_info(&node.static_mesh, &[park_stadium, future_stadium]) {
+    for node in world_nodes.chain(prefab_nodes) {
+        if node.static_mesh.trim().is_empty() {
+            continue;
+        }
+
+        if let Some(mats) = &node.materials {
+            if mats.contains(&String::from("CollisionMeshes.Collision_Mat")) {
+                continue;
+            }
+        }
+
+        if let Some(mesh) = get_mesh_info(&node.static_mesh, &[park_stadium, future_stadium]) {
             println!("Getting material for {}...", node.static_mesh);
-            let material = get_material(&node.materials.as_ref().unwrap()[0], &mut materials, &[tiled_patterns, detail_normals, future_stadium]);
+            let material = get_material(
+                &node.materials.as_ref().unwrap()[0],
+                &mut materials,
+                &[fx_textures, tiled_patterns, detail_normals, future_stadium],
+            );
 
             let transform = node.get_transform();
             commands.spawn(PbrBundle {
@@ -283,18 +195,8 @@ fn load_field(
                 transform,
                 ..default()
             });
-
-            if should_flip {
-                let real_mesh = meshes.get(mesh).unwrap().flip();
-                let inv_mesh = meshes.add(real_mesh);
-
-                commands.spawn(PbrBundle {
-                    mesh: inv_mesh,
-                    material,
-                    transform,
-                    ..default()
-                });
-            }
+        } else {
+            println!("No mesh for {}", node.static_mesh);
         }
     }
 

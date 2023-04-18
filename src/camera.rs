@@ -46,7 +46,7 @@ fn setup(mut commands: Commands) {
     commands.spawn((
         PrimaryCamera,
         Camera3dBundle {
-            projection: Projection::Perspective(PerspectiveProjection { far: 20000., ..default() }),
+            projection: Projection::Perspective(PerspectiveProjection { far: 2000000., ..default() }),
             transform: Transform::from_translation(Vec3::new(-3000., 1000., 0.)).looking_to(Vec3::X, Vec3::Y),
             ..default()
         },
