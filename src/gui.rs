@@ -1,8 +1,10 @@
 use bevy::{
     prelude::*,
+    render::camera::CameraProjection,
     window::{PresentMode, PrimaryWindow},
 };
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
+use bevy_spectator::Spectator;
 
 use crate::camera::DaylightOffset;
 
@@ -19,7 +21,9 @@ impl Plugin for DebugOverlayPlugin {
             .add_system(update_daytime.after(ui_system))
             .add_system(update_daytime)
             .add_system(update_msaa.after(ui_system))
-            .add_system(update_msaa);
+            .add_system(update_msaa)
+            .add_system(update_draw_distance.after(ui_system))
+            .add_system(update_draw_distance);
     }
 }
 
@@ -32,6 +36,7 @@ struct Options {
     daytime: f32,
     day_speed: f32,
     msaa: u8,
+    draw_distance: u8,
 }
 
 impl Default for Options {
@@ -44,6 +49,7 @@ impl Default for Options {
             daytime: 0.,
             day_speed: 1.,
             msaa: 2,
+            draw_distance: 3,
         }
     }
 }
@@ -81,7 +87,31 @@ fn ui_system(mut contexts: EguiContexts, time: Res<Time>, keys: Res<Input<KeyCod
         ui.add(egui::Slider::new(&mut options.daytime, 0.0..=150.0).text("Daytime"));
         ui.add(egui::Slider::new(&mut options.day_speed, 0.0..=10.0).text("Day speed"));
         ui.add(egui::Slider::new(&mut options.msaa, 0..=3).text("MSAA"));
+        ui.add(egui::Slider::new(&mut options.draw_distance, 0..=4).text("Draw distance"));
     });
+}
+
+fn update_draw_distance(options: Res<Options>, mut query: Query<&mut Projection, With<Spectator>>) {
+    let draw_distance = match options.draw_distance {
+        0 => 15000.,
+        1 => 50000.,
+        2 => 200000.,
+        3 => 500000.,
+        4 => 2000000.,
+        _ => unreachable!(),
+    };
+
+    if query.single().far() == draw_distance {
+        return;
+    }
+
+    println!("Setting draw distance to {draw_distance}");
+    match query.single_mut().into_inner() {
+        Projection::Perspective(perspective_projection) => {
+            perspective_projection.far = draw_distance;
+        }
+        _ => unreachable!(),
+    }
 }
 
 fn toggle_vsync(options: Res<Options>, mut windows: Query<&mut Window, With<PrimaryWindow>>) {

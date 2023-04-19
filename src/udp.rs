@@ -82,20 +82,29 @@ fn step_arena(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    const INITIAL_BUFFER: [u8; GameState::MIN_NUM_BYTES] = [0; GameState::MIN_NUM_BYTES];
-    let mut min_buf = INITIAL_BUFFER;
-    if socket.0.peek_from(&mut min_buf).is_err() {
-        return;
+    let mut buf = None;
+    loop {
+        const INITIAL_BUFFER: [u8; GameState::MIN_NUM_BYTES] = [0; GameState::MIN_NUM_BYTES];
+        let mut min_buf = INITIAL_BUFFER;
+        if socket.0.peek_from(&mut min_buf).is_err() {
+            break;
+        }
+
+        if game_state.tick_count > GameState::read_tick_count(&min_buf) {
+            drop(socket.0.recv_from(&mut [0]));
+            break;
+        }
+
+        let mut next_buf = vec![0; GameState::get_num_bytes(&min_buf)];
+        if socket.0.recv_from(&mut next_buf).is_err() {
+            break;
+        }
+        buf = Some(next_buf);
     }
 
-    if game_state.tick_count > GameState::read_tick_count(&min_buf) {
-        drop(socket.0.recv_from(&mut [0]));
-    }
-
-    let mut buf = vec![0; GameState::get_num_bytes(&min_buf)];
-    if socket.0.recv_from(&mut buf).is_err() {
+    let Some(buf) = buf else {
         return;
-    }
+    };
 
     *game_state = GameState::from_bytes(&buf);
 
