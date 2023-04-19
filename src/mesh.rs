@@ -110,16 +110,16 @@ impl ObjectNode {
             return None;
         }
 
-        let (materials, invisitek_materials) = self.sub_nodes.first().map(|node| (node.materials.clone(), node.invisitek_materials.clone()))?;
+        let node = self.sub_nodes.first()?;
 
         Some(InfoNode {
             // name: self.name.clone(),
             translation: self.location,
             rotation: self.rotation,
             scale: self.scale,
-            static_mesh: String::new(),
-            materials,
-            invisitek_materials,
+            static_mesh: node.static_mesh.clone(),
+            materials: node.materials.clone(),
+            invisitek_materials: node.invisitek_materials.clone(),
         })
     }
 }
@@ -139,22 +139,7 @@ struct Node {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn load_field(
-    mut commands: Commands,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut state: ResMut<NextState<LoadState>>,
-    tiled_patterns: Res<TiledPatterns>,
-    detail_normals: Res<Details>,
-    park_stadium: Res<ParkStadium>,
-    future_stadium: Res<FutureStadium>,
-    fx_textures: Res<FxTextures>,
-) {
-    let detail_normals = detail_normals.as_ref();
-    let tiled_patterns = tiled_patterns.as_ref();
-    let park_stadium = park_stadium.as_ref();
-    let future_stadium = future_stadium.as_ref();
-    let fx_textures = fx_textures.as_ref();
-
+fn load_field(mut commands: Commands, mut materials: ResMut<Assets<StandardMaterial>>, mut state: ResMut<NextState<LoadState>>, asset_server: Res<AssetServer>) {
     let (pickup_boost, standard_common_prefab, the_world): (Section, Node, Node) = serde_json::from_str(include_str!("../stadiums/Stadium_P_MeshObjects.json")).unwrap();
     debug_assert!(pickup_boost.name == "Pickup_Boost");
     debug_assert!(standard_common_prefab.name == "Standard_Common_Prefab");
@@ -162,7 +147,6 @@ fn load_field(
     let persistent_level = &the_world.sub_nodes[0];
     debug_assert!(persistent_level.name == "PersistentLevel");
 
-    dbg!(&standard_common_prefab.sub_nodes[0]);
     let prefab_nodes = standard_common_prefab.sub_nodes[0].sub_nodes.iter().flat_map(|node| node.get_info_node());
     let world_nodes = persistent_level.sub_nodes.iter().flat_map(|node| match node.get_info_node() {
         Some(node) => vec![node],
@@ -180,509 +164,33 @@ fn load_field(
             }
         }
 
-        if let Some(mesh) = get_mesh_info(&node.static_mesh, &[park_stadium, future_stadium]) {
-            println!("Getting material for {}...", node.static_mesh);
-            let material = get_material(
-                &node.materials.as_ref().unwrap()[0],
-                &mut materials,
-                &[fx_textures, tiled_patterns, detail_normals, future_stadium],
-            );
+        let Some(mesh) = get_mesh_info(&node.static_mesh, asset_server.as_ref()) else {
+            println!("Not spawning mesh {}", node.static_mesh);
+            continue;
+        };
 
-            let transform = node.get_transform();
-            commands.spawn(PbrBundle {
-                mesh: mesh.clone(),
-                material: material.clone(),
-                transform,
-                ..default()
-            });
-        } else {
-            println!("No mesh for {}", node.static_mesh);
-        }
+        let Some(first_mat) = node.materials.as_ref().and_then(|mats| mats.first()) else {
+            println!("No materials found for {}", node.static_mesh);
+            continue;
+        };
+
+        println!("Getting material(s) for {}...", node.static_mesh);
+        let material = get_material(first_mat, materials.as_mut(), asset_server.as_ref());
+
+        let transform = node.get_transform();
+        commands.spawn(PbrBundle {
+            mesh: mesh.clone(),
+            material: material.clone(),
+            transform,
+            ..default()
+        });
     }
 
     state.set(LoadState::FieldExtra);
 }
 
-// fn load_field(
-//     mut commands: Commands,
-//     mut meshes: ResMut<Assets<Mesh>>,
-//     mut materials: ResMut<Assets<StandardMaterial>>,
-//     mut state: ResMut<NextState<LoadState>>,
-//     tiled_patterns: Res<TiledPatterns>,
-//     detail_normals: Res<Details>,
-//     future_stadium: Res<FutureStadium>,
-// ) {
-//     commands.spawn(PbrBundle {
-//         mesh: future_stadium.oob_floor.clone(),
-//         material: materials.add(StandardMaterial {
-//             base_color: Color::rgb(0.3, 0.3, 0.3),
-//             base_color_texture: Some(tiled_patterns.hexagons_pack_b.clone()),
-//             normal_map_texture: Some(tiled_patterns.hexagons_normal.clone()),
-//             metallic: 0.1,
-//             ..default()
-//         }),
-//         ..default()
-//     });
-
-//     commands.spawn(PbrBundle {
-//         mesh: future_stadium.oob_floor_trim.clone(),
-//         material: materials.add(StandardMaterial {
-//             base_color: Color::rgb(0.3, 0.3, 0.3),
-//             normal_map_texture: Some(detail_normals.brushed_metal_normal.clone()),
-//             emissive: Color::rgb(0.1, 0.1, 0.1),
-//             metallic: 0.8,
-//             ..default()
-//         }),
-//         ..default()
-//     });
-
-//     commands.spawn(PbrBundle {
-//         mesh: future_stadium.field_center.clone(),
-//         material: materials.add(StandardMaterial {
-//             base_color: Color::rgb(0.9, 0.3, 0.3),
-//             metallic: 0.1,
-//             ..default()
-//         }),
-//         ..default()
-//     });
-
-//     commands.spawn(PbrBundle {
-//         mesh: future_stadium.field_center_lines.clone(),
-//         material: materials.add(StandardMaterial {
-//             base_color: Color::rgb(0.9, 0.3, 0.3),
-//             metallic: 0.1,
-//             ..default()
-//         }),
-//         ..default()
-//     });
-
-//     // commands.spawn(PbrBundle {
-//     //     mesh: dfh_stadium.field_center_trim.clone(),
-//     //     material: materials.add(StandardMaterial {
-//     //         base_color: Color::rgb(0.9, 0.3, 0.3),
-//     //         metallic: 0.1,
-//     //         cull_mode: None,
-//     //         double_sided: true,
-//     //         ..default()
-//     //     }),
-//     //     ..default()
-//     // });
-
-//     commands.spawn(PbrBundle {
-//         mesh: future_stadium.field_center_field_team1.clone(),
-//         material: materials.add(StandardMaterial {
-//             base_color: Color::rgb(0.9, 0.3, 0.3),
-//             metallic: 0.1,
-//             ..default()
-//         }),
-//         ..default()
-//     });
-
-//     commands.spawn(PbrBundle {
-//         mesh: future_stadium.field_center_field_team2.clone(),
-//         material: materials.add(StandardMaterial {
-//             base_color: Color::rgb(0.9, 0.3, 0.3),
-//             metallic: 0.1,
-//             ..default()
-//         }),
-//         ..default()
-//     });
-
-//     commands.spawn(PbrBundle {
-//         mesh: future_stadium.field_center_vent.clone(),
-//         material: materials.add(StandardMaterial {
-//             base_color: Color::rgb(0.9, 0.3, 0.3),
-//             metallic: 0.1,
-//             alpha_mode: AlphaMode::Blend,
-//             ..default()
-//         }),
-//         ..default()
-//     });
-
-//     commands.spawn(PbrBundle {
-//         mesh: future_stadium.field_std_floor_team1.clone(),
-//         material: materials.add(StandardMaterial {
-//             base_color: Color::rgb(0.3, 0.9, 0.3),
-//             perceptual_roughness: 0.9,
-//             reflectance: 0.1,
-//             ..default()
-//         }),
-//         ..default()
-//     });
-
-//     commands.spawn(PbrBundle {
-//         mesh: future_stadium.field_std_floor_team2.clone(),
-//         material: materials.add(StandardMaterial {
-//             base_color: Color::rgb(0.3, 0.9, 0.3),
-//             perceptual_roughness: 0.9,
-//             reflectance: 0.1,
-//             ..default()
-//         }),
-//         ..default()
-//     });
-
-//     let ff_cage_full = meshes.get(&future_stadium.ff_cage_full.clone()).unwrap().flip();
-//     let inv_ff_cage_full = meshes.add(ff_cage_full);
-//     let ff_cage_full_mat = materials.add(StandardMaterial {
-//         base_color: Color::rgb(0.3, 0.3, 0.3),
-//         metallic: 0.1,
-//         cull_mode: None,
-//         double_sided: true,
-//         ..default()
-//     });
-
-//     let ff_goal = meshes.get(&future_stadium.ff_goal.clone()).unwrap().flip();
-//     let inv_ff_goal = meshes.add(ff_goal);
-
-//     let ff_roof = meshes.get(&future_stadium.ff_roof.clone()).unwrap().flip();
-//     let inv_ff_roof = meshes.add(ff_roof);
-
-//     let ff_side = meshes.get(&future_stadium.ff_side.clone()).unwrap().flip();
-//     let inv_ff_side = meshes.add(ff_side);
-
-//     let glass_mat = materials.add(StandardMaterial {
-//         base_color: Color::rgb(0.3, 0.3, 0.3),
-//         base_color_texture: Some(tiled_patterns.hexagons_pack.clone()),
-//         metallic: 0.1,
-//         cull_mode: None,
-//         double_sided: true,
-//         alpha_mode: AlphaMode::Blend,
-//         ..default()
-//     });
-
-//     let goal_lines = meshes.get(&future_stadium.goal_lines.clone()).unwrap().flip();
-//     let inv_goal_lines = meshes.add(goal_lines);
-//     let goal_lines_mat = materials.add(StandardMaterial {
-//         base_color: Color::rgb(0.3, 0.3, 0.9),
-//         metallic: 0.1,
-//         ..default()
-//     });
-
-//     let goal_glass_mat = materials.add(StandardMaterial {
-//         base_color: Color::rgba(0.3, 0.3, 0.3, 0.5),
-//         metallic: 0.1,
-//         cull_mode: None,
-//         double_sided: true,
-//         alpha_mode: AlphaMode::Blend,
-//         ..default()
-//     });
-
-//     let field_frame_outer = meshes.get(&future_stadium.field_frame_outer.clone()).unwrap().flip();
-//     let inv_field_frame_outer = meshes.add(field_frame_outer);
-//     let field_frame_outer_mat = materials.add(StandardMaterial {
-//         base_color: Color::rgb(0.3, 0.3, 0.3),
-//         metallic: 0.1,
-//         cull_mode: None,
-//         double_sided: true,
-//         ..default()
-//     });
-
-//     let goal_std_trim_mat = materials.add(StandardMaterial {
-//         base_color: Color::rgb(0.3, 0.3, 0.3),
-//         metallic: 0.1,
-//         ..default()
-//     });
-
-//     let field_std_frame_mat = materials.add(StandardMaterial {
-//         base_color: Color::rgb(0.3, 0.3, 0.3),
-//         metallic: 0.1,
-//         ..default()
-//     });
-
-//     let goal_std_floor_mat = materials.add(StandardMaterial {
-//         base_color: Color::rgb(0.9, 0.3, 0.3),
-//         metallic: 0.1,
-//         ..default()
-//     });
-
-//     let field_std_trim_mat = materials.add(StandardMaterial {
-//         base_color: Color::rgb(0.9, 0.3, 0.3),
-//         metallic: 0.1,
-//         ..default()
-//     });
-
-//     let field_std_trim_b_mat = materials.add(StandardMaterial {
-//         base_color: Color::rgb(0.3, 0.3, 0.3),
-//         normal_map_texture: Some(detail_normals.brushed_metal_normal.clone()),
-//         emissive: Color::rgb(0.1, 0.1, 0.1),
-//         metallic: 0.8,
-//         ..default()
-//     });
-
-//     let side_trim = meshes.get(&future_stadium.side_trim.clone()).unwrap().flip();
-//     let inv_side_trim = meshes.add(side_trim);
-//     let side_trim_mat = materials.add(StandardMaterial {
-//         base_color: Color::rgb(0.3, 0.9, 0.3),
-//         metallic: 0.1,
-//         cull_mode: None,
-//         double_sided: true,
-//         ..default()
-//     });
-
-//     let field_side_lines = meshes.get(&future_stadium.field_side_lines.clone()).unwrap().flip();
-//     let inv_field_side_lines = meshes.add(field_side_lines);
-//     let field_side_lines_mat = materials.add(StandardMaterial {
-//         base_color: Color::rgb(0.9, 0.3, 0.3),
-//         metallic: 0.1,
-//         ..default()
-//     });
-
-//     let mut stadium_transform = Transform::default();
-//     for i in (-1..=1).step_by(2) {
-//         commands.spawn(PbrBundle {
-//             mesh: future_stadium.field_side_lines.clone(),
-//             material: field_side_lines_mat.clone(),
-//             transform: stadium_transform,
-//             ..default()
-//         });
-
-//         commands.spawn(PbrBundle {
-//             mesh: inv_field_side_lines.clone(),
-//             material: field_side_lines_mat.clone(),
-//             transform: stadium_transform,
-//             ..default()
-//         });
-
-//         commands.spawn(PbrBundle {
-//             mesh: future_stadium.side_trim.clone(),
-//             material: side_trim_mat.clone(),
-//             transform: stadium_transform,
-//             ..default()
-//         });
-
-//         commands.spawn(PbrBundle {
-//             mesh: inv_side_trim.clone(),
-//             material: side_trim_mat.clone(),
-//             transform: stadium_transform,
-//             ..default()
-//         });
-
-//         commands.spawn(PbrBundle {
-//             mesh: future_stadium.field_frame_outer.clone(),
-//             material: field_frame_outer_mat.clone(),
-//             transform: stadium_transform,
-//             ..default()
-//         });
-
-//         commands.spawn(PbrBundle {
-//             mesh: inv_field_frame_outer.clone(),
-//             material: field_frame_outer_mat.clone(),
-//             transform: stadium_transform,
-//             ..default()
-//         });
-
-//         commands.spawn(PbrBundle {
-//             mesh: future_stadium.goal_lines.clone(),
-//             material: goal_lines_mat.clone(),
-//             transform: stadium_transform,
-//             ..default()
-//         });
-
-//         commands.spawn(PbrBundle {
-//             mesh: inv_goal_lines.clone(),
-//             material: goal_lines_mat.clone(),
-//             transform: stadium_transform,
-//             ..default()
-//         });
-
-//         commands.spawn(PbrBundle {
-//             mesh: future_stadium.field_std_frame.clone(),
-//             material: field_std_frame_mat.clone(),
-//             transform: stadium_transform,
-//             ..default()
-//         });
-
-//         commands.spawn(PbrBundle {
-//             mesh: future_stadium.ff_cage_full.clone(),
-//             material: ff_cage_full_mat.clone(),
-//             transform: stadium_transform,
-//             ..default()
-//         });
-
-//         commands.spawn(PbrBundle {
-//             mesh: inv_ff_cage_full.clone(),
-//             material: ff_cage_full_mat.clone(),
-//             transform: stadium_transform,
-//             ..default()
-//         });
-
-//         commands.spawn(PbrBundle {
-//             mesh: future_stadium.ff_goal.clone(),
-//             material: glass_mat.clone(),
-//             transform: stadium_transform,
-//             ..default()
-//         });
-
-//         commands.spawn(PbrBundle {
-//             mesh: inv_ff_goal.clone(),
-//             material: glass_mat.clone(),
-//             transform: stadium_transform,
-//             ..default()
-//         });
-
-//         commands.spawn(PbrBundle {
-//             mesh: future_stadium.ff_roof.clone(),
-//             material: glass_mat.clone(),
-//             transform: stadium_transform,
-//             ..default()
-//         });
-
-//         commands.spawn(PbrBundle {
-//             mesh: inv_ff_roof.clone(),
-//             material: glass_mat.clone(),
-//             transform: stadium_transform,
-//             ..default()
-//         });
-
-//         commands.spawn(PbrBundle {
-//             mesh: future_stadium.ff_side.clone(),
-//             material: glass_mat.clone(),
-//             transform: stadium_transform,
-//             ..default()
-//         });
-
-//         commands.spawn(PbrBundle {
-//             mesh: inv_ff_side.clone(),
-//             material: glass_mat.clone(),
-//             transform: stadium_transform,
-//             ..default()
-//         });
-
-//         let goal_transform = Transform::from_xyz(0., 0., -5120. * i as f32).with_rotation(stadium_transform.rotation);
-
-//         commands.spawn(PbrBundle {
-//             mesh: future_stadium.goal_std_trim.clone(),
-//             material: goal_std_trim_mat.clone(),
-//             transform: goal_transform,
-//             ..default()
-//         });
-
-//         commands.spawn(PbrBundle {
-//             mesh: future_stadium.goal_std_frame.clone(),
-//             material: goal_glass_mat.clone(),
-//             transform: goal_transform,
-//             ..default()
-//         });
-
-//         commands.spawn(PbrBundle {
-//             mesh: future_stadium.goal_std_quarterpipe.clone(),
-//             material: goal_std_trim_mat.clone(),
-//             transform: goal_transform,
-//             ..default()
-//         });
-
-//         commands.spawn(PbrBundle {
-//             mesh: future_stadium.goal_std_glass.clone(),
-//             material: goal_glass_mat.clone(),
-//             transform: goal_transform,
-//             ..default()
-//         });
-
-//         commands.spawn(PbrBundle {
-//             mesh: future_stadium.goal_std_floor.clone(),
-//             material: goal_std_floor_mat.clone(),
-//             transform: goal_transform,
-//             ..default()
-//         });
-
-//         commands.spawn(PbrBundle {
-//             mesh: future_stadium.field_std_trim.clone(),
-//             material: field_std_trim_mat.clone(),
-//             transform: stadium_transform,
-//             ..default()
-//         });
-
-//         commands.spawn(PbrBundle {
-//             mesh: future_stadium.field_std_trim_b.clone(),
-//             material: field_std_trim_b_mat.clone(),
-//             transform: stadium_transform,
-//             ..default()
-//         });
-
-//         stadium_transform.rotate_local_y(PI);
-//     }
-
-//     commands.spawn(PbrBundle {
-//         mesh: future_stadium.field_std_floor_hex.clone(),
-//         material: materials.add(StandardMaterial {
-//             base_color: Color::rgb(0., 0.3, 0.9),
-//             metallic: 0.1,
-//             ..default()
-//         }),
-//         ..default()
-//     });
-
-//     commands.spawn(PbrBundle {
-//         mesh: future_stadium.boost_pads_01_combined.clone(),
-//         material: materials.add(StandardMaterial {
-//             base_color: Color::rgb(0.3, 0.9, 0.3),
-//             metallic: 0.1,
-//             ..default()
-//         }),
-//         transform: Transform::from_xyz(0., 0., -3250.),
-//         ..default()
-//     });
-
-//     commands.spawn(PbrBundle {
-//         mesh: future_stadium.boost_pads_02_combined.clone(),
-//         material: materials.add(StandardMaterial {
-//             base_color: Color::rgb(0.3, 0.9, 0.3),
-//             metallic: 0.1,
-//             ..default()
-//         }),
-//         ..default()
-//     });
-
-//     commands.spawn(PbrBundle {
-//         mesh: future_stadium.boost_pads_03_combined.clone(),
-//         material: materials.add(StandardMaterial {
-//             base_color: Color::rgb(0.3, 0.9, 0.3),
-//             metallic: 0.1,
-//             ..default()
-//         }),
-//         transform: Transform::from_xyz(0., 0., 3250.),
-//         ..default()
-//     });
-
-//     state.set(LoadState::FieldExtra);
-// }
-
-trait Flip {
-    fn flip(&self) -> Self;
-}
-
-impl Flip for Mesh {
-    fn flip(&self) -> Self {
-        let mut ids = self.indices().unwrap().iter().map(|i| i as u32).collect::<Vec<_>>();
-        ids.chunks_exact_mut(3).for_each(|c| c.swap(1, 2));
-
-        let verts = self
-            .attribute(Mesh::ATTRIBUTE_POSITION)
-            .unwrap()
-            .as_float3()
-            .unwrap()
-            .iter()
-            .flat_map(|v| [v[0], v[1], -v[2]])
-            .collect::<Vec<_>>();
-
-        let uvs = if let Some(mesh::VertexAttributeValues::Float32x2(values)) = self.attribute(Mesh::ATTRIBUTE_UV_0) {
-            values.clone()
-        } else {
-            Vec::new()
-        };
-
-        let colors = if let Some(mesh::VertexAttributeValues::Float32x4(values)) = self.attribute(Mesh::ATTRIBUTE_COLOR) {
-            values.clone()
-        } else {
-            Vec::new()
-        };
-
-        MeshBuilder { ids, verts, uvs, colors }.build_mesh(1.)
-    }
-}
-
 // Add name of mesh here if you want to view the colored vertices
-const SKIP_VERTEXCO: [&str; 1] = ["Goal_STD_Trim.pskx"];
+const INCLUDE_VERTEXCO: [&str; 1] = ["Goal_STD_Trim.pskx"];
 
 /// A collection of inter-connected triangles.
 #[derive(Clone, Debug, Default)]
@@ -790,7 +298,7 @@ impl MeshBuilder {
                     num_materials = materials.len();
                 }
                 "VERTEXCO" => {
-                    if !SKIP_VERTEXCO.contains(&name) {
+                    if !INCLUDE_VERTEXCO.contains(&name) {
                         println!("{name} has unused colored vertices");
                         continue;
                     }

@@ -8,22 +8,15 @@ use std::{
     process::{Command, Stdio},
     sync::Mutex,
 };
+use walkdir::WalkDir;
 
 use bevy::{
-    asset::{Asset, AssetLoader, LoadedAsset},
+    asset::{AssetLoader, LoadedAsset},
     prelude::*,
 };
 use bevy_asset_loader::prelude::*;
 
 use crate::mesh::MeshBuilder;
-
-pub trait GetMeshInfoFromName<T: Asset> {
-    fn get(&self, name: &str) -> Option<&Handle<T>>;
-}
-
-pub trait GetTextureFromName {
-    fn get(&self, name: &str) -> Option<&Handle<Image>>;
-}
 
 #[derive(AssetCollection, Resource)]
 pub struct BallAssets {
@@ -37,266 +30,77 @@ pub struct BallAssets {
     pub ball: Handle<Mesh>,
 }
 
-#[derive(AssetCollection, Resource)]
-pub struct TiledPatterns {
-    #[asset(path = "TiledPatterns/Texture2D/Hexagons_N.tga")]
-    pub hexagons_normal: Handle<Image>,
-    #[asset(path = "TiledPatterns/Texture2D/Hexagons_Pack.tga")]
-    pub hexagons_pack: Handle<Image>,
-    #[asset(path = "TiledPatterns/Texture2D/Hexagons_Pack_B.tga")]
-    pub hexagons_pack_b: Handle<Image>,
-}
+const BLOCK_MESHES: [&str; 5] = ["SkySphere01", "FX_General", "Glow", "Fog", "LightCones"];
 
-impl GetTextureFromName for TiledPatterns {
-    fn get(&self, name: &str) -> Option<&Handle<Image>> {
-        match name {
-            "Hexagons_N" => Some(&self.hexagons_normal),
-            "Hexagons_Pack" | "ForcefieldHex" => Some(&self.hexagons_pack),
-            "Hexagons_Pack_B" => Some(&self.hexagons_pack_b),
-            _ => None,
-        }
+pub fn get_mesh_info(name: &str, asset_server: &AssetServer) -> Option<Handle<Mesh>> {
+    let mut path = name
+        .replace(".Modular", "")
+        .replace(".Meshes", ".StaticMesh3")
+        .replace(".SM", ".StaticMesh3")
+        .replace(".Materials", ".StaticMesh3")
+        .replace("Park_Assets.Park_", "Park_Assets.StaticMesh3.Park_")
+        .replace("Pickup_Boost.BoostPad", "Pickup_Boost.StaticMesh3.BoostPad")
+        .replace("Grass.Grass", "Grass.StaticMesh3.Grass")
+        .replace('.', "/");
+    path.push_str(".pskx");
+
+    // check if any item in BLOCK_MESHES is in path
+    if BLOCK_MESHES.iter().any(|x| path.contains(x)) {
+        return None;
     }
+
+    Some(asset_server.load(path))
 }
 
-#[derive(AssetCollection, Resource)]
-pub struct FxTextures {
-    #[asset(path = "FX_Textures/Texture2D/Curve_Fire_01_Pack.tga")]
-    pub curve_fire_01_pack: Handle<Image>,
-    #[asset(path = "FX_Textures/Texture2D/Curve_Smoke_01_Pack.tga")]
-    pub curve_smoke_01_pack: Handle<Image>,
+fn load_texture(name: &str, asset_server: &AssetServer) -> Handle<Image> {
+    let path = WalkDir::new("assets")
+        .into_iter()
+        .flatten()
+        .find(|x| x.file_name().to_string_lossy() == format!("{}.tga", name))
+        .unwrap()
+        .path()
+        .to_string_lossy()
+        .to_string()
+        .replace("assets/", "");
+
+    asset_server.load(path)
 }
 
-impl GetTextureFromName for FxTextures {
-    fn get(&self, name: &str) -> Option<&Handle<Image>> {
-        match name {
-            "Curve_Fire_01_Pack" => Some(&self.curve_fire_01_pack),
-            "Curve_Smoke_01_Pack" => Some(&self.curve_smoke_01_pack),
-            _ => None,
-        }
-    }
-}
-
-#[derive(AssetCollection, Resource)]
-pub struct StandardCP {
-    #[asset(path = "Pickup_Boost/StaticMesh3/BoostPad_Large.pskx")]
-    pub boostpad_large: Handle<Mesh>,
-    #[asset(path = "Pickup_Boost_Textures/Texture2D/BoostPad_Large_D.tga")]
-    pub boostpad_large_d: Handle<Image>,
-    #[asset(path = "Pickup_Boost/StaticMesh3/BoostPad_Small_02_SM.pskx")]
-    pub boostpad_small_02_sm: Handle<Mesh>,
-    #[asset(path = "Pickup_Boost_Textures/Texture2D/BoostPad_Small_D.tga")]
-    pub boostpad_small_d: Handle<Image>,
-}
-
-impl GetMeshInfoFromName<Mesh> for StandardCP {
-    fn get(&self, name: &str) -> Option<&Handle<Mesh>> {
-        const START: &str = "Pickup_Boost.";
-        if name.len() < START.len() {
-            return None;
-        }
-
-        match name.split_at(START.len()).1 {
-            "BoostPad_Large" => Some(&self.boostpad_large),
-            "BoostPad_Small_02_SM" => Some(&self.boostpad_small_02_sm),
-            _ => None,
-        }
-    }
-}
-
-impl GetTextureFromName for StandardCP {
-    fn get(&self, name: &str) -> Option<&Handle<Image>> {
-        match name {
-            "BoostPad_Large" => Some(&self.boostpad_large_d),
-            "BoostPad_Small" => Some(&self.boostpad_small_d),
-            _ => None,
-        }
-    }
-}
-
-#[derive(AssetCollection, Resource)]
-pub struct Details {
-    #[asset(path = "Stadiums_DetailNormals/Texture2D/ENV_BrushedMetal_N.tga")]
-    pub env_brushed_metal_n: Handle<Image>,
-    #[asset(path = "Stadiums_DetailNormals/Texture2D/ENV_CarbonFiber_N.tga")]
-    pub env_carbon_fiber_n: Handle<Image>,
-    #[asset(path = "Vehicle_Parent_Textures/Texture2D/ENVPack.tga")]
-    pub env_pack: Handle<Image>,
-}
-
-impl GetTextureFromName for Details {
-    fn get(&self, name: &str) -> Option<&Handle<Image>> {
-        match name {
-            "ENV_BrushedMetal_N" => Some(&self.env_brushed_metal_n),
-            "ENV_CarbonFiber_N" => Some(&self.env_carbon_fiber_n),
-            "EnvPack" => Some(&self.env_pack),
-            _ => None,
-        }
-    }
-}
-
-#[derive(AssetCollection, Resource)]
-pub struct ParkStadium {
-    #[asset(path = "Park_Assets/StaticMesh3/BoostPads_01_Combined.pskx")]
-    pub boost_pads_01_combined: Handle<Mesh>,
-    #[asset(path = "Park_Assets/StaticMesh3/BoostPads_02_Combined.pskx")]
-    pub boost_pads_02_combined: Handle<Mesh>,
-    #[asset(path = "Park_Assets/StaticMesh3/BoostPads_03_Combined.pskx")]
-    pub boost_pads_03_combined: Handle<Mesh>,
-}
-
-impl GetMeshInfoFromName<Mesh> for ParkStadium {
-    fn get(&self, name: &str) -> Option<&Handle<Mesh>> {
-        const START: &str = "Park_Assets.Meshes.";
-        if name.len() < START.len() {
-            return None;
-        }
-
-        match name.split_at(START.len()).1 {
-            "BoostPads_01_Combined" => Some(&self.boost_pads_01_combined),
-            "BoostPads_02_Combined" => Some(&self.boost_pads_02_combined),
-            "BoostPads_03_Combined" => Some(&self.boost_pads_03_combined),
-            _ => None,
-        }
-    }
-}
-
-#[derive(AssetCollection, Resource)]
-pub struct FutureStadium {
-    #[asset(path = "FutureTech_Textures/Texture2D/FrameTexture_N.tga")]
-    pub frame_texture_n: Handle<Image>,
-    #[asset(path = "FutureTech_Textures/Texture2D/ForcefieldHex.tga")]
-    pub forecefield_hex: Handle<Image>,
-    #[asset(path = "FutureStadium_Assets/StaticMesh3/OOBFloor.pskx")]
-    pub oob_floor: Handle<Mesh>,
-    #[asset(path = "FutureStadium_Assets/StaticMesh3/OOBFloor_Trim.pskx")]
-    pub oob_floor_trim: Handle<Mesh>,
-    #[asset(path = "FutureStadium_Assets/StaticMesh3/Field_STD_Floor_Hex.pskx")]
-    pub field_std_floor_hex: Handle<Mesh>,
-    #[asset(path = "FutureStadium_Assets/StaticMesh3/FFCage_Full.pskx")]
-    pub ff_cage_full: Handle<Mesh>,
-    #[asset(path = "FutureStadium_Assets/StaticMesh3/Field_STD_Frame.pskx")]
-    pub field_std_frame: Handle<Mesh>,
-    #[asset(path = "FutureStadium_Assets/StaticMesh3/FF_Goal.pskx")]
-    pub ff_goal: Handle<Mesh>,
-    #[asset(path = "FutureStadium_Assets/StaticMesh3/FF_Roof.pskx")]
-    pub ff_roof: Handle<Mesh>,
-    #[asset(path = "FutureStadium_Assets/StaticMesh3/FF_Side.pskx")]
-    pub ff_side: Handle<Mesh>,
-    #[asset(path = "FutureStadium_Assets/StaticMesh3/Goal_STD_Floor.pskx")]
-    pub goal_std_floor: Handle<Mesh>,
-    #[asset(path = "FutureStadium_Assets/StaticMesh3/Field_STD_Trim.pskx")]
-    pub field_std_trim: Handle<Mesh>,
-    #[asset(path = "FutureStadium_Assets/StaticMesh3/Field_STD_TrimB.pskx")]
-    pub field_std_trim_b: Handle<Mesh>,
-    #[asset(path = "FutureStadium_Assets/StaticMesh3/Field_Center.pskx")]
-    pub field_center: Handle<Mesh>,
-    #[asset(path = "FutureStadium_Assets/StaticMesh3/Field_Center_Lines.pskx")]
-    pub field_center_lines: Handle<Mesh>,
-    #[asset(path = "FutureStadium_Assets/StaticMesh3/Field_Center_Trim.pskx")]
-    pub field_center_trim: Handle<Mesh>,
-    #[asset(path = "FutureStadium_Assets/StaticMesh3/Field_CenterField_Team1.pskx")]
-    pub field_center_field_team1: Handle<Mesh>,
-    #[asset(path = "FutureStadium_Assets/StaticMesh3/Field_CenterField_Team2.pskx")]
-    pub field_center_field_team2: Handle<Mesh>,
-    #[asset(path = "FutureStadium_Assets/StaticMesh3/Field_CenterVent.pskx")]
-    pub field_center_vent: Handle<Mesh>,
-    #[asset(path = "FutureStadium_Assets/StaticMesh3/Goal_Lines.pskx")]
-    pub goal_lines: Handle<Mesh>,
-    #[asset(path = "FutureStadium_Assets/StaticMesh3/Goal_STD_Glass.pskx")]
-    pub goal_std_glass: Handle<Mesh>,
-    #[asset(path = "FutureStadium_Assets/StaticMesh3/FieldFrame_Outer.pskx")]
-    pub field_frame_outer: Handle<Mesh>,
-    #[asset(path = "FutureStadium_Assets/StaticMesh3/Goal_STD_Trim.pskx")]
-    pub goal_std_trim: Handle<Mesh>,
-    #[asset(path = "FutureStadium_Assets/StaticMesh3/Goal_STD_Frame.pskx")]
-    pub goal_std_frame: Handle<Mesh>,
-    #[asset(path = "FutureStadium_Assets/StaticMesh3/Goal_STD_Quarterpipe.pskx")]
-    pub goal_std_quarterpipe: Handle<Mesh>,
-    #[asset(path = "FutureStadium_Assets/StaticMesh3/Side_Trim.pskx")]
-    pub side_trim: Handle<Mesh>,
-    #[asset(path = "FutureStadium_Assets/StaticMesh3/Field_STD_Floor_Team1.pskx")]
-    pub field_std_floor_team1: Handle<Mesh>,
-    #[asset(path = "FutureStadium_Assets/StaticMesh3/Field_STD_Floor_Team2.pskx")]
-    pub field_std_floor_team2: Handle<Mesh>,
-    #[asset(path = "FutureStadium_Assets/StaticMesh3/Field_Side_Lines.pskx")]
-    pub field_side_lines: Handle<Mesh>,
-}
-
-impl GetTextureFromName for FutureStadium {
-    fn get(&self, name: &str) -> Option<&Handle<Image>> {
-        match name {
-            "FrameTexture_N" => Some(&self.frame_texture_n),
-            // "ForcefieldHex" => Some(&self.forecefield_hex),
-            _ => None,
-        }
-    }
-}
-
-impl GetMeshInfoFromName<Mesh> for FutureStadium {
-    fn get(&self, name: &str) -> Option<&Handle<Mesh>> {
-        const START: &str = "FutureStadium_Assets.Meshes.Modular.";
-        if name.len() < START.len() {
-            return None;
-        }
-
-        match name.split_at(START.len()).1 {
-            "OOBFloor" => Some(&self.oob_floor),
-            "OOBFloor_Trim" => Some(&self.oob_floor_trim),
-            "Field_STD_Floor_Hex" => Some(&self.field_std_floor_hex),
-            "FFCage_Full" => Some(&self.ff_cage_full),
-            "Field_STD_Frame" => Some(&self.field_std_frame),
-            "FF_Goal" => Some(&self.ff_goal),
-            "FF_Roof" => Some(&self.ff_roof),
-            "FF_Side" => Some(&self.ff_side),
-            "Goal_STD_Floor" => Some(&self.goal_std_floor),
-            "Field_STD_TrimB" => Some(&self.field_std_trim_b),
-            "Field_STD_Trim" => Some(&self.field_std_trim),
-            "Field_Center" => Some(&self.field_center),
-            "Field_Center_Lines" => Some(&self.field_center_lines),
-            "Field_Center_Trim" => Some(&self.field_center_trim),
-            "Field_CenterField_Team1" => Some(&self.field_center_field_team1),
-            "Field_CenterField_Team2" => Some(&self.field_center_field_team2),
-            "Field_CenterVent" => Some(&self.field_center_vent),
-            "Goal_Lines" => Some(&self.goal_lines),
-            "Goal_STD_Glass" => Some(&self.goal_std_glass),
-            "FieldFrame_Outer" => Some(&self.field_frame_outer),
-            "Goal_STD_Trim" => Some(&self.goal_std_trim),
-            "Goal_STD_Frame" => Some(&self.goal_std_frame),
-            "Goal_STD_Quarterpipe" => Some(&self.goal_std_quarterpipe),
-            "Side_Trim" => Some(&self.side_trim),
-            "Field_STD_Floor_Team1" => Some(&self.field_std_floor_team1),
-            "Field_STD_Floor_Team2" => Some(&self.field_std_floor_team2),
-            "Field_Side_Lines" => Some(&self.field_side_lines),
-            _ => None,
-        }
-    }
-}
-
-pub fn get_mesh_info<'a>(name: &str, query: &[&'a dyn GetMeshInfoFromName<Mesh>]) -> Option<&'a Handle<Mesh>> {
-    query.iter().find_map(|x| x.get(name))
-}
-
-static MATERIALS: Mutex<Lazy<HashMap<String, Handle<StandardMaterial>>>> = Mutex::new(Lazy::new(HashMap::new));
-
-const DOUBLE_SIDED_MATS: [&str; 4] = [
-    "FutureTech.Materials.ForceField_Mat",
+const DOUBLE_SIDED_MATS: [&str; 6] = [
     "FutureTech.Materials.ForceField_HexGage_MIC",
+    "FutureTech.Materials.HexGlass_WithArrows_Team2_MIC",
+    "FutureTech.Materials.HexGlass_WithArrows_Team1_MIC",
     "FutureTech.Materials.Frame_01_V2_Mat",
     "FutureTech.Materials.Reflective_Floor_V2_Mat",
+    "FutureTech.Materials.Frame_01_MIC",
 ];
-const TRANSPARENT_MATS: [&str; 2] = ["FutureTech.Materials.ForceField_Mat", "FutureTech.Materials.ForceField_HexGage_MIC"];
 
-fn retreive_material(name: &str, query: &[&dyn GetTextureFromName]) -> Option<StandardMaterial> {
-    let material_folder = if name.ends_with("MIC") { "MaterialInstanceConstant" } else { "Material3" };
+const TRANSPARENT_MATS: [&str; 3] = [
+    "FutureTech.Materials.ForceField_HexGage_MIC",
+    "FutureTech.Materials.HexGlass_WithArrows_Team2_MIC",
+    "FutureTech.Materials.HexGlass_WithArrows_Team1_MIC",
+];
 
-    let path = format!("assets/{}.mat", name.replace("Materials", material_folder).replace('.', "/"));
+fn retreive_material(name: &str, asset_server: &AssetServer) -> Option<StandardMaterial> {
+    println!("Retreiving material {name}");
+    let material_folder = if name.ends_with("MIC") { ".MaterialInstanceConstant" } else { ".Material3" };
+    let pre_path = name.replace(".Materials", material_folder).replace('.', "/");
+
+    let path = format!("assets/{pre_path}.mat");
     let Ok(mat_file) = fs::read_to_string(&path) else {
+        println!("Failed to read {path} ({name})");
+        return None;
+    };
+
+    let props: String = format!("assets/{pre_path}.props.txt");
+    let Ok(props_file) = fs::read_to_string(&props) else {
         println!("Failed to read {path} ({name})");
         return None;
     };
 
     let mut diffuse = None;
     let mut normal = None;
+    let mut other = Vec::new();
 
     for line in mat_file.lines() {
         // split at the first "="
@@ -314,6 +118,9 @@ fn retreive_material(name: &str, query: &[&dyn GetTextureFromName]) -> Option<St
                 "Normal" => {
                     normal = Some(value);
                 }
+                "Other[0]" => {
+                    other.push(value);
+                }
                 x => {
                     println!("Unknown key {x} is {value} in {path} ({name})");
                 }
@@ -327,39 +134,78 @@ fn retreive_material(name: &str, query: &[&dyn GetTextureFromName]) -> Option<St
         ..default()
     };
 
-    if TRANSPARENT_MATS.contains(&name) {
+    let mut alpha_mode = None;
+    let mut mask_clip_value = 0.333;
+    let mut double_sided = None;
+
+    for line in props_file.lines() {
+        let mut split = line.split(" = ");
+        if let Some(key) = split.next() {
+            let Some(value) = split.next() else {
+                continue;
+            };
+
+            if key == "TwoSided" {
+                double_sided = Some(value == "true");
+            } else if key == "BlendMode" {
+                alpha_mode = match value {
+                    "BLEND_Opaque (0)" => Some(AlphaMode::Opaque),
+                    "BLEND_Masked (1)" => Some(AlphaMode::Mask(mask_clip_value)),
+                    "BLEND_Translucent (2)" => Some(AlphaMode::Blend),
+                    "BLEND_Additive (3)" => Some(AlphaMode::Add),
+                    _ => {
+                        println!("Unknown blend mode {value} in {path} ({name})");
+                        None
+                    }
+                };
+            } else if key == "OpacityMaskClipValue" {
+                if let Ok(mask_value) = value.parse() {
+                    mask_clip_value = mask_value;
+
+                    if let Some(AlphaMode::Mask(_)) = alpha_mode {
+                        alpha_mode = Some(AlphaMode::Mask(mask_clip_value));
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(alpha_mode) = alpha_mode {
+        material.alpha_mode = alpha_mode;
+    } else if TRANSPARENT_MATS.contains(&name) {
         material.alpha_mode = AlphaMode::Blend;
     }
 
-    if DOUBLE_SIDED_MATS.contains(&name) {
+    if double_sided.unwrap_or_default() || DOUBLE_SIDED_MATS.contains(&name) {
         material.cull_mode = None;
         material.double_sided = true;
     }
 
     if let Some(texture_name) = diffuse {
-        if let Some(texture) = query.iter().find_map(|x| x.get(texture_name)) {
-            println!("Found texture for {name}");
-            if texture_name == "ForcefieldHex" {
-                material.base_color = Color::rgba(0.3, 0.3, 0.3, 0.3);
-            }
-            material.base_color_texture = Some(texture.clone());
-        } else {
-            println!("Failed to find texture for {name}");
+        println!("Found texture for {name}");
+        if texture_name == "ForcefieldHex" {
+            material.base_color = Color::rgba(0.3, 0.3, 0.3, 0.3);
+        }
+        material.base_color_texture = Some(load_texture(texture_name, asset_server));
+    }
+
+    for texture_name in other {
+        // idealy, the textures would be combined
+        if diffuse.is_none() {
+            material.base_color_texture = Some(load_texture(texture_name, asset_server));
         }
     }
 
     if let Some(texture_name) = normal {
-        if let Some(texture) = query.iter().find_map(|x| x.get(texture_name)) {
-            material.normal_map_texture = Some(texture.clone());
-        } else {
-            println!("Failed to find normal map for {name}");
-        }
+        material.normal_map_texture = Some(load_texture(texture_name, asset_server));
     }
 
     Some(material)
 }
 
-pub fn get_material(name: &str, materials: &mut ResMut<Assets<StandardMaterial>>, query: &[&dyn GetTextureFromName]) -> Handle<StandardMaterial> {
+static MATERIALS: Mutex<Lazy<HashMap<String, Handle<StandardMaterial>>>> = Mutex::new(Lazy::new(HashMap::new));
+
+pub fn get_material(name: &str, materials: &mut Assets<StandardMaterial>, asset_server: &AssetServer) -> Handle<StandardMaterial> {
     let mut material_names = MATERIALS.lock().unwrap();
 
     if let Some(material) = material_names.get(name) {
@@ -369,7 +215,7 @@ pub fn get_material(name: &str, materials: &mut ResMut<Assets<StandardMaterial>>
     material_names
         .entry(name.to_string())
         .or_insert_with(|| {
-            materials.add(retreive_material(name, query).unwrap_or(StandardMaterial {
+            materials.add(retreive_material(name, asset_server).unwrap_or(StandardMaterial {
                 base_color: Color::rgb(0.3, 0.3, 0.3),
                 metallic: 0.1,
                 cull_mode: None,
