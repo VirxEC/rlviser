@@ -66,7 +66,7 @@ fn load_texture(name: &str, asset_server: &AssetServer) -> Handle<Image> {
     asset_server.load(path)
 }
 
-const DOUBLE_SIDED_MATS: [&str; 9] = [
+const DOUBLE_SIDED_MATS: [&str; 11] = [
     "FutureTech.Materials.ForceField_HexGage_MIC",
     "FutureTech.Materials.HexGlass_WithArrows_Team2_MIC",
     "FutureTech.Materials.HexGlass_WithArrows_Team1_MIC",
@@ -76,6 +76,8 @@ const DOUBLE_SIDED_MATS: [&str; 9] = [
     "FutureTech.Materials.Reflective_Floor_V2_Mat",
     "FutureTech.Materials.Frame_01_MIC",
     "Stadium.Materials.SeatBase_Mat",
+    "Stadium.Materials.Crowd_ST_Team1_Mic",
+    "Stadium.Materials.Crowd_ST_Team2_Mic",
 ];
 
 const TRANSPARENT_MATS: [&str; 11] = [
@@ -94,7 +96,11 @@ const TRANSPARENT_MATS: [&str; 11] = [
 
 fn retreive_material(name: &str, asset_server: &AssetServer) -> Option<StandardMaterial> {
     println!("Retreiving material {name}");
-    let material_folder = if name.ends_with("MIC") { ".MaterialInstanceConstant" } else { ".Material3" };
+    let material_folder = if name.ends_with("MIC") || name.ends_with("Mic") {
+        ".MaterialInstanceConstant"
+    } else {
+        ".Material3"
+    };
     let pre_path = name.replace(".Materials", material_folder).replace('.', "/");
 
     let path = format!("assets/{pre_path}.mat");
