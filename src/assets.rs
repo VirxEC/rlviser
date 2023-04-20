@@ -66,7 +66,8 @@ fn load_texture(name: &str, asset_server: &AssetServer) -> Handle<Image> {
     asset_server.load(path)
 }
 
-const DOUBLE_SIDED_MATS: [&str; 11] = [
+const DOUBLE_SIDED_MATS: [&str; 12] = [
+    "Trees.Materials.LombardyPoplar_B_NoWind_MIC",
     "FutureTech.Materials.ForceField_HexGage_MIC",
     "FutureTech.Materials.HexGlass_WithArrows_Team2_MIC",
     "FutureTech.Materials.HexGlass_WithArrows_Team1_MIC",
@@ -80,7 +81,8 @@ const DOUBLE_SIDED_MATS: [&str; 11] = [
     "Stadium.Materials.Crowd_ST_Team2_Mic",
 ];
 
-const TRANSPARENT_MATS: [&str; 11] = [
+const TRANSPARENT_MATS: [&str; 12] = [
+    "Trees.Materials.LombardyPoplar_B_NoWind_MIC",
     "FutureTech.Materials.ForceField_HexGage_MIC",
     "FutureTech.Materials.HexGlass_WithArrows_Team2_MIC",
     "FutureTech.Materials.HexGlass_WithArrows_Team1_MIC",
