@@ -1,12 +1,15 @@
 use bevy::{
     prelude::*,
     render::camera::CameraProjection,
-    window::{PresentMode, PrimaryWindow},
+    window::{CursorGrabMode, PresentMode, PrimaryWindow},
 };
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
-use bevy_spectator::Spectator;
+use bevy_mod_picking::PickingPluginsState;
 
-use crate::camera::DaylightOffset;
+use crate::{
+    camera::{DaylightOffset, EntityName, HighlightedEntity},
+    spectator::Spectator,
+};
 
 pub struct DebugOverlayPlugin;
 
@@ -54,14 +57,41 @@ impl Default for Options {
     }
 }
 
-fn ui_system(mut contexts: EguiContexts, time: Res<Time>, keys: Res<Input<KeyCode>>, mut options: ResMut<Options>) {
-    if keys.just_pressed(KeyCode::I) {
+#[allow(clippy::too_many_arguments)]
+fn ui_system(
+    mut windows: Query<&mut Window, With<PrimaryWindow>>,
+    mut picking_state: ResMut<PickingPluginsState>,
+    mut options: ResMut<Options>,
+    mut contexts: EguiContexts,
+    heq: Query<&EntityName, With<HighlightedEntity>>,
+    keys: Res<Input<KeyCode>>,
+    time: Res<Time>,
+) {
+    if keys.just_pressed(KeyCode::Escape) {
         options.focus = !options.focus;
+
+        let mut window = windows.single_mut();
+        window.cursor.grab_mode = match options.focus {
+            true => {
+                if cfg!(windows) {
+                    CursorGrabMode::Confined
+                } else {
+                    CursorGrabMode::Locked
+                }
+            }
+            false => CursorGrabMode::None,
+        };
+        window.cursor.visible = !options.focus;
+        picking_state.enable_picking = !options.focus;
+        picking_state.enable_interacting = !options.focus;
+        picking_state.enable_highlighting = !options.focus;
     }
 
     if options.focus {
         return;
     }
+
+    let highlighted_entity_name = heq.get_single().map(|he| he.name.clone()).unwrap_or(String::from("None"));
 
     let ctx = contexts.ctx_mut();
 
@@ -82,6 +112,7 @@ fn ui_system(mut contexts: EguiContexts, time: Res<Time>, keys: Res<Input<KeyCod
     egui::SidePanel::left("left_panel").show(ctx, |ui| {
         ui.label("Press I to hide");
         ui.label(format!("FPS: {fps:.0}"));
+        ui.label(format!("Highlighted entity: {highlighted_entity_name}"));
         ui.checkbox(&mut options.vsync, "vsync");
         ui.checkbox(&mut options.stop_day, "Stop day cycle");
         ui.add(egui::Slider::new(&mut options.daytime, 0.0..=150.0).text("Daytime"));

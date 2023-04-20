@@ -4,6 +4,7 @@ mod camera;
 mod gui;
 mod mesh;
 mod rocketsim;
+mod spectator;
 mod udp;
 
 use bevy::{

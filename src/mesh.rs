@@ -1,9 +1,11 @@
 use bevy::{prelude::*, render::mesh};
+use bevy_mod_picking::PickableBundle;
 use serde::Deserialize;
 use std::io::{self, Read};
 
 use crate::{
     assets::*,
+    camera::EntityName,
     udp::{Ball, ToBevyVec},
     LoadState,
 };
@@ -42,6 +44,7 @@ fn load_extra_field(mut commands: Commands, mut materials: ResMut<Assets<Standar
                 ..default()
             },
         ))
+        .insert((PickableBundle::default(), EntityName::new("ball")))
         .with_children(|parent| {
             parent.spawn(PointLightBundle {
                 point_light: PointLight {
@@ -178,12 +181,14 @@ fn load_field(mut commands: Commands, mut materials: ResMut<Assets<StandardMater
         let material = get_material(first_mat, materials.as_mut(), asset_server.as_ref());
 
         let transform = node.get_transform();
-        commands.spawn(PbrBundle {
-            mesh: mesh.clone(),
-            material: material.clone(),
-            transform,
-            ..default()
-        });
+        commands
+            .spawn(PbrBundle {
+                mesh: mesh.clone(),
+                material: material.clone(),
+                transform,
+                ..default()
+            })
+            .insert((PickableBundle::default(), EntityName::new(node.static_mesh)));
     }
 
     state.set(LoadState::FieldExtra);

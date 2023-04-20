@@ -2,7 +2,9 @@ use std::time::Duration;
 
 use bevy::prelude::*;
 use bevy_atmosphere::prelude::*;
-use bevy_spectator::*;
+use bevy_mod_picking::{CustomHighlightPlugin, DefaultPickingPlugins, HoverEvent, PickingCameraBundle, PickingEvent};
+
+use crate::spectator::*;
 
 #[derive(Component)]
 struct Sun;
@@ -43,16 +45,18 @@ fn setup(mut commands: Commands) {
 
     commands.spawn((DirectionalLightBundle::default(), Sun));
 
-    commands.spawn((
-        PrimaryCamera,
-        Camera3dBundle {
-            projection: PerspectiveProjection { far: 500000., ..default() }.into(),
-            transform: Transform::from_translation(Vec3::new(-3000., 1000., 0.)).looking_to(Vec3::X, Vec3::Y),
-            ..default()
-        },
-        AtmosphereCamera::default(),
-        Spectator,
-    ));
+    commands
+        .spawn((
+            PrimaryCamera,
+            Camera3dBundle {
+                projection: PerspectiveProjection { far: 500000., ..default() }.into(),
+                transform: Transform::from_translation(Vec3::new(-3000., 1000., 0.)).looking_to(Vec3::X, Vec3::Y),
+                ..default()
+            },
+            AtmosphereCamera::default(),
+            Spectator,
+        ))
+        .insert(PickingCameraBundle::default());
 }
 
 #[derive(Resource, Default)]
@@ -74,11 +78,36 @@ fn daylight_cycle(
     if timer.0.finished() && !offset.stop_day {
         let t = (offset.offset + time.elapsed_seconds_wrapped()) / (200. / offset.day_speed);
 
-        atmosphere.sun_position = Vec3::new(0., t.sin(), t.cos());
+        atmosphere.sun_position = Vec3::new(-t.cos(), t.sin(), 0.);
 
         if let Some((mut light_trans, mut directional)) = query.single_mut().into() {
             light_trans.rotation = Quat::from_rotation_x(-t.sin().atan2(t.cos()));
             directional.illuminance = t.sin().max(0.0).powf(2.0) * 100000.;
+        }
+    }
+}
+
+#[derive(Component)]
+pub struct EntityName {
+    pub name: String,
+}
+
+impl EntityName {
+    pub fn new<T: ToString>(name: T) -> Self {
+        Self { name: name.to_string() }
+    }
+}
+
+#[derive(Component)]
+pub struct HighlightedEntity;
+
+pub fn handle_picker_events(mut commands: Commands, mut events: EventReader<PickingEvent>) {
+    for event in events.iter() {
+        if let PickingEvent::Hover(hover) = event {
+            match hover {
+                HoverEvent::JustEntered(entity) => commands.entity(*entity).insert(HighlightedEntity),
+                HoverEvent::JustLeft(entity) => commands.entity(*entity).remove::<HighlightedEntity>(),
+            };
         }
     }
 }
@@ -98,7 +127,9 @@ impl Plugin for CameraPlugin {
         .insert_resource(DaylightOffset::default())
         .add_plugin(SpectatorPlugin)
         .add_plugin(AtmospherePlugin)
+        .add_plugins(DefaultPickingPlugins.build().disable::<CustomHighlightPlugin<StandardMaterial>>())
         .add_startup_system(setup)
+        .add_system(handle_picker_events)
         .add_system(daylight_cycle);
     }
 }

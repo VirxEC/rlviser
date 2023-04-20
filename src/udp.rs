@@ -4,9 +4,11 @@ use bevy::{
     math::{Mat3A, Vec3A},
     prelude::*,
 };
+use bevy_mod_picking::PickableBundle;
 
 use crate::{
     bytes::{FromBytes, ToBytes},
+    camera::EntityName,
     rocketsim::{GameState, Team},
     LoadState, ServerPort,
 };
@@ -143,6 +145,8 @@ fn step_arena(
                     transform: Transform::from_translation(pad.position.to_bevy() + Vec3::Y),
                     ..default()
                 },
+                PickableBundle::default(),
+                EntityName::new("generic_boost_pad"),
             ));
         }
     }
@@ -174,6 +178,8 @@ fn step_arena(
                         transform: Transform::from_translation(car_info.state.pos.to_bevy()),
                         ..default()
                     },
+                    PickableBundle::default(),
+                    EntityName::new("generic_car"),
                 ));
             }
         }
