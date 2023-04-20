@@ -110,15 +110,15 @@ fn ui_system(
     let fps = 1. / avg_dt;
 
     egui::SidePanel::left("left_panel").show(ctx, |ui| {
-        ui.label("Press I to hide");
+        ui.label("Press Esc to close menu");
         ui.label(format!("FPS: {fps:.0}"));
-        ui.label(format!("Highlighted entity: {highlighted_entity_name}"));
         ui.checkbox(&mut options.vsync, "vsync");
         ui.checkbox(&mut options.stop_day, "Stop day cycle");
         ui.add(egui::Slider::new(&mut options.daytime, 0.0..=150.0).text("Daytime"));
         ui.add(egui::Slider::new(&mut options.day_speed, 0.0..=10.0).text("Day speed"));
         ui.add(egui::Slider::new(&mut options.msaa, 0..=3).text("MSAA"));
         ui.add(egui::Slider::new(&mut options.draw_distance, 0..=4).text("Draw distance"));
+        ui.label(format!("Highlighted entity: {highlighted_entity_name}"));
     });
 }
 

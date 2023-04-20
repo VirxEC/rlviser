@@ -30,7 +30,7 @@ pub struct BallAssets {
     pub ball: Handle<Mesh>,
 }
 
-const BLOCK_MESHES: [&str; 5] = ["SkySphere01", "FX_General", "Glow", "Fog", "LightCones"];
+const BLOCK_MESHES: [&str; 4] = ["SkySphere01", "Glow", "Fog", "FX_General"];
 
 pub fn get_mesh_info(name: &str, asset_server: &AssetServer) -> Option<Handle<Mesh>> {
     let mut path = name
@@ -66,19 +66,30 @@ fn load_texture(name: &str, asset_server: &AssetServer) -> Handle<Image> {
     asset_server.load(path)
 }
 
-const DOUBLE_SIDED_MATS: [&str; 6] = [
+const DOUBLE_SIDED_MATS: [&str; 9] = [
     "FutureTech.Materials.ForceField_HexGage_MIC",
     "FutureTech.Materials.HexGlass_WithArrows_Team2_MIC",
     "FutureTech.Materials.HexGlass_WithArrows_Team1_MIC",
+    "FX_Lighting.Materials.LightCone_Simple_MIC",
+    "Stadium.Materials.StadiumLight_Flare_Mat",
     "FutureTech.Materials.Frame_01_V2_Mat",
     "FutureTech.Materials.Reflective_Floor_V2_Mat",
     "FutureTech.Materials.Frame_01_MIC",
+    "Stadium.Materials.SeatBase_Mat",
 ];
 
-const TRANSPARENT_MATS: [&str; 3] = [
+const TRANSPARENT_MATS: [&str; 11] = [
     "FutureTech.Materials.ForceField_HexGage_MIC",
     "FutureTech.Materials.HexGlass_WithArrows_Team2_MIC",
     "FutureTech.Materials.HexGlass_WithArrows_Team1_MIC",
+    "FX_Lighting.Materials.LightCone_Simple_MIC",
+    "Stadium.Materials.StadiumLight_Flare_Mat",
+    "FX_General.Mat.FogSheet_Mat",
+    "Stadium_Assets.Materials.StadiumFog_Team1_MIC",
+    "Stadium_Assets.Materials.StadiumFog_Team2_MIC",
+    "FX_General.Mat.FogSheet_Team1_MIC",
+    "FX_General.Mat.FogSheet_Team2_MIC",
+    "FX_General.Mat.FogCylinder_Mat",
 ];
 
 fn retreive_material(name: &str, asset_server: &AssetServer) -> Option<StandardMaterial> {
@@ -173,7 +184,7 @@ fn retreive_material(name: &str, asset_server: &AssetServer) -> Option<StandardM
     if let Some(alpha_mode) = alpha_mode {
         material.alpha_mode = alpha_mode;
     } else if TRANSPARENT_MATS.contains(&name) {
-        material.alpha_mode = AlphaMode::Blend;
+        material.alpha_mode = AlphaMode::Add;
     }
 
     if double_sided.unwrap_or_default() || DOUBLE_SIDED_MATS.contains(&name) {

@@ -141,6 +141,8 @@ struct Node {
     sub_nodes: Vec<Section>,
 }
 
+const BLOCK_MESH_MATS: [&str; 2] = ["CollisionMeshes.Collision_Mat", "FX_General.Mat.CubeMap_HotSpot_Mat"];
+
 #[allow(clippy::too_many_arguments)]
 fn load_field(mut commands: Commands, mut materials: ResMut<Assets<StandardMaterial>>, mut state: ResMut<NextState<LoadState>>, asset_server: Res<AssetServer>) {
     let (pickup_boost, standard_common_prefab, the_world): (Section, Node, Node) = serde_json::from_str(include_str!("../stadiums/Stadium_P_MeshObjects.json")).unwrap();
@@ -162,7 +164,7 @@ fn load_field(mut commands: Commands, mut materials: ResMut<Assets<StandardMater
         }
 
         if let Some(mats) = &node.materials {
-            if mats.contains(&String::from("CollisionMeshes.Collision_Mat")) {
+            if BLOCK_MESH_MATS.iter().any(|&x| mats.iter().any(|y| y.as_str() == x)) {
                 continue;
             }
         }
