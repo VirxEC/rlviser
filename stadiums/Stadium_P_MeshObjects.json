@@ -4852,7 +4852,7 @@
                 ],
                 "Rotation": [
                   0.0,
-                  73.12282,
+                  -73.12282,
                   0.0
                 ],
                 "StaticMesh": "Park_Assets.Meshes.Park_BannerFlag_CMB",
@@ -5490,7 +5490,7 @@
                 ],
                 "Rotation": [
                   0.0,
-                  -106.871811,
+                  106.871811,
                   0.0
                 ],
                 "StaticMesh": "Park_Assets.Meshes.Park_BannerFlag_CMB",
