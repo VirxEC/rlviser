@@ -81,8 +81,11 @@ const DOUBLE_SIDED_MATS: [&str; 12] = [
     "Stadium.Materials.Crowd_ST_Team2_Mic",
 ];
 
-const TRANSPARENT_MATS: [&str; 12] = [
+const TRANSPARENT_MATS: [&str; 1] = [
     "Trees.Materials.LombardyPoplar_B_NoWind_MIC",
+];
+
+const ADD_MATS: [&str; 11] = [
     "FutureTech.Materials.ForceField_HexGage_MIC",
     "FutureTech.Materials.HexGlass_WithArrows_Team2_MIC",
     "FutureTech.Materials.HexGlass_WithArrows_Team1_MIC",
@@ -192,6 +195,8 @@ fn retreive_material(name: &str, asset_server: &AssetServer) -> Option<StandardM
     if let Some(alpha_mode) = alpha_mode {
         material.alpha_mode = alpha_mode;
     } else if TRANSPARENT_MATS.contains(&name) {
+        material.alpha_mode = AlphaMode::Blend;
+    } else if ADD_MATS.contains(&name) {
         material.alpha_mode = AlphaMode::Add;
     }
 
