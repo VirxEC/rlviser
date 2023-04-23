@@ -7,6 +7,7 @@ use bevy::{
 use bevy_mod_picking::PickableBundle;
 
 use crate::{
+    assets::CarBodies,
     bytes::{FromBytes, ToBytes},
     camera::EntityName,
     rocketsim::{GameState, Team},
@@ -58,7 +59,11 @@ impl ToBevyMat for Mat3A {
     fn to_bevy(self) -> Quat {
         // In RocketSim, the Z axis is up, but in Bevy, the Z and Y axis are swapped
         // We also need to rotate 90 degrees around the X axis and 180 degrees around the Y axis
-        let mat = Mat3A::from_axis_angle(Vec3::Y, PI) * Mat3A::from_axis_angle(Vec3::X, PI / 2.) * self * Mat3A::from_cols(Vec3A::X, -Vec3A::Z, Vec3A::Y);
+        let mat = Mat3A::from_axis_angle(Vec3::Y, PI)
+            * Mat3A::from_axis_angle(Vec3::X, PI / 2.)
+            * self
+            * Mat3A::from_cols(Vec3A::X, -Vec3A::Z, Vec3A::Y)
+            * Mat3A::from_axis_angle(Vec3::Y, PI);
         Quat::from_mat3a(&mat)
     }
 }
@@ -75,10 +80,12 @@ impl ToBevyQuat for Quat {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn step_arena(
     socket: Res<UdpConnection>,
     cars: Query<(Entity, &Car)>,
     pads: Query<(Entity, &BoostPadI)>,
+    car_bodies: Res<CarBodies>,
     mut game_state: ResMut<GameState>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -165,22 +172,43 @@ fn step_arena(
 
             for car_info in non_existant_cars {
                 let hitbox = car_info.config.hitbox_size.to_bevy();
-                let color = match car_info.team {
+                let base_color = match car_info.team {
                     Team::Blue => Color::rgb(0.03, 0.09, 0.79),
                     Team::Orange => Color::rgb(0.82, 0.42, 0.02),
                 };
 
-                commands.spawn((
-                    Car(car_info.id),
-                    PbrBundle {
-                        mesh: meshes.add(Mesh::from(shape::Box::new(hitbox.x, hitbox.y, hitbox.z))),
-                        material: materials.add(StandardMaterial::from(color)),
-                        transform: Transform::from_translation(car_info.state.pos.to_bevy()),
+                let (pbr, name) = if 120. < hitbox.x && hitbox.x < 121. {
+                    let car_body_material = StandardMaterial {
+                        base_color,
+                        base_color_texture: Some(car_bodies.octane_body_diffuse.clone()),
+                        normal_map_texture: Some(car_bodies.octane_body_normal.clone()),
+                        occlusion_texture: Some(car_bodies.octane_body_occlude.clone()),
+                        metallic: 0.1,
                         ..default()
-                    },
-                    PickableBundle::default(),
-                    EntityName::new("generic_car"),
-                ));
+                    };
+
+                    (
+                        PbrBundle {
+                            mesh: car_bodies.octane_body.clone(),
+                            material: materials.add(car_body_material),
+                            transform: Transform::from_translation(car_info.state.pos.to_bevy()),
+                            ..default()
+                        },
+                        "octane_body",
+                    )
+                } else {
+                    (
+                        PbrBundle {
+                            mesh: meshes.add(Mesh::from(shape::Box::new(hitbox.x, hitbox.y, hitbox.z))),
+                            material: materials.add(StandardMaterial::from(base_color)),
+                            transform: Transform::from_translation(car_info.state.pos.to_bevy()),
+                            ..default()
+                        },
+                        "generic_body",
+                    )
+                };
+
+                commands.spawn((Car(car_info.id), pbr, PickableBundle::default(), EntityName::new(name)));
             }
         }
         _ => {}

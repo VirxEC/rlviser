@@ -30,6 +30,18 @@ pub struct BallAssets {
     pub ball: Handle<Mesh>,
 }
 
+#[derive(AssetCollection, Resource)]
+pub struct CarBodies {
+    #[asset(path = "Body_Octane/SkeletalMesh3/Body_Octane_SK.psk")]
+    pub octane_body: Handle<Mesh>,
+    #[asset(path = "Body_Octane_Textures/Texture2D/Pepe_Body_D.tga")]
+    pub octane_body_diffuse: Handle<Image>,
+    #[asset(path = "Detail_Blank/Texture2D/Blank_N.tga")]
+    pub octane_body_normal: Handle<Image>,
+    #[asset(path = "Body_Octane_Textures/Texture2D/Body_Octane_Curvature_New.tga")]
+    pub octane_body_occlude: Handle<Image>,
+}
+
 const BLOCK_MESHES: [&str; 4] = ["SkySphere01", "Glow", "Fog", "FX_General"];
 
 pub fn get_mesh_info(name: &str, asset_server: &AssetServer) -> Option<Handle<Mesh>> {
@@ -81,9 +93,7 @@ const DOUBLE_SIDED_MATS: [&str; 12] = [
     "Stadium.Materials.Crowd_ST_Team2_Mic",
 ];
 
-const TRANSPARENT_MATS: [&str; 1] = [
-    "Trees.Materials.LombardyPoplar_B_NoWind_MIC",
-];
+const TRANSPARENT_MATS: [&str; 1] = ["Trees.Materials.LombardyPoplar_B_NoWind_MIC"];
 
 const ADD_MATS: [&str; 11] = [
     "FutureTech.Materials.ForceField_HexGage_MIC",
@@ -386,7 +396,7 @@ impl AssetLoader for PskxLoader {
     }
 
     fn extensions(&self) -> &[&str] {
-        &["pskx"]
+        &["pskx", "psk"]
     }
 }
 
