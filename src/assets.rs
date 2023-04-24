@@ -112,7 +112,7 @@ const DOUBLE_SIDED_MATS: [&str; 20] = [
 
 const TRANSPARENT_MATS: [&str; 2] = ["Trees.Materials.LombardyPoplar_B_NoWind_MIC", "Trees.Materials.LombardyPoplar_B_Mat"];
 
-const ADD_MATS: [&str; 11] = [
+const ADD_MATS: [&str; 13] = [
     "FutureTech.Materials.ForceField_HexGage_MIC",
     "FutureTech.Materials.HexGlass_WithArrows_Team2_MIC",
     "FutureTech.Materials.HexGlass_WithArrows_Team1_MIC",
@@ -124,6 +124,8 @@ const ADD_MATS: [&str; 11] = [
     "FX_General.Mat.FogSheet_Team1_MIC",
     "FX_General.Mat.FogSheet_Team2_MIC",
     "FX_General.Mat.FogCylinder_Mat",
+    "FutureTech.Materials.Glass_Projected_V2_Mat",
+    "FutureTech.Materials.Glass_Projected_V2_Team2_MIC",
 ];
 
 fn retreive_material(name: &str, asset_server: &AssetServer) -> Option<StandardMaterial> {

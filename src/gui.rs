@@ -3,11 +3,12 @@ use bevy::{
     render::camera::CameraProjection,
     window::{CursorGrabMode, PresentMode, PrimaryWindow},
 };
+use bevy_atmosphere::prelude::AtmosphereCamera;
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
-use bevy_mod_picking::PickingPluginsState;
+use bevy_mod_picking::{PickingCameraBundle, PickingPluginsState};
 
 use crate::{
-    camera::{DaylightOffset, EntityName, HighlightedEntity},
+    camera::{DaylightOffset, EntityName, HighlightedEntity, PrimaryCamera},
     spectator::Spectator,
 };
 
@@ -122,7 +123,7 @@ fn ui_system(
     });
 }
 
-fn update_draw_distance(options: Res<Options>, mut query: Query<&mut Projection, With<Spectator>>) {
+fn update_draw_distance(options: Res<Options>, mut commands: Commands, query: Query<(&Projection, &Transform, Entity), With<PrimaryCamera>>) {
     let draw_distance = match options.draw_distance {
         0 => 15000.,
         1 => 50000.,
@@ -132,17 +133,24 @@ fn update_draw_distance(options: Res<Options>, mut query: Query<&mut Projection,
         _ => unreachable!(),
     };
 
-    if query.single().far() == draw_distance {
+    let (projection, transform, entity) = query.iter().next().unwrap();
+
+    if projection.far() == draw_distance {
         return;
     }
 
     println!("Setting draw distance to {draw_distance}");
-    match query.single_mut().into_inner() {
-        Projection::Perspective(perspective_projection) => {
-            perspective_projection.far = draw_distance;
-        }
-        _ => unreachable!(),
-    }
+    commands.entity(entity).remove::<(PrimaryCamera, Camera3dBundle, AtmosphereCamera, Spectator, PickingCameraBundle)>();
+    commands.entity(entity).despawn();
+
+    commands.spawn((
+        PrimaryCamera,
+        Camera3dBundle {
+            projection: PerspectiveProjection { far: draw_distance, ..default() }.into(),
+            transform: *transform,
+            ..default()
+        },
+    )).insert((AtmosphereCamera::default(), Spectator, PickingCameraBundle::default()));
 }
 
 fn toggle_vsync(options: Res<Options>, mut windows: Query<&mut Window, With<PrimaryWindow>>) {

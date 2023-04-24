@@ -22,7 +22,13 @@ impl Plugin for FieldLoaderPlugin {
     }
 }
 
-fn load_extra_field(mut commands: Commands, mut materials: ResMut<Assets<StandardMaterial>>, mut state: ResMut<NextState<LoadState>>, ball_assets: Res<BallAssets>) {
+fn load_extra_field(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut state: ResMut<NextState<LoadState>>,
+    ball_assets: Res<BallAssets>,
+) {
     // load a glowing ball
 
     let initial_ball_color = Color::rgb(0.3, 0.3, 0.3);
@@ -58,6 +64,23 @@ fn load_extra_field(mut commands: Commands, mut materials: ResMut<Assets<Standar
                     range: 1000.,
                     ..default()
                 },
+                ..default()
+            });
+        });
+
+    // spawn stadium lights
+
+    commands
+        .spawn(PbrBundle {
+            mesh: meshes.add(shape::UVSphere { radius: 250., ..default() }.into()),
+            material: materials.add(Color::rgb(1., 0., 0.).into()),
+            transform: Transform::from_xyz(-11500., 9000., 11500.),
+            ..default()
+        })
+        .with_children(|parent| {
+            parent.spawn(PbrBundle {
+                mesh: meshes.add(shape::UVSphere { radius: 30., ..default() }.into()),
+                material: materials.add(Color::rgb(0., 0., 1.).into()),
                 ..default()
             });
         });
@@ -230,6 +253,11 @@ impl MeshBuilder {
     // Build the Bevy Mesh
     pub fn build_meshes(self, scale: f32) -> Vec<Mesh> {
         let num_materials = self.num_materials;
+
+        if num_materials < 2 {
+            return vec![self.build_mesh(scale)];
+        }
+
         let all_mat_ids = self.ids.iter().map(|&id| self.mat_ids[id]).collect::<Vec<_>>();
 
         let initial_mesh = self.build_mesh(scale);
