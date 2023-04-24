@@ -1,4 +1,7 @@
-use bevy::{prelude::*, render::mesh};
+use bevy::{
+    prelude::*,
+    render::mesh::{self, VertexAttributeValues},
+};
 use bevy_mod_picking::PickableBundle;
 use serde::Deserialize;
 use std::io::{self, Read};
@@ -143,8 +146,13 @@ struct Node {
 
 const BLOCK_MESH_MATS: [&str; 2] = ["CollisionMeshes.Collision_Mat", "FX_General.Mat.CubeMap_HotSpot_Mat"];
 
-#[allow(clippy::too_many_arguments)]
-fn load_field(mut commands: Commands, mut materials: ResMut<Assets<StandardMaterial>>, mut state: ResMut<NextState<LoadState>>, asset_server: Res<AssetServer>) {
+fn load_field(
+    mut commands: Commands,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut state: ResMut<NextState<LoadState>>,
+    asset_server: Res<AssetServer>,
+) {
     let (pickup_boost, standard_common_prefab, the_world): (Section, Node, Node) = serde_json::from_str(include_str!("../stadiums/Stadium_P_MeshObjects.json")).unwrap();
     debug_assert!(pickup_boost.name == "Pickup_Boost");
     debug_assert!(standard_common_prefab.name == "Standard_Common_Prefab");
@@ -169,28 +177,35 @@ fn load_field(mut commands: Commands, mut materials: ResMut<Assets<StandardMater
             }
         }
 
-        let Some(mesh) = get_mesh_info(&node.static_mesh, asset_server.as_ref()) else {
+        let Some(mesh) = get_mesh_info(&node.static_mesh, meshes.as_mut()) else {
             println!("Not spawning mesh {}", node.static_mesh);
             continue;
         };
 
-        let Some(first_mat) = node.materials.as_ref().and_then(|mats| mats.first()) else {
+        let Some(mats) = node.materials.as_ref() else {
             println!("No materials found for {}", node.static_mesh);
             continue;
         };
 
-        println!("Getting material(s) for {}...", node.static_mesh);
-        let material = get_material(first_mat, materials.as_mut(), asset_server.as_ref());
+        for (mesh, mat) in mesh.into_iter().zip(mats) {
+            println!("Getting material {mat} (for {})", node.static_mesh);
+            let material = get_material(mat, materials.as_mut(), asset_server.as_ref());
 
-        let transform = node.get_transform();
-        commands
-            .spawn(PbrBundle {
-                mesh: mesh.clone(),
-                material: material.clone(),
-                transform,
-                ..default()
-            })
-            .insert((PickableBundle::default(), EntityName::new(node.static_mesh)));
+            let mut transform = node.get_transform();
+
+            if node.static_mesh.contains("Grass.Grass") || node.static_mesh.contains("Grass_1x1") {
+                transform.translation.y += 10.;
+            }
+
+            commands
+                .spawn(PbrBundle {
+                    mesh: mesh.clone(),
+                    material: material.clone(),
+                    transform,
+                    ..default()
+                })
+                .insert((PickableBundle::default(), EntityName::new(format!("{} | {mat}", node.static_mesh.clone()))));
+        }
     }
 
     state.set(LoadState::FieldExtra);
@@ -202,13 +217,91 @@ const INCLUDE_VERTEXCO: [&str; 1] = ["Goal_STD_Trim.pskx"];
 /// A collection of inter-connected triangles.
 #[derive(Clone, Debug, Default)]
 pub struct MeshBuilder {
-    ids: Vec<u32>,
+    ids: Vec<usize>,
     verts: Vec<f32>,
     uvs: Vec<[f32; 2]>,
     colors: Vec<[f32; 4]>,
+    num_materials: usize,
+    mat_ids: Vec<usize>,
 }
 
 impl MeshBuilder {
+    #[must_use]
+    // Build the Bevy Mesh
+    pub fn build_meshes(self, scale: f32) -> Vec<Mesh> {
+        let num_materials = self.num_materials;
+        let all_mat_ids = self.ids.iter().map(|&id| self.mat_ids[id]).collect::<Vec<_>>();
+
+        let initial_mesh = self.build_mesh(scale);
+        let all_verts = initial_mesh.attribute(Mesh::ATTRIBUTE_POSITION).unwrap().as_float3().unwrap();
+        let VertexAttributeValues::Float32x2(all_uvs) = initial_mesh.attribute(Mesh::ATTRIBUTE_UV_0).unwrap() else {
+            panic!("No UVs found");
+        };
+        let all_normals = initial_mesh.attribute(Mesh::ATTRIBUTE_NORMAL).unwrap().as_float3().unwrap();
+        let VertexAttributeValues::Float32x4(all_tangents) = initial_mesh.attribute(Mesh::ATTRIBUTE_TANGENT).unwrap() else {
+            panic!("No tangents found");
+        };
+        let all_colors = initial_mesh.attribute(Mesh::ATTRIBUTE_COLOR).map(|colors| colors.as_float3().unwrap());
+
+        (0..num_materials)
+            .map(|mat_id| {
+                let mut mesh = Mesh::new(mesh::PrimitiveTopology::TriangleList);
+
+                let verts = all_mat_ids
+                    .chunks_exact(3)
+                    .zip(all_verts.chunks_exact(3))
+                    .filter_map(|(mat_ids, verts)| if mat_ids[0] == mat_id { Some([verts[0], verts[1], verts[2]]) } else { None })
+                    .flatten()
+                    .collect::<Vec<_>>();
+                mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, verts);
+
+                let uvs = all_mat_ids
+                    .chunks_exact(3)
+                    .zip(all_uvs.chunks_exact(3))
+                    .filter_map(|(mat_ids, uvs)| if mat_ids[0] == mat_id { Some([uvs[0], uvs[1], uvs[2]]) } else { None })
+                    .flatten()
+                    .collect::<Vec<_>>();
+                mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+
+                let normals = all_mat_ids
+                    .chunks_exact(3)
+                    .zip(all_normals.chunks_exact(3))
+                    .filter_map(|(mat_ids, normals)| if mat_ids[0] == mat_id { Some([normals[0], normals[1], normals[2]]) } else { None })
+                    .flatten()
+                    .collect::<Vec<_>>();
+                mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+
+                let tangents = all_mat_ids
+                    .chunks_exact(3)
+                    .zip(all_tangents.chunks_exact(3))
+                    .filter_map(
+                        |(mat_ids, tangents)| {
+                            if mat_ids[0] == mat_id {
+                                Some([tangents[0], tangents[1], tangents[2]])
+                            } else {
+                                None
+                            }
+                        },
+                    )
+                    .flatten()
+                    .collect::<Vec<_>>();
+                mesh.insert_attribute(Mesh::ATTRIBUTE_TANGENT, tangents);
+
+                if let Some(all_colors) = all_colors {
+                    let colors = all_mat_ids
+                        .chunks_exact(3)
+                        .zip(all_colors.chunks_exact(3))
+                        .filter_map(|(mat_ids, colors)| if mat_ids[0] == mat_id { Some([colors[0], colors[1], colors[2]]) } else { None })
+                        .flatten()
+                        .collect::<Vec<_>>();
+                    mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
+                }
+
+                mesh
+            })
+            .collect()
+    }
+
     #[must_use]
     // Build the Bevy Mesh
     pub fn build_mesh(self, scale: f32) -> Mesh {
@@ -220,23 +313,22 @@ impl MeshBuilder {
             .map(|chunk| [chunk[0] * scale, chunk[1] * scale, chunk[2] * scale])
             .collect::<Vec<_>>();
 
-        mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, self.ids.iter().map(|&id| verts[id as usize]).collect::<Vec<_>>());
+        let ids = self.ids.iter().map(|&id| verts[id]).collect::<Vec<_>>();
+        let num_verts = ids.len();
+        mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, ids);
 
         mesh.compute_flat_normals();
 
         if !self.uvs.is_empty() {
-            // duplicate uvs like verts & ids
             mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, self.uvs);
 
             // compute tangents
-            mesh.set_indices(Some(mesh::Indices::U32(
-                (0..mesh.attribute(Mesh::ATTRIBUTE_POSITION).unwrap().len() as u32).collect::<Vec<_>>(),
-            )));
+            mesh.set_indices(Some(mesh::Indices::U32((0..num_verts as u32).collect::<Vec<_>>())));
             mesh.generate_tangents().unwrap();
         }
 
         if !self.colors.is_empty() {
-            mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, self.ids.iter().map(|&id| self.colors[id as usize]).collect::<Vec<_>>());
+            mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, self.ids.iter().map(|&id| self.colors[id]).collect::<Vec<_>>());
         }
 
         mesh
@@ -294,7 +386,7 @@ impl MeshBuilder {
                 }
                 "FACE0000" => {
                     read_faces(&chunk_data, chunk_data_count, &wedges).into_iter().flatten().for_each(|(id, uv, mat_id)| {
-                        ids.push(id);
+                        ids.push(id as usize);
                         uvs.push(uv);
                         mat_ids.push(mat_id);
                     });
@@ -330,24 +422,21 @@ impl MeshBuilder {
             }
 
             let mut last_euv = vec![0; num_materials];
-            for (uv, mat_id) in uvs.iter_mut().zip(mat_ids).filter(|(_, mat_id)| *mat_id < extra_uvs.len()) {
+            for (uv, mat_id) in uvs.iter_mut().zip(mat_ids.iter().copied()).filter(|(_, mat_id)| *mat_id < extra_uvs.len()) {
                 if last_euv[mat_id] < extra_uvs[mat_id].len() {
                     *uv = extra_uvs[mat_id][last_euv[mat_id]];
                     last_euv[mat_id] += 1;
                 }
             }
-
-            // if name == "OOBFloor.pskx" {
-            //     // save uvs to json in current directory
-            //     let mut file = std::fs::File::create("uvs.csv").unwrap();
-            //     writeln!(file, "u, v").unwrap();
-
-            //     for uv in &uvs {
-            //         writeln!(file, "{}, {}", uv[0], uv[1]).unwrap();
-            //     }
-            // }
         }
 
-        Ok(Self { ids, verts, uvs, colors })
+        Ok(Self {
+            ids,
+            verts,
+            uvs,
+            colors,
+            num_materials,
+            mat_ids,
+        })
     }
 }

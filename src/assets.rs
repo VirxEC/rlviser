@@ -42,10 +42,10 @@ pub struct CarBodies {
     pub octane_body_occlude: Handle<Image>,
 }
 
-const BLOCK_MESHES: [&str; 4] = ["SkySphere01", "Glow", "Fog", "FX_General"];
+const BLOCK_MESHES: [&str; 5] = ["Goal_STD_Outer", "SkySphere01", "Glow", "Fog", "FX_General"];
 
-pub fn get_mesh_info(name: &str, asset_server: &AssetServer) -> Option<Handle<Mesh>> {
-    let mut path = name
+pub fn get_mesh_info(name: &str, meshes: &mut Assets<Mesh>) -> Option<Vec<Handle<Mesh>>> {
+    let path = name
         .replace(".Modular", "")
         .replace(".Meshes", ".StaticMesh3")
         .replace(".SM", ".StaticMesh3")
@@ -54,14 +54,23 @@ pub fn get_mesh_info(name: &str, asset_server: &AssetServer) -> Option<Handle<Me
         .replace("Pickup_Boost.BoostPad", "Pickup_Boost.StaticMesh3.BoostPad")
         .replace("Grass.Grass", "Grass.StaticMesh3.Grass")
         .replace('.', "/");
-    path.push_str(".pskx");
 
     // check if any item in BLOCK_MESHES is in path
     if BLOCK_MESHES.iter().any(|x| path.contains(x)) {
         return None;
     }
 
-    Some(asset_server.load(path))
+    // read bytes from path
+    let Ok(mut file) = fs::File::open(format!("assets/{path}.pskx")) else {
+        println!("Failed to open mesh {path} for {name}");
+        return None;
+    };
+
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes).ok()?;
+
+    let builder = MeshBuilder::from_pskx(name, &bytes).ok()?;
+    Some(builder.build_meshes(1.).into_iter().map(|mesh| meshes.add(mesh)).collect())
 }
 
 fn load_texture(name: &str, asset_server: &AssetServer) -> Handle<Image> {
@@ -78,8 +87,9 @@ fn load_texture(name: &str, asset_server: &AssetServer) -> Handle<Image> {
     asset_server.load(path)
 }
 
-const DOUBLE_SIDED_MATS: [&str; 12] = [
+const DOUBLE_SIDED_MATS: [&str; 20] = [
     "Trees.Materials.LombardyPoplar_B_NoWind_MIC",
+    "Trees.Materials.LombardyPoplar_B_Mat",
     "FutureTech.Materials.ForceField_HexGage_MIC",
     "FutureTech.Materials.HexGlass_WithArrows_Team2_MIC",
     "FutureTech.Materials.HexGlass_WithArrows_Team1_MIC",
@@ -91,9 +101,16 @@ const DOUBLE_SIDED_MATS: [&str; 12] = [
     "Stadium.Materials.SeatBase_Mat",
     "Stadium.Materials.Crowd_ST_Team1_Mic",
     "Stadium.Materials.Crowd_ST_Team2_Mic",
+    "Stadium.Materials.Stairs_Mat",
+    "City.Materials.MIC_Sidewalk00",
+    "City.Materials.Concrete_MAT",
+    "Grass.Materials.Grass_Base_Mat",
+    "Stadium.Materials.HandRail_MIC",
+    "Stadium_Assets.Materials.GroomedGrass_FakeLight_Team1_MIC",
+    "Stadium_Assets.Materials.GroomedGrass_FakeLight_Team2_MIC",
 ];
 
-const TRANSPARENT_MATS: [&str; 1] = ["Trees.Materials.LombardyPoplar_B_NoWind_MIC"];
+const TRANSPARENT_MATS: [&str; 2] = ["Trees.Materials.LombardyPoplar_B_NoWind_MIC", "Trees.Materials.LombardyPoplar_B_Mat"];
 
 const ADD_MATS: [&str; 11] = [
     "FutureTech.Materials.ForceField_HexGage_MIC",
@@ -111,7 +128,7 @@ const ADD_MATS: [&str; 11] = [
 
 fn retreive_material(name: &str, asset_server: &AssetServer) -> Option<StandardMaterial> {
     println!("Retreiving material {name}");
-    let material_folder = if name.ends_with("MIC") || name.ends_with("Mic") {
+    let material_folder = if name.ends_with("MIC") || name.starts_with("MIC") || name.ends_with("Mic") {
         ".MaterialInstanceConstant"
     } else {
         ".Material3"
