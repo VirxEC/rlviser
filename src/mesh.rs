@@ -222,7 +222,7 @@ fn load_field(
                 continue;
             }
 
-            let material = get_material(mat, materials.as_mut(), asset_server.as_ref());
+            let material = get_material(mat, materials.as_mut(), asset_server.as_ref(), None);
 
             let mut transform = node.get_transform();
 

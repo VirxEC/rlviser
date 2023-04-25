@@ -34,12 +34,8 @@ pub struct BallAssets {
 pub struct CarBodies {
     #[asset(path = "Body_Octane/SkeletalMesh3/Body_Octane_SK.psk")]
     pub octane_body: Handle<Mesh>,
-    #[asset(path = "Body_Octane_Textures/Texture2D/Pepe_Body_D.tga")]
-    pub octane_body_diffuse: Handle<Image>,
-    #[asset(path = "Detail_Blank/Texture2D/Blank_N.tga")]
-    pub octane_body_normal: Handle<Image>,
-    #[asset(path = "Body_Octane_Textures/Texture2D/Body_Octane_Curvature_New.tga")]
-    pub octane_body_occlude: Handle<Image>,
+    #[asset(path = "Body_MuscleCar/SkeletalMesh3/Body_MuscleCar_SK.psk")]
+    pub dominus_body: Handle<Mesh>,
 }
 
 const BLOCK_MESHES: [&str; 7] = ["CollisionMeshes", "FieldCollision_Standard", "Goal_STD_Outer", "SkySphere01", "Glow", "Fog", "FX_General"];
@@ -128,7 +124,7 @@ const ADD_MATS: [&str; 13] = [
     "FutureTech.Materials.Glass_Projected_V2_Team2_MIC",
 ];
 
-fn retreive_material(name: &str, asset_server: &AssetServer) -> Option<StandardMaterial> {
+fn retreive_material(name: &str, asset_server: &AssetServer, base_color: Color) -> Option<StandardMaterial> {
     if name.is_empty() {
         return None;
     }
@@ -188,7 +184,7 @@ fn retreive_material(name: &str, asset_server: &AssetServer) -> Option<StandardM
     }
 
     let mut material = StandardMaterial {
-        base_color: Color::rgb(0.3, 0.3, 0.3),
+        base_color,
         metallic: 0.1,
         ..default()
     };
@@ -266,18 +262,20 @@ fn retreive_material(name: &str, asset_server: &AssetServer) -> Option<StandardM
 
 static MATERIALS: Mutex<Lazy<HashMap<String, Handle<StandardMaterial>>>> = Mutex::new(Lazy::new(HashMap::new));
 
-pub fn get_material(name: &str, materials: &mut Assets<StandardMaterial>, asset_server: &AssetServer) -> Handle<StandardMaterial> {
+pub fn get_material(name: &str, materials: &mut Assets<StandardMaterial>, asset_server: &AssetServer, base_color: Option<Color>) -> Handle<StandardMaterial> {
     let mut material_names = MATERIALS.lock().unwrap();
 
     if let Some(material) = material_names.get(name) {
         return material.clone();
     }
 
+    let base_color = base_color.unwrap_or(Color::rgb(0.3, 0.3, 0.3));
+
     material_names
         .entry(name.to_string())
         .or_insert_with(|| {
-            materials.add(retreive_material(name, asset_server).unwrap_or(StandardMaterial {
-                base_color: Color::rgb(0.3, 0.3, 0.3),
+            materials.add(retreive_material(name, asset_server, base_color).unwrap_or(StandardMaterial {
+                base_color,
                 metallic: 0.1,
                 cull_mode: None,
                 double_sided: true,
@@ -459,7 +457,7 @@ pub fn uncook() -> io::Result<()> {
 
     info!("Uncooking assets from Rocket League...");
 
-    let upk_files = ["Startup.upk", "MENU_Main_p.upk", "Stadium_P.upk"];
+    let upk_files = ["Startup.upk", "MENU_Main_p.upk", "Stadium_P.upk", "Body_MuscleCar_SF.upk"];
     // let upk_files = fs::read_dir(&input_dir)?
     //     .filter_map(|entry| {
     //         let entry = entry.unwrap();

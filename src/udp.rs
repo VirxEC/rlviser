@@ -7,7 +7,7 @@ use bevy::{
 use bevy_mod_picking::PickableBundle;
 
 use crate::{
-    assets::CarBodies,
+    assets::{get_material, CarBodies},
     bytes::{FromBytes, ToBytes},
     camera::EntityName,
     rocketsim::{GameState, Team},
@@ -86,6 +86,7 @@ fn step_arena(
     cars: Query<(Entity, &Car)>,
     pads: Query<(Entity, &BoostPadI)>,
     car_bodies: Res<CarBodies>,
+    asset_server: Res<AssetServer>,
     mut game_state: ResMut<GameState>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -178,23 +179,28 @@ fn step_arena(
                 };
 
                 let (pbr, name) = if 120. < hitbox.x && hitbox.x < 121. {
-                    let car_body_material = StandardMaterial {
-                        base_color,
-                        base_color_texture: Some(car_bodies.octane_body_diffuse.clone()),
-                        normal_map_texture: Some(car_bodies.octane_body_normal.clone()),
-                        occlusion_texture: Some(car_bodies.octane_body_occlude.clone()),
-                        metallic: 0.1,
-                        ..default()
-                    };
+                    let car_body_material = get_material("Body_Octane.Mat.OctaneChassis_MIC", materials.as_mut(), asset_server.as_ref(), Some(base_color));
 
                     (
                         PbrBundle {
                             mesh: car_bodies.octane_body.clone(),
-                            material: materials.add(car_body_material),
+                            material: car_body_material,
                             transform: Transform::from_translation(car_info.state.pos.to_bevy()),
                             ..default()
                         },
                         "octane_body",
+                    )
+                } else if 130. < hitbox.x && hitbox.x < 131. {
+                    let car_body_material = get_material("Body_MuscleCar.Mat.Body_MuscleCar_MIC", materials.as_mut(), asset_server.as_ref(), Some(base_color));
+
+                    (
+                        PbrBundle {
+                            mesh: car_bodies.dominus_body.clone(),
+                            material: car_body_material,
+                            transform: Transform::from_translation(car_info.state.pos.to_bevy()),
+                            ..default()
+                        },
+                        "dominus_body",
                     )
                 } else {
                     (

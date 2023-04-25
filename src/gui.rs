@@ -141,17 +141,14 @@ fn update_draw_distance(options: Res<Options>, mut commands: Commands, query: Qu
         _ => unreachable!(),
     };
 
-    let (projection, transform, entity) = query.iter().next().unwrap();
+    let (projection, transform, entity) = query.single();
 
     if projection.far() == draw_distance {
         return;
     }
 
     info!("Setting draw distance to {draw_distance}");
-    commands
-        .entity(entity)
-        .remove::<(PrimaryCamera, Camera3dBundle, AtmosphereCamera, Spectator, PickingCameraBundle)>();
-    commands.entity(entity).despawn();
+    commands.entity(entity).despawn_recursive();
 
     commands
         .spawn((
