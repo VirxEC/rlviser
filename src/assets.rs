@@ -62,7 +62,7 @@ pub fn get_mesh_info(name: &str, meshes: &mut Assets<Mesh>) -> Option<Vec<Handle
 
     // read bytes from path
     let Ok(mut file) = fs::File::open(format!("assets/{path}.pskx")) else {
-        println!("Failed to open mesh {path} for {name}");
+        error!("Failed to open mesh {path} for {name}");
         return None;
     };
 
@@ -129,23 +129,27 @@ const ADD_MATS: [&str; 13] = [
 ];
 
 fn retreive_material(name: &str, asset_server: &AssetServer) -> Option<StandardMaterial> {
-    println!("Retreiving material {name}");
-    let material_folder = if name.ends_with("MIC") || name.starts_with("MIC") || name.ends_with("Mic") {
-        ".MaterialInstanceConstant"
+    info!("Retreiving material {name}");
+    let material_folder = if name.ends_with("MIC") || name.contains(".MIC_") || name.ends_with("Mic") {
+        ".MaterialInstanceConstant."
     } else {
-        ".Material3"
+        ".Material3."
     };
-    let pre_path = name.replace(".Materials", material_folder).replace('.', "/");
+    let pre_path = name
+        .replace(".Materials.", material_folder)
+        .replace(".Mat.", material_folder)
+        .replace("Stadium_CountryFlags.OOB_CountryFlags", &format!("Stadium_CountryFlags{material_folder}OOB_CountryFlags"))
+        .replace('.', "/");
 
     let path = format!("assets/{pre_path}.mat");
     let Ok(mat_file) = fs::read_to_string(&path) else {
-        println!("Failed to read {path} ({name})");
+        error!("Failed to read {path} ({name})");
         return None;
     };
 
     let props: String = format!("assets/{pre_path}.props.txt");
     let Ok(props_file) = fs::read_to_string(&props) else {
-        println!("Failed to read {path} ({name})");
+        error!("Failed to read {path} ({name})");
         return None;
     };
 
@@ -158,7 +162,7 @@ fn retreive_material(name: &str, asset_server: &AssetServer) -> Option<StandardM
         let mut split = line.split('=');
         if let Some(key) = split.next() {
             let Some(value) = split.next() else {
-                println!("No value for {key} in {path}");
+                error!("No value for {key} in {path}");
                 continue;
             };
 
@@ -173,7 +177,7 @@ fn retreive_material(name: &str, asset_server: &AssetServer) -> Option<StandardM
                     other.push(value);
                 }
                 x => {
-                    println!("Unknown key {x} is {value} in {path} ({name})");
+                    warn!("Unknown key {x} is {value} in {path} ({name})");
                 }
             }
         }
@@ -205,7 +209,7 @@ fn retreive_material(name: &str, asset_server: &AssetServer) -> Option<StandardM
                     "BLEND_Translucent (2)" => Some(AlphaMode::Blend),
                     "BLEND_Additive (3)" => Some(AlphaMode::Add),
                     _ => {
-                        println!("Unknown blend mode {value} in {path} ({name})");
+                        error!("Unknown blend mode {value} in {path} ({name})");
                         None
                     }
                 };
@@ -235,7 +239,7 @@ fn retreive_material(name: &str, asset_server: &AssetServer) -> Option<StandardM
     }
 
     if let Some(texture_name) = diffuse {
-        println!("Found texture for {name}");
+        info!("Found texture for {name}");
         if texture_name == "ForcefieldHex" {
             material.base_color = Color::rgba(0.3, 0.3, 0.3, 0.3);
         }
@@ -423,12 +427,12 @@ const OUT_DIR: &str = "./assets/";
 
 fn get_input_dir() -> Option<String> {
     let Ok(input_file) = fs::read_to_string("assets.path") else {
-        println!("Couldn't find 'assets.path' file in your base folder! Create the file with the path to your 'rocketleague/TAGame/CookedPCConsole' folder.");
+        error!("Couldn't find 'assets.path' file in your base folder! Create the file with the path to your 'rocketleague/TAGame/CookedPCConsole' folder.");
         return None;
     };
 
     let Some(assets_dir) = input_file.lines().next() else {
-        println!("Your 'assets.path' file is empty! Create the file with the path to your 'rocketleague/TAGame/CookedPCConsole' folder.");
+        error!("Your 'assets.path' file is empty! Create the file with the path to your 'rocketleague/TAGame/CookedPCConsole' folder.");
         return None;
     };
 
@@ -436,22 +440,33 @@ fn get_input_dir() -> Option<String> {
     if assets_path.is_dir() && assets_path.exists() {
         Some(assets_dir.to_string())
     } else {
-        println!("Couldn't find the directory specified in your 'assets.path'!");
+        error!("Couldn't find the directory specified in your 'assets.path'!");
         None
     }
 }
 
 pub fn uncook() -> io::Result<()> {
     if Path::new(OUT_DIR).exists() {
-        println!("Found existing assets");
+        info!("Found existing assets");
         return Ok(());
     }
 
     let input_dir = get_input_dir().unwrap();
 
-    println!("Uncooking assets from Rocket League...");
+    info!("Uncooking assets from Rocket League...");
 
     let upk_files = ["Startup.upk", "MENU_Main_p.upk", "Stadium_P.upk"];
+    // let upk_files = fs::read_dir(&input_dir)?
+    //     .filter_map(|entry| {
+    //         let entry = entry.unwrap();
+    //         let path = entry.path();
+    //         if path.is_file() && path.extension().unwrap_or_default() == "upk" {
+    //             Some(path.file_name().unwrap().to_str().unwrap().to_string())
+    //         } else {
+    //             None
+    //         }
+    //     })
+    //     .collect::<Vec<_>>();
 
     let num_files = upk_files.len();
 

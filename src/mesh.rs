@@ -167,7 +167,7 @@ struct Node {
     sub_nodes: Vec<Section>,
 }
 
-const BLOCK_MESH_MATS: [&str; 2] = ["CollisionMeshes.Collision_Mat", "FX_General.Mat.CubeMap_HotSpot_Mat"];
+const BLOCK_MESH_MATS: [&str; 2] = ["CollisionMeshes.Collision_Mat", "Stadium_Assets.Materials.Grass_LOD_Team1_MIC"];
 
 fn load_field(
     mut commands: Commands,
@@ -201,17 +201,17 @@ fn load_field(
         }
 
         let Some(mesh) = get_mesh_info(&node.static_mesh, meshes.as_mut()) else {
-            println!("Not spawning mesh {}", node.static_mesh);
+            warn!("Not spawning mesh {}", node.static_mesh);
             continue;
         };
 
         let Some(mats) = node.materials.as_ref() else {
-            println!("No materials found for {}", node.static_mesh);
+            warn!("No materials found for {}", node.static_mesh);
             continue;
         };
 
         for (mesh, mat) in mesh.into_iter().zip(mats) {
-            println!("Getting material {mat} (for {})", node.static_mesh);
+            info!("Getting material {mat} (for {})", node.static_mesh);
             let material = get_material(mat, materials.as_mut(), asset_server.as_ref());
 
             let mut transform = node.get_transform();
@@ -426,7 +426,7 @@ impl MeshBuilder {
                 }
                 "VERTEXCO" => {
                     if !INCLUDE_VERTEXCO.contains(&name) {
-                        println!("{name} has unused colored vertices");
+                        warn!("{name} has unused colored vertices");
                         continue;
                     }
 
@@ -438,7 +438,7 @@ impl MeshBuilder {
                     extra_uvs.push(read_extra_uvs(&chunk_data, chunk_data_count));
                 }
                 _ => {
-                    println!("Unknown chunk: {chunk_id}");
+                    error!("Unknown chunk: {chunk_id}");
                 }
             }
         }

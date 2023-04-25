@@ -81,7 +81,8 @@ fn daylight_cycle(
         atmosphere.sun_position = Vec3::new(-t.cos(), t.sin(), 0.);
 
         if let Some((mut light_trans, mut directional)) = query.single_mut().into() {
-            light_trans.rotation = Quat::from_rotation_x(-t.sin().atan2(t.cos()));
+            light_trans.translation = atmosphere.sun_position * 100000000.;
+            light_trans.look_at(Vec3::ZERO, Vec3::Y);
             directional.illuminance = t.sin().max(0.0).powf(2.0) * 100000.;
         }
     }

@@ -64,7 +64,8 @@ fn ui_system(
     mut picking_state: ResMut<PickingPluginsState>,
     mut options: ResMut<Options>,
     mut contexts: EguiContexts,
-    heq: Query<&EntityName, With<HighlightedEntity>>,
+    heq: Query<(&Transform, &EntityName), With<HighlightedEntity>>,
+    cam_pos: Query<&Transform, With<PrimaryCamera>>,
     keys: Res<Input<KeyCode>>,
     time: Res<Time>,
 ) {
@@ -92,7 +93,10 @@ fn ui_system(
         return;
     }
 
-    let highlighted_entity_name = heq.get_single().map(|he| he.name.clone()).unwrap_or(String::from("None"));
+    let (he_pos, highlighted_entity_name) = heq
+        .get_single()
+        .map(|(transform, he)| (transform.translation, he.name.clone()))
+        .unwrap_or((Vec3::default(), String::from("None")));
 
     let ctx = contexts.ctx_mut();
 
@@ -110,6 +114,8 @@ fn ui_system(
     let avg_dt = history.iter().sum::<f32>() / history.len() as f32;
     let fps = 1. / avg_dt;
 
+    let camera_pos = cam_pos.single().translation;
+
     egui::SidePanel::left("left_panel").show(ctx, |ui| {
         ui.label("Press Esc to close menu");
         ui.label(format!("FPS: {fps:.0}"));
@@ -119,6 +125,8 @@ fn ui_system(
         ui.add(egui::Slider::new(&mut options.day_speed, 0.0..=10.0).text("Day speed"));
         ui.add(egui::Slider::new(&mut options.msaa, 0..=3).text("MSAA"));
         ui.add(egui::Slider::new(&mut options.draw_distance, 0..=4).text("Draw distance"));
+        ui.label(format!("Primary camera position: [{:.0}, {:.0}, {:.0}]", camera_pos.x, camera_pos.y, camera_pos.z));
+        ui.label(format!("HE position: [{:.0}, {:.0}, {:.0}]", he_pos.x, he_pos.y, he_pos.z));
         ui.label(format!("Highlighted entity: {highlighted_entity_name}"));
     });
 }
@@ -139,18 +147,22 @@ fn update_draw_distance(options: Res<Options>, mut commands: Commands, query: Qu
         return;
     }
 
-    println!("Setting draw distance to {draw_distance}");
-    commands.entity(entity).remove::<(PrimaryCamera, Camera3dBundle, AtmosphereCamera, Spectator, PickingCameraBundle)>();
+    info!("Setting draw distance to {draw_distance}");
+    commands
+        .entity(entity)
+        .remove::<(PrimaryCamera, Camera3dBundle, AtmosphereCamera, Spectator, PickingCameraBundle)>();
     commands.entity(entity).despawn();
 
-    commands.spawn((
-        PrimaryCamera,
-        Camera3dBundle {
-            projection: PerspectiveProjection { far: draw_distance, ..default() }.into(),
-            transform: *transform,
-            ..default()
-        },
-    )).insert((AtmosphereCamera::default(), Spectator, PickingCameraBundle::default()));
+    commands
+        .spawn((
+            PrimaryCamera,
+            Camera3dBundle {
+                projection: PerspectiveProjection { far: draw_distance, ..default() }.into(),
+                transform: *transform,
+                ..default()
+            },
+        ))
+        .insert((AtmosphereCamera::default(), Spectator, PickingCameraBundle::default()));
 }
 
 fn toggle_vsync(options: Res<Options>, mut windows: Query<&mut Window, With<PrimaryWindow>>) {
