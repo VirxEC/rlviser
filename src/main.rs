@@ -62,7 +62,6 @@ fn main() {
         .add_plugin(bevy::diagnostic::LogDiagnosticsPlugin::default())
         .add_loading_state(LoadingState::new(LoadState::Assets).continue_to_state(LoadState::Field))
         .add_collection_to_loading_state::<_, assets::BallAssets>(LoadState::Assets)
-        .add_collection_to_loading_state::<_, assets::CarBodies>(LoadState::Assets)
         .add_plugin(camera::CameraPlugin)
         .add_plugin(gui::DebugOverlayPlugin)
         .add_plugin(mesh::FieldLoaderPlugin)

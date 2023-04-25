@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, f32::consts::PI, net::UdpSocket};
+use std::{cmp::Ordering, f32::consts::PI, fs, net::UdpSocket};
 
 use bevy::{
     math::{Mat3A, Vec3A},
@@ -7,10 +7,10 @@ use bevy::{
 use bevy_mod_picking::PickableBundle;
 
 use crate::{
-    assets::{get_material, CarBodies},
+    assets::{get_material, get_mesh_info},
     bytes::{FromBytes, ToBytes},
     camera::EntityName,
-    rocketsim::{GameState, Team},
+    rocketsim::{CarInfo, GameState, Team},
     LoadState, ServerPort,
 };
 
@@ -80,12 +80,104 @@ impl ToBevyQuat for Quat {
     }
 }
 
+const CAR_BODIES: [(&str, &str); 3] = [
+    ("octane_body", "Body_Octane.SkeletalMesh3.Body_Octane_SK"),
+    ("dominus_body", "Body_MuscleCar.SkeletalMesh3.Body_MuscleCar_SK"),
+    ("plank_body", "Body_Darkcar.SkeletalMesh3.Body_Darkcar_SK"),
+];
+
+fn spawn_car(car_info: &CarInfo, commands: &mut Commands, meshes: &mut Assets<Mesh>, materials: &mut Assets<StandardMaterial>, asset_server: &AssetServer) {
+    let hitbox = car_info.config.hitbox_size.to_bevy();
+    let base_color = match car_info.team {
+        Team::Blue => Color::rgb(0.03, 0.09, 0.79),
+        Team::Orange => Color::rgb(0.82, 0.42, 0.02),
+    };
+
+    let (name, mesh_id) = CAR_BODIES[if 120. < hitbox.x && hitbox.x < 121. {
+        // octane
+        0
+    } else if 130. < hitbox.x && hitbox.x < 131. {
+        // dominus
+        1
+    } else if 131. < hitbox.x && hitbox.x < 132. {
+        // plank
+        2
+    } else {
+        // unsupported hitbox type? just spawn a generic box
+        commands.spawn((
+            Car(car_info.id),
+            PbrBundle {
+                mesh: meshes.add(Mesh::from(shape::Box::new(hitbox.x, hitbox.y, hitbox.z))),
+                material: materials.add(base_color.into()),
+                ..Default::default()
+            },
+            PickableBundle::default(),
+            EntityName::new("generic_body"),
+        ));
+
+        return;
+    }];
+
+    let mesh_path = mesh_id.replace('.', "/");
+    let props = fs::read_to_string(format!("./assets/{mesh_path}.props.txt")).unwrap();
+    let mut mesh_materials = Vec::with_capacity(2);
+
+    let mut inside_mats = false;
+    for line in props.lines() {
+        if !inside_mats {
+            if line.starts_with("Materials[") {
+                inside_mats = true;
+            }
+            continue;
+        }
+
+        if line.starts_with('{') {
+            continue;
+        }
+
+        if line.starts_with('}') {
+            break;
+        }
+
+        let material_name = line.split('\'').nth(1).unwrap();
+
+        mesh_materials.push(get_material(material_name, materials, asset_server, Some(base_color)));
+    }
+
+    let Some(mesh_info) = get_mesh_info(mesh_id, meshes) else {
+        return;
+    };
+
+    commands
+        .spawn((
+            Car(car_info.id),
+            GlobalTransform::default(),
+            Transform::default(),
+            Visibility::default(),
+            ComputedVisibility::default(),
+            PickableBundle::default(),
+            EntityName::new(name),
+        ))
+        .with_children(|parent| {
+            mesh_info
+                .into_iter()
+                .zip(mesh_materials)
+                .map(|(mesh, material)| PbrBundle {
+                    mesh,
+                    material,
+                    ..Default::default()
+                })
+                .for_each(|bundle| {
+                    parent.spawn(bundle);
+                });
+        });
+}
+
 #[allow(clippy::too_many_arguments)]
 fn step_arena(
     socket: Res<UdpConnection>,
     cars: Query<(Entity, &Car)>,
     pads: Query<(Entity, &BoostPadI)>,
-    car_bodies: Res<CarBodies>,
     asset_server: Res<AssetServer>,
     mut game_state: ResMut<GameState>,
     mut commands: Commands,
@@ -172,49 +264,7 @@ fn step_arena(
             let non_existant_cars = game_state.cars.iter().filter(|car_info| !all_current_cars.iter().any(|&id| id == car_info.id));
 
             for car_info in non_existant_cars {
-                let hitbox = car_info.config.hitbox_size.to_bevy();
-                let base_color = match car_info.team {
-                    Team::Blue => Color::rgb(0.03, 0.09, 0.79),
-                    Team::Orange => Color::rgb(0.82, 0.42, 0.02),
-                };
-
-                let (pbr, name) = if 120. < hitbox.x && hitbox.x < 121. {
-                    let car_body_material = get_material("Body_Octane.Mat.OctaneChassis_MIC", materials.as_mut(), asset_server.as_ref(), Some(base_color));
-
-                    (
-                        PbrBundle {
-                            mesh: car_bodies.octane_body.clone(),
-                            material: car_body_material,
-                            transform: Transform::from_translation(car_info.state.pos.to_bevy()),
-                            ..default()
-                        },
-                        "octane_body",
-                    )
-                } else if 130. < hitbox.x && hitbox.x < 131. {
-                    let car_body_material = get_material("Body_MuscleCar.Mat.Body_MuscleCar_MIC", materials.as_mut(), asset_server.as_ref(), Some(base_color));
-
-                    (
-                        PbrBundle {
-                            mesh: car_bodies.dominus_body.clone(),
-                            material: car_body_material,
-                            transform: Transform::from_translation(car_info.state.pos.to_bevy()),
-                            ..default()
-                        },
-                        "dominus_body",
-                    )
-                } else {
-                    (
-                        PbrBundle {
-                            mesh: meshes.add(Mesh::from(shape::Box::new(hitbox.x, hitbox.y, hitbox.z))),
-                            material: materials.add(StandardMaterial::from(base_color)),
-                            transform: Transform::from_translation(car_info.state.pos.to_bevy()),
-                            ..default()
-                        },
-                        "generic_body",
-                    )
-                };
-
-                commands.spawn((Car(car_info.id), pbr, PickableBundle::default(), EntityName::new(name)));
+                spawn_car(car_info, &mut commands, &mut meshes, &mut materials, &asset_server);
             }
         }
         _ => {}

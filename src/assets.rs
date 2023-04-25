@@ -30,34 +30,38 @@ pub struct BallAssets {
     pub ball: Handle<Mesh>,
 }
 
-#[derive(AssetCollection, Resource)]
-pub struct CarBodies {
-    #[asset(path = "Body_Octane/SkeletalMesh3/Body_Octane_SK.psk")]
-    pub octane_body: Handle<Mesh>,
-    #[asset(path = "Body_MuscleCar/SkeletalMesh3/Body_MuscleCar_SK.psk")]
-    pub dominus_body: Handle<Mesh>,
-}
-
 const BLOCK_MESHES: [&str; 7] = ["CollisionMeshes", "FieldCollision_Standard", "Goal_STD_Outer", "SkySphere01", "Glow", "Fog", "FX_General"];
 
 pub fn get_mesh_info(name: &str, meshes: &mut Assets<Mesh>) -> Option<Vec<Handle<Mesh>>> {
-    let path = name
+    // check if any item in BLOCK_MESHES is in the name
+    if BLOCK_MESHES.iter().any(|x| name.contains(x)) {
+        return None;
+    }
+
+    let mut local_path = name
         .replace(".Modular", "")
         .replace(".Meshes", ".StaticMesh3")
         .replace(".SM", ".StaticMesh3")
         .replace(".Materials", ".StaticMesh3")
-        .replace("Park_Assets.Park_", "Park_Assets.StaticMesh3.Park_")
-        .replace("Pickup_Boost.BoostPad", "Pickup_Boost.StaticMesh3.BoostPad")
-        .replace("Grass.Grass", "Grass.StaticMesh3.Grass")
+        // .replace("Park_Assets.Park_", "Park_Assets.StaticMesh3.Park_")
+        // .replace("Pickup_Boost.BoostPad", "Pickup_Boost.StaticMesh3.BoostPad")
+        // .replace("Grass.Grass", "Grass.StaticMesh3.Grass")
         .replace('.', "/");
 
-    // check if any item in BLOCK_MESHES is in path
-    if BLOCK_MESHES.iter().any(|x| path.contains(x)) {
-        return None;
+    let mut split = local_path.split('/');
+    if let Some(first) = split.next() {
+        if let Some(second) = split.next() {
+            if split.next().is_none() {
+                local_path = format!("{first}/StaticMesh3/{second}");
+            }
+        }
     }
 
+    let extension = if name.contains(".SkeletalMesh3") { "psk" } else { "pskx" };
+    let path = format!("./assets/{local_path}.{extension}");
+
     // read bytes from path
-    let Ok(mut file) = fs::File::open(format!("assets/{path}.pskx")) else {
+    let Ok(mut file) = fs::File::open(&path) else {
         error!("Failed to open mesh {path} for {name}");
         return None;
     };
@@ -135,19 +139,25 @@ fn retreive_material(name: &str, asset_server: &AssetServer, base_color: Color) 
     } else {
         ".Material3."
     };
-    let pre_path = name
-        .replace(".Materials.", material_folder)
-        .replace(".Mat.", material_folder)
-        .replace("Stadium_CountryFlags.OOB_CountryFlags", &format!("Stadium_CountryFlags{material_folder}OOB_CountryFlags"))
-        .replace('.', "/");
+    let mut pre_path = name.replace(".Materials.", material_folder).replace(".Mat.", material_folder).replace('.', "/");
+    dbg!(&pre_path);
 
-    let path = format!("assets/{pre_path}.mat");
+    let mut split = pre_path.split('/');
+    if let Some(first) = split.next() {
+        if let Some(second) = split.next() {
+            if split.next().is_none() {
+                pre_path = format!("{first}/{}/{second}", &material_folder[1..material_folder.len()-1]);
+            }
+        }
+    }
+
+    let path = format!("./assets/{pre_path}.mat");
     let Ok(mat_file) = fs::read_to_string(&path) else {
         error!("Failed to read {path} ({name})");
         return None;
     };
 
-    let props: String = format!("assets/{pre_path}.props.txt");
+    let props: String = format!("./assets/{pre_path}.props.txt");
     let Ok(props_file) = fs::read_to_string(&props) else {
         error!("Failed to read {path} ({name})");
         return None;
@@ -457,7 +467,7 @@ pub fn uncook() -> io::Result<()> {
 
     info!("Uncooking assets from Rocket League...");
 
-    let upk_files = ["Startup.upk", "MENU_Main_p.upk", "Stadium_P.upk", "Body_MuscleCar_SF.upk"];
+    let upk_files = ["Startup.upk", "MENU_Main_p.upk", "Stadium_P.upk", "Body_MuscleCar_SF.upk", "Body_Darkcar_SF.upk"];
     // let upk_files = fs::read_dir(&input_dir)?
     //     .filter_map(|entry| {
     //         let entry = entry.unwrap();
