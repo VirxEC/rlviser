@@ -83,7 +83,8 @@ fn load_extra_field(
                 material: materials.add(Color::rgb(0., 0., 1.).into()),
                 ..default()
             });
-        });
+        })
+        .insert((PickableBundle::default(), EntityName::new("generic_ball")));
 
     state.set(LoadState::Connect);
 }
@@ -167,7 +168,14 @@ struct Node {
     sub_nodes: Vec<Section>,
 }
 
-const BLOCK_MESH_MATS: [&str; 2] = ["CollisionMeshes.Collision_Mat", "Stadium_Assets.Materials.Grass_LOD_Team1_MIC"];
+const BLOCK_MESH_MATS: [&str; 6] = [
+    "CollisionMeshes.Collision_Mat",
+    "Stadium_Assets.Materials.Grass_LOD_Team1_MIC",
+    "FutureTech.Materials.Glass_Projected_V2_Team2_MIC",
+    "FutureTech.Materials.Glass_Projected_V2_Mat",
+    "Trees.Materials.TreeBark_Mat",
+    "FutureTech.Materials.TrimLight_None_Mat",
+];
 
 fn load_field(
     mut commands: Commands,
@@ -189,29 +197,31 @@ fn load_field(
         None => node.sub_nodes.clone(),
     });
 
+    let default_mats = vec![String::new()];
+
     for node in world_nodes.chain(prefab_nodes) {
         if node.static_mesh.trim().is_empty() {
             continue;
         }
 
-        if let Some(mats) = &node.materials {
-            if BLOCK_MESH_MATS.iter().any(|&x| mats.iter().any(|y| y.as_str() == x)) {
+        let Some(mesh) = get_mesh_info(&node.static_mesh, meshes.as_mut()) else {
+            continue;
+        };
+
+        let mats = match node.materials.as_ref() {
+            Some(mats) => mats,
+            None => {
+                warn!("No materials found for {}", node.static_mesh);
+                &default_mats
+            }
+        };
+
+        info!("Spawning {}", node.static_mesh);
+        for (mesh, mat) in mesh.into_iter().zip(mats) {
+            if BLOCK_MESH_MATS.contains(&mat.as_str()) {
                 continue;
             }
-        }
 
-        let Some(mesh) = get_mesh_info(&node.static_mesh, meshes.as_mut()) else {
-            warn!("Not spawning mesh {}", node.static_mesh);
-            continue;
-        };
-
-        let Some(mats) = node.materials.as_ref() else {
-            warn!("No materials found for {}", node.static_mesh);
-            continue;
-        };
-
-        for (mesh, mat) in mesh.into_iter().zip(mats) {
-            info!("Getting material {mat} (for {})", node.static_mesh);
             let material = get_material(mat, materials.as_mut(), asset_server.as_ref());
 
             let mut transform = node.get_transform();
@@ -235,7 +245,7 @@ fn load_field(
 }
 
 // Add name of mesh here if you want to view the colored vertices
-const INCLUDE_VERTEXCO: [&str; 1] = ["Goal_STD_Trim.pskx"];
+const INCLUDE_VERTEXCO: [&str; 2] = ["Goal_STD_Trim", "CrowdSpawnerMesh"];
 
 /// A collection of inter-connected triangles.
 #[derive(Clone, Debug, Default)]
@@ -269,7 +279,10 @@ impl MeshBuilder {
         let VertexAttributeValues::Float32x4(all_tangents) = initial_mesh.attribute(Mesh::ATTRIBUTE_TANGENT).unwrap() else {
             panic!("No tangents found");
         };
-        let all_colors = initial_mesh.attribute(Mesh::ATTRIBUTE_COLOR).map(|colors| colors.as_float3().unwrap());
+        let all_colors = initial_mesh.attribute(Mesh::ATTRIBUTE_COLOR).map(|colors| match colors {
+            VertexAttributeValues::Float32x4(colors) => colors,
+            _ => panic!("No colors found"),
+        });
 
         (0..num_materials)
             .map(|mat_id| {
@@ -425,7 +438,7 @@ impl MeshBuilder {
                     num_materials = materials.len();
                 }
                 "VERTEXCO" => {
-                    if !INCLUDE_VERTEXCO.contains(&name) {
+                    if !INCLUDE_VERTEXCO.iter().any(|&part| name.contains(part)) {
                         warn!("{name} has unused colored vertices");
                         continue;
                     }

@@ -42,7 +42,7 @@ pub struct CarBodies {
     pub octane_body_occlude: Handle<Image>,
 }
 
-const BLOCK_MESHES: [&str; 5] = ["Goal_STD_Outer", "SkySphere01", "Glow", "Fog", "FX_General"];
+const BLOCK_MESHES: [&str; 7] = ["CollisionMeshes", "FieldCollision_Standard", "Goal_STD_Outer", "SkySphere01", "Glow", "Fog", "FX_General"];
 
 pub fn get_mesh_info(name: &str, meshes: &mut Assets<Mesh>) -> Option<Vec<Handle<Mesh>>> {
     let path = name
@@ -129,6 +129,10 @@ const ADD_MATS: [&str; 13] = [
 ];
 
 fn retreive_material(name: &str, asset_server: &AssetServer) -> Option<StandardMaterial> {
+    if name.is_empty() {
+        return None;
+    }
+
     info!("Retreiving material {name}");
     let material_folder = if name.ends_with("MIC") || name.contains(".MIC_") || name.ends_with("Mic") {
         ".MaterialInstanceConstant."
