@@ -45,6 +45,8 @@ use bevy::{
     window::{CursorGrabMode, PrimaryWindow},
 };
 
+use crate::camera::PrimaryCamera;
+
 /// A marker `Component` for spectating cameras.
 ///
 /// ## Usage
@@ -96,6 +98,7 @@ fn spectator_update(
     time: Res<Time>,
     keys: Res<Input<KeyCode>>,
     windows: Query<&Window, With<PrimaryWindow>>,
+    primary_camera: Query<&PrimaryCamera>,
     mut motion: EventReader<MouseMotion>,
     mut settings: ResMut<SpectatorSettings>,
     mut camera_transforms: Query<&mut Transform, With<Spectator>>,
@@ -104,6 +107,11 @@ fn spectator_update(
         motion.clear();
         return;
     };
+
+    if primary_camera.get_single().map(|state| *state != PrimaryCamera::Spectator).unwrap_or_default() {
+        motion.clear();
+        return;
+    }
 
     if let Ok(window) = windows.get_single() {
         if window.cursor.grab_mode == CursorGrabMode::None {

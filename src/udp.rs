@@ -21,7 +21,13 @@ struct BoostPadI;
 pub struct Ball;
 
 #[derive(Component)]
-struct Car(u32);
+pub struct Car(u32);
+
+impl Car {
+    pub fn id(&self) -> u32 {
+        self.0
+    }
+}
 
 #[derive(Resource)]
 struct UdpConnection(UdpSocket);
@@ -86,6 +92,19 @@ const CAR_BODIES: [(&str, &str); 3] = [
     ("plank_body", "Body_Darkcar.SkeletalMesh3.Body_Darkcar_SK"),
 ];
 
+fn spawn_default_car(id: u32, base_color: Color, hitbox: Vec3, commands: &mut Commands, meshes: &mut Assets<Mesh>, materials: &mut Assets<StandardMaterial>) {
+    commands.spawn((
+        Car(id),
+        PbrBundle {
+            mesh: meshes.add(Mesh::from(shape::Box::new(hitbox.x, hitbox.y, hitbox.z))),
+            material: materials.add(base_color.into()),
+            ..Default::default()
+        },
+        PickableBundle::default(),
+        EntityName::new("generic_body"),
+    ));
+}
+
 fn spawn_car(car_info: &CarInfo, commands: &mut Commands, meshes: &mut Assets<Mesh>, materials: &mut Assets<StandardMaterial>, asset_server: &AssetServer) {
     let hitbox = car_info.config.hitbox_size.to_bevy();
     let base_color = match car_info.team {
@@ -93,27 +112,17 @@ fn spawn_car(car_info: &CarInfo, commands: &mut Commands, meshes: &mut Assets<Me
         Team::Orange => Color::rgb(0.82, 0.42, 0.02),
     };
 
-    let (name, mesh_id) = CAR_BODIES[if 120. < hitbox.x && hitbox.x < 121. {
+    let (name, mesh_id) = CAR_BODIES[if (120f32..121.).contains(&hitbox.x) {
         // octane
         0
-    } else if 130. < hitbox.x && hitbox.x < 131. {
+    } else if (130f32..131.).contains(&hitbox.x) {
         // dominus
         1
-    } else if 131. < hitbox.x && hitbox.x < 132. {
+    } else if (131f32..132.).contains(&hitbox.x) {
         // plank
         2
     } else {
-        // unsupported hitbox type? just spawn a generic box
-        commands.spawn((
-            Car(car_info.id),
-            PbrBundle {
-                mesh: meshes.add(Mesh::from(shape::Box::new(hitbox.x, hitbox.y, hitbox.z))),
-                material: materials.add(base_color.into()),
-                ..Default::default()
-            },
-            PickableBundle::default(),
-            EntityName::new("generic_body"),
-        ));
+        spawn_default_car(car_info.id, base_color, hitbox, commands, meshes, materials);
 
         return;
     }];

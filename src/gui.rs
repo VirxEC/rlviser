@@ -19,6 +19,7 @@ impl Plugin for DebugOverlayPlugin {
         app.add_plugin(EguiPlugin)
             .insert_resource(Msaa::default())
             .insert_resource(Options::default())
+            .add_system(listen)
             .add_system(ui_system)
             .add_system(toggle_vsync.after(ui_system))
             .add_system(toggle_vsync)
@@ -131,7 +132,7 @@ fn ui_system(
     });
 }
 
-fn update_draw_distance(options: Res<Options>, mut commands: Commands, query: Query<(&Projection, &Transform, Entity), With<PrimaryCamera>>) {
+fn update_draw_distance(options: Res<Options>, mut commands: Commands, query: Query<(&PrimaryCamera, &Projection, &Transform, Entity)>) {
     let draw_distance = match options.draw_distance {
         0 => 15000.,
         1 => 50000.,
@@ -141,7 +142,7 @@ fn update_draw_distance(options: Res<Options>, mut commands: Commands, query: Qu
         _ => unreachable!(),
     };
 
-    let (projection, transform, entity) = query.single();
+    let (primary_camera, projection, transform, entity) = query.single();
 
     if projection.far() == draw_distance {
         return;
@@ -152,7 +153,7 @@ fn update_draw_distance(options: Res<Options>, mut commands: Commands, query: Qu
 
     commands
         .spawn((
-            PrimaryCamera,
+            *primary_camera,
             Camera3dBundle {
                 projection: PerspectiveProjection { far: draw_distance, ..default() }.into(),
                 transform: *transform,
@@ -190,4 +191,24 @@ fn update_daytime(options: Res<Options>, mut daytime: ResMut<DaylightOffset>) {
     daytime.offset = options.daytime * 10. / options.day_speed;
     daytime.stop_day = options.stop_day;
     daytime.day_speed = options.day_speed;
+}
+
+fn listen(key: Res<Input<KeyCode>>, mut primary_camera: Query<&mut PrimaryCamera>) {
+    let mut state = primary_camera.single_mut();
+
+    if key.just_pressed(KeyCode::Key1) || key.just_pressed(KeyCode::Numpad1) {
+        *state = PrimaryCamera::TrackCar(1);
+    } else if key.just_pressed(KeyCode::Key2) || key.just_pressed(KeyCode::Numpad2) {
+        *state = PrimaryCamera::TrackCar(2);
+    } else if key.just_pressed(KeyCode::Key3) || key.just_pressed(KeyCode::Numpad3) {
+        *state = PrimaryCamera::TrackCar(3);
+    } else if key.just_pressed(KeyCode::Key4) || key.just_pressed(KeyCode::Numpad4) {
+        *state = PrimaryCamera::TrackCar(4);
+    } else if key.just_pressed(KeyCode::Key5) || key.just_pressed(KeyCode::Numpad5) {
+        *state = PrimaryCamera::TrackCar(5);
+    } else if key.just_pressed(KeyCode::Key6) || key.just_pressed(KeyCode::Numpad2) {
+        *state = PrimaryCamera::TrackCar(6);
+    } else if key.just_pressed(KeyCode::Key0) || key.just_pressed(KeyCode::Numpad0) {
+        *state = PrimaryCamera::Spectator;
+    }
 }

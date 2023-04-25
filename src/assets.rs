@@ -146,7 +146,7 @@ fn retreive_material(name: &str, asset_server: &AssetServer, base_color: Color) 
     if let Some(first) = split.next() {
         if let Some(second) = split.next() {
             if split.next().is_none() {
-                pre_path = format!("{first}/{}/{second}", &material_folder[1..material_folder.len()-1]);
+                pre_path = format!("{first}/{}/{second}", &material_folder[1..material_folder.len() - 1]);
             }
         }
     }
