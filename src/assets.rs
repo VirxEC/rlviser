@@ -436,6 +436,7 @@ impl AssetLoader for PskxLoader {
 }
 
 const OUT_DIR: &str = "./assets/";
+const OUT_DIR_VER: &str = "./assets/files.txt";
 
 fn get_input_dir() -> Option<String> {
     let Ok(input_file) = fs::read_to_string("assets.path") else {
@@ -457,8 +458,18 @@ fn get_input_dir() -> Option<String> {
     }
 }
 
+const UPK_FILES: [&str; 5] = ["Startup.upk", "MENU_Main_p.upk", "Stadium_P.upk", "Body_MuscleCar_SF.upk", "Body_Darkcar_SF.upk"];
+
+fn has_existing_assets() -> io::Result<bool> {
+    //ensure all upk files are listen in ver_file
+    let ver_file = fs::read_to_string(OUT_DIR_VER)?;
+    let file_count = ver_file.lines().filter(|line| UPK_FILES.contains(line)).count();
+
+    Ok(file_count == UPK_FILES.len())
+}
+
 pub fn uncook() -> io::Result<()> {
-    if Path::new(OUT_DIR).exists() {
+    if has_existing_assets().unwrap_or_default() {
         info!("Found existing assets");
         return Ok(());
     }
@@ -467,7 +478,6 @@ pub fn uncook() -> io::Result<()> {
 
     info!("Uncooking assets from Rocket League...");
 
-    let upk_files = ["Startup.upk", "MENU_Main_p.upk", "Stadium_P.upk", "Body_MuscleCar_SF.upk", "Body_Darkcar_SF.upk"];
     // let upk_files = fs::read_dir(&input_dir)?
     //     .filter_map(|entry| {
     //         let entry = entry.unwrap();
@@ -480,10 +490,8 @@ pub fn uncook() -> io::Result<()> {
     //     })
     //     .collect::<Vec<_>>();
 
-    let num_files = upk_files.len();
-
-    for (i, file) in upk_files.into_iter().enumerate() {
-        print!("Processing file {}/{} ({})...                       \r", i, num_files, file);
+    for (i, file) in UPK_FILES.into_iter().enumerate() {
+        print!("Processing file {i}/{} ({file})...                       \r", UPK_FILES.len());
         io::stdout().flush()?;
 
         // call umodel to uncook all the map files
@@ -503,6 +511,9 @@ pub fn uncook() -> io::Result<()> {
             .spawn()?;
         child.wait()?;
     }
+
+    // write each item in the list to "OUTDIR/files.txt"
+    fs::write(OUT_DIR_VER, UPK_FILES.join("\n"))?;
 
     println!("Done processing files                                 ");
 
