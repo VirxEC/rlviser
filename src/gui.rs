@@ -45,6 +45,7 @@ struct Options {
 }
 
 impl Default for Options {
+    #[inline]
     fn default() -> Self {
         Self {
             focus: false,

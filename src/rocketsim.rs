@@ -21,6 +21,7 @@ pub struct BallState {
 }
 
 impl Default for BallState {
+    #[inline]
     fn default() -> Self {
         Self {
             pos: Vec3::new(0., 0., 92.),

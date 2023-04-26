@@ -9,7 +9,7 @@ use bevy_mod_picking::PickableBundle;
 use crate::{
     assets::{get_material, get_mesh_info},
     bytes::{FromBytes, ToBytes},
-    camera::EntityName,
+    camera::{EntityName, PrimaryCamera},
     rocketsim::{CarInfo, GameState, Team},
     LoadState, ServerPort,
 };
@@ -24,6 +24,7 @@ pub struct Ball;
 pub struct Car(u32);
 
 impl Car {
+    #[inline]
     pub fn id(&self) -> u32 {
         self.0
     }
@@ -46,12 +47,14 @@ pub trait ToBevyVec {
 }
 
 impl ToBevyVec for [f32; 3] {
+    #[inline]
     fn to_bevy(self) -> Vec3 {
         Vec3::new(self[0], self[2], self[1])
     }
 }
 
 impl ToBevyVec for Vec3A {
+    #[inline]
     fn to_bevy(self) -> Vec3 {
         Vec3::new(self.x, self.z, self.y)
     }
@@ -62,6 +65,7 @@ trait ToBevyMat {
 }
 
 impl ToBevyMat for Mat3A {
+    #[inline]
     fn to_bevy(self) -> Quat {
         // In RocketSim, the Z axis is up, but in Bevy, the Z and Y axis are swapped
         // We also need to rotate 90 degrees around the X axis and 180 degrees around the Y axis
@@ -79,6 +83,7 @@ trait ToBevyQuat {
 }
 
 impl ToBevyQuat for Quat {
+    #[inline]
     fn to_bevy(self) -> Quat {
         // In RocketSim, the Z axis is up, but in Bevy, the Z and Y axis are swapped
         // We also need to rotate 90 degrees around the X axis and 180 degrees around the Y axis
@@ -300,11 +305,26 @@ fn update_ball(state: Res<GameState>, mut ball: Query<(&mut Transform, &Children
     transform.rotation = state.ball_rot.to_bevy();
 }
 
-fn update_car(state: Res<GameState>, mut cars: Query<(&mut Transform, &Car)>) {
-    for (mut transform, car) in cars.iter_mut() {
+fn update_car(state: Res<GameState>, mut cars: Query<(&mut Transform, &Car)>, mut camera_query: Query<(&PrimaryCamera, &mut Transform), Without<Car>>) {
+    let mut camera_info = if let Ok((PrimaryCamera::TrackCar(car_id), camera_transform)) = camera_query.get_single_mut() {
+        Some((*car_id, camera_transform))
+    } else {
+        None
+    };
+
+    for (mut car_transform, car) in cars.iter_mut() {
         let car_state = &state.cars.iter().find(|car_info| car.0 == car_info.id).unwrap().state;
-        transform.translation = car_state.pos.to_bevy();
-        transform.rotation = car_state.rot_mat.to_bevy();
+        car_transform.translation = car_state.pos.to_bevy();
+        car_transform.rotation = car_state.rot_mat.to_bevy();
+
+        if let Some((car_id, ref mut camera_transform)) = camera_info {
+            if car_id == car.id() {
+                let camera_transform = camera_transform.as_mut();
+                camera_transform.translation = car_transform.translation - car_transform.right() * 300. + car_transform.up() * 150.;
+                camera_transform.look_to(car_transform.forward(), car_transform.up());
+                camera_transform.rotation *= Quat::from_rotation_y(-PI / 2.) * Quat::from_rotation_x(-PI / 16.);
+            }
+        }
     }
 }
 

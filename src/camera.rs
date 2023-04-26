@@ -1,10 +1,10 @@
-use std::{f32::consts::PI, time::Duration};
+use std::time::Duration;
 
 use bevy::prelude::*;
 use bevy_atmosphere::prelude::*;
 use bevy_mod_picking::{CustomHighlightPlugin, DefaultPickingPlugins, HoverEvent, PickingCameraBundle, PickingEvent};
 
-use crate::{spectator::*, udp::Car};
+use crate::spectator::*;
 
 #[derive(Component)]
 struct Sun;
@@ -98,6 +98,7 @@ pub struct EntityName {
 }
 
 impl EntityName {
+    #[inline]
     pub fn new<T: ToString>(name: T) -> Self {
         Self { name: name.to_string() }
     }
@@ -115,30 +116,6 @@ fn handle_picker_events(mut commands: Commands, mut events: EventReader<PickingE
             };
         }
     }
-}
-
-fn update_camera(car_query: Query<(&Car, &Transform)>, mut camera_query: Query<(&PrimaryCamera, &mut Transform), Without<Car>>) {
-    let Ok((state, mut camera_transform)) = camera_query.get_single_mut() else {
-        return;
-    };
-
-    let PrimaryCamera::TrackCar(car_id) = state else {
-        return;
-    };
-
-    let Some(car_transform) = car_query.iter().find_map(|(car, car_transform)| {
-        if car.id() == *car_id {
-            Some(car_transform)
-        } else {
-            None
-        }
-    }) else {
-        return;
-    };
-
-    camera_transform.translation = car_transform.translation - car_transform.right() * 300. + car_transform.up() * 150.;
-    camera_transform.look_to(car_transform.forward(), car_transform.up());
-    camera_transform.rotation *= Quat::from_rotation_y(-PI / 2.) * Quat::from_rotation_x(-PI / 16.);
 }
 
 pub struct CameraPlugin;
@@ -159,7 +136,6 @@ impl Plugin for CameraPlugin {
         .add_plugins(DefaultPickingPlugins.build().disable::<CustomHighlightPlugin<StandardMaterial>>())
         .add_startup_system(setup)
         .add_system(handle_picker_events)
-        .add_system(daylight_cycle)
-        .add_system(update_camera);
+        .add_system(daylight_cycle);
     }
 }
