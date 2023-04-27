@@ -45,7 +45,7 @@ fn setup(mut commands: Commands) {
         ..default()
     });
 
-    commands.insert_resource(AmbientLight { brightness: 0.1, ..default() });
+    commands.insert_resource(AmbientLight { brightness: 0.3, ..default() });
 
     commands.spawn((DirectionalLightBundle::default(), Sun));
 

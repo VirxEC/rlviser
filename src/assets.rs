@@ -458,7 +458,17 @@ fn get_input_dir() -> Option<String> {
     }
 }
 
-const UPK_FILES: [&str; 5] = ["Startup.upk", "MENU_Main_p.upk", "Stadium_P.upk", "Body_MuscleCar_SF.upk", "Body_Darkcar_SF.upk"];
+const UPK_FILES: [&str; 9] = [
+    "Startup.upk",
+    "MENU_Main_p.upk",
+    "Stadium_P.upk",
+    "Body_MuscleCar_SF.upk",
+    "Body_Darkcar_SF.upk",
+    "Body_CarCar_SF.upk",
+    "Body_Venom_SF.upk",
+    "Body_Force_SF.upk",
+    "Body_Vanquish_SF.upk",
+];
 
 fn has_existing_assets() -> io::Result<bool> {
     //ensure all upk files are listen in ver_file

@@ -91,10 +91,13 @@ impl ToBevyQuat for Quat {
     }
 }
 
-const CAR_BODIES: [(&str, &str); 3] = [
+const CAR_BODIES: [(&str, &str); 6] = [
     ("octane_body", "Body_Octane.SkeletalMesh3.Body_Octane_SK"),
     ("dominus_body", "Body_MuscleCar.SkeletalMesh3.Body_MuscleCar_SK"),
     ("plank_body", "Body_Darkcar.SkeletalMesh3.Body_Darkcar_SK"),
+    ("breakout_body", "Body_Force.SkeletalMesh3.Body_Force_PremiumSkin_SK"),
+    ("hybrid_body", "Body_Venom.SkeletalMesh3.Body_Venom_PremiumSkin_SK"),
+    ("merc_body", "Body_Vanquish.SkeletalMesh3.Body_Merc_PremiumSkin_SK"),
 ];
 
 fn spawn_default_car(id: u32, base_color: Color, hitbox: Vec3, commands: &mut Commands, meshes: &mut Assets<Mesh>, materials: &mut Assets<StandardMaterial>) {
@@ -126,6 +129,15 @@ fn spawn_car(car_info: &CarInfo, commands: &mut Commands, meshes: &mut Assets<Me
     } else if (131f32..132.).contains(&hitbox.x) {
         // plank
         2
+    } else if (133f32..134.).contains(&hitbox.x) {
+        // breakout
+        3
+    } else if (129f32..130.).contains(&hitbox.x) {
+        // hybrid
+        4
+    } else if (123f32..124.).contains(&hitbox.x) {
+        // merc
+        5
     } else {
         spawn_default_car(car_info.id, base_color, hitbox, commands, meshes, materials);
 
