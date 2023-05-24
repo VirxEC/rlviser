@@ -1,3 +1,8 @@
+use std::{
+    fs,
+    io::{self, Write},
+};
+
 use bevy::{
     prelude::*,
     render::camera::CameraProjection,
@@ -18,7 +23,7 @@ impl Plugin for DebugOverlayPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugin(EguiPlugin)
             .insert_resource(Msaa::default())
-            .insert_resource(Options::default())
+            .insert_resource(Options::read_from_file().unwrap_or_else(|_| Options::create_file_from_defualt()))
             .add_system(listen)
             .add_system(ui_system)
             .add_system(toggle_vsync.after(ui_system))
@@ -28,11 +33,13 @@ impl Plugin for DebugOverlayPlugin {
             .add_system(update_msaa.after(ui_system))
             .add_system(update_msaa)
             .add_system(update_draw_distance.after(ui_system))
-            .add_system(update_draw_distance);
+            .add_system(update_draw_distance)
+            .add_system(write_settings_to_file.after(ui_system))
+            .add_system(write_settings_to_file);
     }
 }
 
-#[derive(Resource)]
+#[derive(Clone, Resource)]
 struct Options {
     focus: bool,
     vsync: bool,
@@ -57,6 +64,66 @@ impl Default for Options {
             msaa: 2,
             draw_distance: 3,
         }
+    }
+}
+
+impl Options {
+    const FILE_NAME: &str = "settings.txt";
+
+    fn read_from_file() -> io::Result<Self> {
+        let mut options = Options::default();
+
+        let file = fs::read_to_string(Self::FILE_NAME)?;
+
+        for line in file.lines() {
+            let mut parts = line.split('=');
+
+            let Some(key) = parts.next() else {
+                continue;
+            };
+
+            let Some(value) = parts.next() else {
+                continue;
+            };
+
+            match key {
+                "vsync" => options.vsync = value.parse().unwrap(),
+                "stop_day" => options.stop_day = value.parse().unwrap(),
+                "daytime" => options.daytime = value.parse().unwrap(),
+                "day_speed" => options.day_speed = value.parse().unwrap(),
+                "msaa" => options.msaa = value.parse().unwrap(),
+                _ => println!("Unknown key {key} with value {value}"),
+            }
+        }
+
+        Ok(options)
+    }
+
+    fn create_file_from_defualt() -> Self {
+        let options = Options::default();
+
+        if let Err(e) = options.write_options_to_file() {
+            println!("Failed to create {} due to: {e}", Self::FILE_NAME);
+        }
+
+        options
+    }
+
+    fn write_options_to_file(&self) -> io::Result<()> {
+        let mut file = fs::File::create(Self::FILE_NAME)?;
+
+        file.write_fmt(format_args!("vsync={}\n", self.vsync))?;
+        file.write_fmt(format_args!("stop_day={}\n", self.stop_day))?;
+        file.write_fmt(format_args!("daytime={}\n", self.daytime))?;
+        file.write_fmt(format_args!("day_speed={}\n", self.day_speed))?;
+        file.write_fmt(format_args!("msaa={}\n", self.msaa))?;
+
+        Ok(())
+    }
+
+    #[inline]
+    fn is_not_similar(&self, other: &Options) -> bool {
+        self.vsync != other.vsync || self.stop_day != other.stop_day || self.daytime != other.daytime || self.day_speed != other.day_speed || self.msaa != other.msaa
     }
 }
 
@@ -192,6 +259,24 @@ fn update_daytime(options: Res<Options>, mut daytime: ResMut<DaylightOffset>) {
     daytime.offset = options.daytime * 10. / options.day_speed;
     daytime.stop_day = options.stop_day;
     daytime.day_speed = options.day_speed;
+}
+
+fn write_settings_to_file(time: Res<Time>, options: Res<Options>, mut last_options: Local<Options>, mut last_time: Local<f32>) {
+    // ensure the time difference is > 1 second
+    let secs = time.elapsed_seconds_wrapped();
+    if (*last_time - secs).abs() < 1. {
+        return;
+    }
+
+    *last_time = secs;
+
+    if options.is_not_similar(&last_options) {
+        *last_options = options.clone();
+
+        if let Err(e) = options.write_options_to_file() {
+            error!("Failed to write settings to file due to: {e}");
+        }
+    }
 }
 
 fn listen(key: Res<Input<KeyCode>>, mut primary_camera: Query<&mut PrimaryCamera>) {

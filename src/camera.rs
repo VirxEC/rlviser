@@ -79,8 +79,9 @@ fn daylight_cycle(
 ) {
     timer.0.tick(time.delta());
 
-    if timer.0.finished() && !offset.stop_day {
-        let t = (offset.offset + time.elapsed_seconds_wrapped()) / (200. / offset.day_speed);
+    if timer.0.finished() {
+        let secs = if offset.stop_day { time.elapsed_seconds_wrapped() } else { 0. };
+        let t = (offset.offset + secs) / (200. / offset.day_speed);
 
         atmosphere.sun_position = Vec3::new(-t.cos(), t.sin(), 0.);
 

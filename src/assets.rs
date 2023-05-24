@@ -22,10 +22,10 @@ use crate::mesh::MeshBuilder;
 pub struct BallAssets {
     #[asset(path = "Ball_Default_Textures/Texture2D/Ball_Default00_D.tga")]
     pub ball_diffuse: Handle<Image>,
-    #[asset(path = "Ball_Default_Textures/Texture2D/Ball_Default00_N.tga")]
-    pub ball_normal: Handle<Image>,
-    #[asset(path = "Ball_Default_Textures/Texture2D/Ball_Default00_RGB.tga")]
-    pub ball_occlude: Handle<Image>,
+    // #[asset(path = "Ball_Default_Textures/Texture2D/Ball_Default00_N.tga")]
+    // pub ball_normal: Handle<Image>,
+    // #[asset(path = "Ball_Default_Textures/Texture2D/Ball_Default00_RGB.tga")]
+    // pub ball_occlude: Handle<Image>,
     #[asset(path = "Ball_Default/StaticMesh3/Ball_DefaultBall00.pskx")]
     pub ball: Handle<Mesh>,
 }
@@ -188,12 +188,7 @@ fn retreive_material(name: &str, asset_server: &AssetServer, base_color: Color) 
         } else if ["Pickup_Boost.Materials.BoostPad_Small_MIC", "Pickup_Boost.Materials.BoostPad_Large_MIC"].contains(&name) {
             StandardMaterial::from(Color::rgb(0.8, 0.1, 0.1))
         } else if name.contains("Advert") {
-            dbg!(name);
-            StandardMaterial {
-                base_color: Color::rgba(0.1, 0.1, 0.1, 0.05),
-                alpha_mode: AlphaMode::Blend,
-                ..Default::default()
-            }
+            StandardMaterial::from(Color::GRAY)
         } else {
             return None;
         };
@@ -219,7 +214,6 @@ fn retreive_material(name: &str, asset_server: &AssetServer, base_color: Color) 
         ".Material3."
     };
     let mut pre_path = name.replace(".Materials.", material_folder).replace(".Mat.", material_folder).replace('.', "/");
-    dbg!(&pre_path);
 
     let mut split = pre_path.split('/');
     if let Some(first) = split.next() {
