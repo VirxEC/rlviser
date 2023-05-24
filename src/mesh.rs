@@ -22,13 +22,7 @@ impl Plugin for FieldLoaderPlugin {
     }
 }
 
-fn load_extra_field(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut state: ResMut<NextState<LoadState>>,
-    ball_assets: Res<BallAssets>,
-) {
+fn load_extra_field(mut commands: Commands, mut materials: ResMut<Assets<StandardMaterial>>, mut state: ResMut<NextState<LoadState>>, ball_assets: Res<BallAssets>) {
     // load a glowing ball
 
     let initial_ball_color = Color::rgb(0.3, 0.3, 0.3);
@@ -67,24 +61,6 @@ fn load_extra_field(
                 ..default()
             });
         });
-
-    // spawn stadium lights
-
-    commands
-        .spawn(PbrBundle {
-            mesh: meshes.add(shape::UVSphere { radius: 250., ..default() }.into()),
-            material: materials.add(Color::rgb(1., 0., 0.).into()),
-            transform: Transform::from_xyz(-11500., 9000., 11500.),
-            ..default()
-        })
-        .with_children(|parent| {
-            parent.spawn(PbrBundle {
-                mesh: meshes.add(shape::UVSphere { radius: 30., ..default() }.into()),
-                material: materials.add(Color::rgb(0., 0., 1.).into()),
-                ..default()
-            });
-        })
-        .insert((PickableBundle::default(), EntityName::new("generic_ball")));
 
     state.set(LoadState::Connect);
 }
@@ -168,7 +144,7 @@ struct Node {
     sub_nodes: Vec<Section>,
 }
 
-const BLOCK_MESH_MATS: [&str; 6] = [
+const BLACKLIST_MESH_MATS: [&str; 6] = [
     "CollisionMeshes.Collision_Mat",
     "Stadium_Assets.Materials.Grass_LOD_Team1_MIC",
     "FutureTech.Materials.Glass_Projected_V2_Team2_MIC",
@@ -218,7 +194,7 @@ fn load_field(
 
         info!("Spawning {}", node.static_mesh);
         for (mesh, mat) in mesh.into_iter().zip(mats) {
-            if BLOCK_MESH_MATS.contains(&mat.as_str()) {
+            if BLACKLIST_MESH_MATS.contains(&mat.as_str()) {
                 continue;
             }
 

@@ -126,7 +126,7 @@ fn ui_system(
         ui.add(egui::Slider::new(&mut options.daytime, 0.0..=150.0).text("Daytime"));
         ui.add(egui::Slider::new(&mut options.day_speed, 0.0..=10.0).text("Day speed"));
         ui.add(egui::Slider::new(&mut options.msaa, 0..=3).text("MSAA"));
-        ui.add(egui::Slider::new(&mut options.draw_distance, 0..=4).text("Draw distance"));
+        // ui.add(egui::Slider::new(&mut options.draw_distance, 0..=4).text("Draw distance"));
         ui.label(format!("Primary camera position: [{:.0}, {:.0}, {:.0}]", camera_pos.x, camera_pos.y, camera_pos.z));
         ui.label(format!("HE position: [{:.0}, {:.0}, {:.0}]", he_pos.x, he_pos.y, he_pos.z));
         ui.label(format!("Highlighted entity: {highlighted_entity_name}"));

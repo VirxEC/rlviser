@@ -32,9 +32,24 @@ pub struct BallAssets {
 
 const BLOCK_MESHES: [&str; 7] = ["CollisionMeshes", "FieldCollision_Standard", "Goal_STD_Outer", "SkySphere01", "Glow", "Fog", "FX_General"];
 
+#[cfg(not(feature = "full_load"))]
+const WHITELIST_MESHES: [&str; 8] = ["Field_STD", "FF", "BoostPads", "BoostPad_Large", "Goal_STD", "AdvertStrip", "Field_Center", "Field_Mid"];
+
+#[cfg(not(feature = "full_load"))]
+#[inline]
+fn load_mesh(name: &str) -> bool {
+    WHITELIST_MESHES.into_iter().any(|x| name.contains(x))
+}
+
+#[cfg(feature = "full_load")]
+#[inline]
+fn load_mesh(_name: &str) -> bool {
+    true
+}
+
 pub fn get_mesh_info(name: &str, meshes: &mut Assets<Mesh>) -> Option<Vec<Handle<Mesh>>> {
     // check if any item in BLOCK_MESHES is in the name
-    if BLOCK_MESHES.iter().any(|x| name.contains(x)) {
+    if BLOCK_MESHES.into_iter().any(|x| name.contains(x)) || !load_mesh(name) {
         return None;
     }
 
@@ -128,9 +143,62 @@ const ADD_MATS: [&str; 13] = [
     "FutureTech.Materials.Glass_Projected_V2_Team2_MIC",
 ];
 
+#[cfg(not(feature = "full_load"))]
+const WHITELIST_MATS: [&str; 3] = [
+    "FutureTech.Materials.ForceField_Mat",
+    "FutureTech.Materials.HexGlass_WithArrows_Team2_MIC",
+    "FutureTech.Materials.HexGlass_WithArrows_Team1_MIC",
+];
+
+#[cfg(not(feature = "full_load"))]
+#[inline]
+fn is_in_whitelist(name: &str) -> bool {
+    WHITELIST_MATS.contains(&name)
+}
+
+#[cfg(feature = "full_load")]
+#[inline]
+fn is_in_whitelist(_name: &str) -> bool {
+    true
+}
+
 fn retreive_material(name: &str, asset_server: &AssetServer, base_color: Color) -> Option<StandardMaterial> {
     if name.is_empty() {
         return None;
+    }
+
+    if !is_in_whitelist(name) {
+        // load custom material instead
+        let mut material = if name == "Stadium_Assets.Materials.Grass_Base_Team1_MIC" {
+            StandardMaterial::from(Color::rgb(0.1, 0.8, 0.1))
+        } else if name == "FutureTech.Materials.Reflective_Floor_V2_Mat" {
+            StandardMaterial::from(Color::rgb(0.1, 0.1, 0.8))
+        } else if name == "FutureTech.Materials.Frame_01_V2_Mat" {
+            StandardMaterial::from(Color::rgb(0.6, 0.1, 0.6))
+        } else if ["Pickup_Boost.Materials.BoostPad_Small_MIC", "Pickup_Boost.Materials.BoostPad_Large_MIC"].contains(&name) {
+            StandardMaterial::from(Color::rgb(0.8, 0.1, 0.1))
+        } else if name.contains("Advert") {
+            StandardMaterial {
+                base_color: Color::rgba(0.5, 0.5, 0.5, 0.05),
+                alpha_mode: AlphaMode::Blend,
+                ..Default::default()
+            }
+        } else {
+            return None;
+        };
+
+        if TRANSPARENT_MATS.contains(&name) {
+            material.alpha_mode = AlphaMode::Blend;
+        } else if ADD_MATS.contains(&name) {
+            material.alpha_mode = AlphaMode::Add;
+        }
+
+        if DOUBLE_SIDED_MATS.contains(&name) {
+            material.cull_mode = None;
+            material.double_sided = true;
+        }
+
+        return Some(material);
     }
 
     info!("Retreiving material {name}");
