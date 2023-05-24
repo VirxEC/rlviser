@@ -115,9 +115,18 @@ fn spawn_default_car(id: u32, base_color: Color, hitbox: Vec3, commands: &mut Co
 
 fn spawn_car(car_info: &CarInfo, commands: &mut Commands, meshes: &mut Assets<Mesh>, materials: &mut Assets<StandardMaterial>, asset_server: &AssetServer) {
     let hitbox = car_info.config.hitbox_size.to_bevy();
+
+    #[cfg(feature = "full_load")]
     let base_color = match car_info.team {
         Team::Blue => Color::rgb(0.03, 0.09, 0.79),
         Team::Orange => Color::rgb(0.82, 0.42, 0.02),
+    };
+
+    #[cfg(not(feature = "full_load"))]
+    // use colors that are a bit darker
+    let base_color = match car_info.team {
+        Team::Blue => Color::rgb(0.01, 0.03, 0.39),
+        Team::Orange => Color::rgb(0.41, 0.21, 0.01),
     };
 
     let (name, mesh_id) = CAR_BODIES[if (120f32..121.).contains(&hitbox.x) {

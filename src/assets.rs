@@ -33,7 +33,17 @@ pub struct BallAssets {
 const BLOCK_MESHES: [&str; 7] = ["CollisionMeshes", "FieldCollision_Standard", "Goal_STD_Outer", "SkySphere01", "Glow", "Fog", "FX_General"];
 
 #[cfg(not(feature = "full_load"))]
-const WHITELIST_MESHES: [&str; 8] = ["Field_STD", "FF", "BoostPads", "BoostPad_Large", "Goal_STD", "AdvertStrip", "Field_Center", "Field_Mid"];
+const WHITELIST_MESHES: [&str; 9] = [
+    "Field_STD",
+    "FF",
+    "BoostPads",
+    "BoostPad_Large",
+    "Goal_STD",
+    "AdvertStrip",
+    "Field_Center",
+    "Field_Mid",
+    "Body",
+];
 
 #[cfg(not(feature = "full_load"))]
 #[inline]
@@ -178,8 +188,9 @@ fn retreive_material(name: &str, asset_server: &AssetServer, base_color: Color) 
         } else if ["Pickup_Boost.Materials.BoostPad_Small_MIC", "Pickup_Boost.Materials.BoostPad_Large_MIC"].contains(&name) {
             StandardMaterial::from(Color::rgb(0.8, 0.1, 0.1))
         } else if name.contains("Advert") {
+            dbg!(name);
             StandardMaterial {
-                base_color: Color::rgba(0.5, 0.5, 0.5, 0.05),
+                base_color: Color::rgba(0.1, 0.1, 0.1, 0.05),
                 alpha_mode: AlphaMode::Blend,
                 ..Default::default()
             }
