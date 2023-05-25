@@ -30,19 +30,29 @@ pub struct BallAssets {
     pub ball: Handle<Mesh>,
 }
 
+#[derive(AssetCollection, Resource)]
+pub struct BoostPickupGlows {
+    #[asset(path = "Pickup_Boost/StaticMesh3/BoostPad_Small_02_SM.pskx")]
+    pub small: Handle<Mesh>,
+    #[asset(path = "Pickup_Boost/StaticMesh3/BoostPad_Large_Glow.pskx")]
+    pub large: Handle<Mesh>,
+}
+
 const BLOCK_MESHES: [&str; 7] = ["CollisionMeshes", "FieldCollision_Standard", "Goal_STD_Outer", "SkySphere01", "Glow", "Fog", "FX_General"];
 
 #[cfg(not(feature = "full_load"))]
-const WHITELIST_MESHES: [&str; 9] = [
+const WHITELIST_MESHES: [&str; 11] = [
     "Field_STD",
     "FF",
     "BoostPads",
     "BoostPad_Large",
-    "Goal_STD",
+    "Goal",
     "AdvertStrip",
     "Field_Center",
     "Field_Mid",
     "Body",
+    "Side",
+    "Floor",
 ];
 
 #[cfg(not(feature = "full_load"))]
@@ -154,8 +164,9 @@ const ADD_MATS: [&str; 13] = [
 ];
 
 #[cfg(not(feature = "full_load"))]
-const WHITELIST_MATS: [&str; 3] = [
+const WHITELIST_MATS: [&str; 4] = [
     "FutureTech.Materials.ForceField_Mat",
+    "FutureTech.Materials.ForceField_HexGage_MIC",
     "FutureTech.Materials.HexGlass_WithArrows_Team2_MIC",
     "FutureTech.Materials.HexGlass_WithArrows_Team1_MIC",
 ];
@@ -180,15 +191,19 @@ fn retreive_material(name: &str, asset_server: &AssetServer, base_color: Color) 
     if !is_in_whitelist(name) {
         // load custom material instead
         let mut material = if name == "Stadium_Assets.Materials.Grass_Base_Team1_MIC" {
-            StandardMaterial::from(Color::rgb(0.1, 0.8, 0.1))
+            StandardMaterial::from(Color::rgb(0.1, 0.6, 0.1))
         } else if name == "FutureTech.Materials.Reflective_Floor_V2_Mat" {
             StandardMaterial::from(Color::rgb(0.1, 0.1, 0.8))
         } else if name == "FutureTech.Materials.Frame_01_V2_Mat" {
-            StandardMaterial::from(Color::rgb(0.6, 0.1, 0.6))
+            StandardMaterial::from(Color::rgb(0.25, 0.1, 0.25))
+        } else if name == "FutureTech.Materials.Frame_01_White_MIC" {
+            StandardMaterial::from(Color::SILVER)
+        } else if name == "FutureTech.Materials.CrossHatched_Grate_MIC" {
+            StandardMaterial::from(Color::TOMATO)
         } else if ["Pickup_Boost.Materials.BoostPad_Small_MIC", "Pickup_Boost.Materials.BoostPad_Large_MIC"].contains(&name) {
             StandardMaterial::from(Color::rgb(0.8, 0.1, 0.1))
         } else if name.contains("Advert") {
-            StandardMaterial::from(Color::GRAY)
+            StandardMaterial::from(Color::BISQUE)
         } else {
             return None;
         };

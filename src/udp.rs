@@ -1,15 +1,16 @@
 use std::{cmp::Ordering, f32::consts::PI, fs, net::UdpSocket};
 
 use bevy::{
-    math::{Mat3A, Vec3A},
+    math::{Mat3A, Vec3A, Vec3Swizzles},
     prelude::*,
 };
 use bevy_mod_picking::PickableBundle;
 
 use crate::{
-    assets::{get_material, get_mesh_info},
+    assets::{get_material, get_mesh_info, BoostPickupGlows},
     bytes::{FromBytes, ToBytes},
     camera::{EntityName, PrimaryCamera},
+    mesh::LargeBoostPadLocRots,
     rocketsim::{CarInfo, GameState, Team},
     LoadState, ServerPort,
 };
@@ -44,6 +45,17 @@ fn establish_connection(port: Res<ServerPort>, mut commands: Commands, mut state
 
 pub trait ToBevyVec {
     fn to_bevy(self) -> Vec3;
+}
+
+pub trait ToBevyVecFlat {
+    fn to_bevy_flat(self) -> Vec2;
+}
+
+impl ToBevyVecFlat for [f32; 3] {
+    #[inline]
+    fn to_bevy_flat(self) -> Vec2 {
+        Vec2::new(self[0], self[1])
+    }
 }
 
 impl ToBevyVec for [f32; 3] {
@@ -214,6 +226,8 @@ fn step_arena(
     cars: Query<(Entity, &Car)>,
     pads: Query<(Entity, &BoostPadI)>,
     asset_server: Res<AssetServer>,
+    pad_glows: Res<BoostPickupGlows>,
+    large_boost_pad_loc_rots: Res<LargeBoostPadLocRots>,
     mut game_state: ResMut<GameState>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -255,29 +269,54 @@ fn step_arena(
         }
 
         for pad in &game_state.pads {
-            // nice yellow color for active pads
-            let color = Color::rgba(0.9, 0.9, 0.1, 0.6);
+            let mut transform = Transform::from_translation(pad.position.to_bevy() - Vec3::Y * 70.);
 
-            let shape = if pad.is_big {
-                shape::Cylinder {
-                    radius: 208.,
-                    height: 168.,
-                    ..default()
-                }
+            let mesh = if pad.is_big {
+                let rotation = large_boost_pad_loc_rots
+                    .locs
+                    .iter()
+                    .enumerate()
+                    .find(|(_, loc)| loc.distance_squared(pad.position.xy()) < 25.)
+                    .map(|(i, _)| large_boost_pad_loc_rots.rots[i]);
+                transform.rotate_y(rotation.unwrap_or_default().to_radians());
+
+                pad_glows.large.clone()
             } else {
-                shape::Cylinder {
-                    radius: 144.,
-                    height: 165.,
-                    ..default()
+                if transform.translation.z > 10. {
+                    transform.rotate_y(PI);
                 }
+
+                if (1023f32..1025.).contains(&transform.translation.x.abs()) {
+                    transform.rotate_y(PI / 6.);
+
+                    if transform.translation.x > 1. {
+                        transform.rotate_y(PI);
+                    }
+                }
+
+                if (1023f32..1025.).contains(&transform.translation.z.abs()) {
+                    transform.rotate_y(PI / 3.);
+                }
+
+                if (1787f32..1789.).contains(&transform.translation.x.abs()) && (2299f32..2301.).contains(&transform.translation.z.abs()) {
+                    transform.rotate_y(PI.copysign(transform.translation.x * transform.translation.z) / 4.);
+                }
+
+                pad_glows.small.clone()
             };
 
             commands.spawn((
                 BoostPadI,
                 PbrBundle {
-                    mesh: meshes.add(Mesh::from(shape)),
-                    material: materials.add(StandardMaterial::from(color)),
-                    transform: Transform::from_translation(pad.position.to_bevy() + Vec3::Y),
+                    mesh,
+                    transform,
+                    material: materials.add(StandardMaterial {
+                        base_color: Color::rgba(0.9, 0.9, 0.1, 0.6),
+                        alpha_mode: AlphaMode::Add,
+                        double_sided: true,
+                        cull_mode: None,
+                        ..default()
+                    }),
                     ..default()
                 },
                 PickableBundle::default(),
@@ -355,8 +394,8 @@ fn update_pads(state: Res<GameState>, query: Query<&Handle<StandardMaterial>, Wi
         material.base_color = if pad.state.is_active {
             Color::rgba(0.9, 0.9, 0.1, 0.6)
         } else {
-            // make inactive pads grey and more transparent
-            Color::rgba(0.5, 0.5, 0.5, 0.3)
+            // make the glow on inactive pads dissapear
+            Color::NONE
         };
     }
 }

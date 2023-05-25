@@ -9,7 +9,7 @@ use std::io::{self, Read};
 use crate::{
     assets::*,
     camera::EntityName,
-    udp::{Ball, ToBevyVec},
+    udp::{Ball, ToBevyVec, ToBevyVecFlat},
     LoadState,
 };
 
@@ -17,7 +17,8 @@ pub struct FieldLoaderPlugin;
 
 impl Plugin for FieldLoaderPlugin {
     fn build(&self, app: &mut App) {
-        app.add_system(load_field.run_if(in_state(LoadState::Field)))
+        app.insert_resource(LargeBoostPadLocRots::default())
+            .add_system(load_field.run_if(in_state(LoadState::Field)))
             .add_system(load_extra_field.run_if(in_state(LoadState::FieldExtra)));
     }
 }
@@ -153,11 +154,18 @@ const BLACKLIST_MESH_MATS: [&str; 6] = [
     "FutureTech.Materials.TrimLight_None_Mat",
 ];
 
+#[derive(Resource, Default)]
+pub struct LargeBoostPadLocRots {
+    pub locs: Vec<Vec2>,
+    pub rots: Vec<f32>,
+}
+
 fn load_field(
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut state: ResMut<NextState<LoadState>>,
+    mut large_boost_pad_loc_rots: ResMut<LargeBoostPadLocRots>,
     asset_server: Res<AssetServer>,
 ) {
     let (pickup_boost, standard_common_prefab, the_world): (Section, Node, Node) = serde_json::from_str(include_str!("../stadiums/Stadium_P_MeshObjects.json")).unwrap();
@@ -204,6 +212,9 @@ fn load_field(
 
             if node.static_mesh.contains("Grass.Grass") || node.static_mesh.contains("Grass_1x1") {
                 transform.translation.y += 10.;
+            } else if node.static_mesh.contains("BoostPad_Large") {
+                large_boost_pad_loc_rots.locs.push(node.translation.map(|t| t.to_bevy_flat()).unwrap_or_default());
+                large_boost_pad_loc_rots.rots.push(node.rotation.map(|r| r[1]).unwrap_or_default());
             }
 
             commands
