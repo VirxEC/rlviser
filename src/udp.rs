@@ -1,15 +1,16 @@
 use std::{cmp::Ordering, f32::consts::PI, fs, net::UdpSocket};
 
 use bevy::{
+    app::AppExit,
     math::{Mat3A, Vec3A, Vec3Swizzles},
     prelude::*,
 };
-use bevy_mod_picking::PickableBundle;
+use bevy_mod_picking::prelude::*;
 
 use crate::{
     assets::{get_material, get_mesh_info, BoostPickupGlows},
     bytes::{FromBytes, ToBytes},
-    camera::{EntityName, PrimaryCamera},
+    camera::{EntityName, HighlightedEntity, PrimaryCamera},
     mesh::LargeBoostPadLocRots,
     rocketsim::{CarInfo, GameState, Team},
     LoadState, ServerPort,
@@ -120,8 +121,10 @@ fn spawn_default_car(id: u32, base_color: Color, hitbox: Vec3, commands: &mut Co
             material: materials.add(base_color.into()),
             ..Default::default()
         },
-        PickableBundle::default(),
         EntityName::new("generic_body"),
+        RaycastPickTarget::default(),
+        OnPointer::<Over>::target_insert(HighlightedEntity),
+        OnPointer::<Out>::target_remove::<HighlightedEntity>(),
     ));
 }
 
@@ -202,8 +205,10 @@ fn spawn_car(car_info: &CarInfo, commands: &mut Commands, meshes: &mut Assets<Me
             Transform::default(),
             Visibility::default(),
             ComputedVisibility::default(),
-            PickableBundle::default(),
             EntityName::new(name),
+            RaycastPickTarget::default(),
+            OnPointer::<Over>::target_insert(HighlightedEntity),
+            OnPointer::<Out>::target_remove::<HighlightedEntity>(),
         ))
         .with_children(|parent| {
             mesh_info
@@ -220,6 +225,23 @@ fn spawn_car(car_info: &CarInfo, commands: &mut Commands, meshes: &mut Assets<Me
         });
 }
 
+#[repr(u8)]
+#[derive(PartialEq, Eq)]
+enum UdpPacketTypes {
+    Quit,
+    GameState,
+}
+
+impl UdpPacketTypes {
+    fn new(byte: u8) -> Self {
+        match byte {
+            0 => Self::Quit,
+            1 => Self::GameState,
+            _ => unreachable!(),
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn step_arena(
     socket: Res<UdpConnection>,
@@ -232,30 +254,35 @@ fn step_arena(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut exit: EventWriter<AppExit>,
 ) {
-    let mut buf = None;
-    loop {
-        const INITIAL_BUFFER: [u8; GameState::MIN_NUM_BYTES] = [0; GameState::MIN_NUM_BYTES];
-        let mut min_buf = INITIAL_BUFFER;
-        if socket.0.peek_from(&mut min_buf).is_err() {
-            break;
-        }
-
-        if game_state.tick_count > GameState::read_tick_count(&min_buf) {
-            drop(socket.0.recv_from(&mut [0]));
-            break;
-        }
-
-        let mut next_buf = vec![0; GameState::get_num_bytes(&min_buf)];
-        if socket.0.recv_from(&mut next_buf).is_err() {
-            break;
-        }
-        buf = Some(next_buf);
+    const PACKET_TYPE_BUFFER: [u8; 1] = [0];
+    let mut packet_type = PACKET_TYPE_BUFFER;
+    if socket.0.recv_from(&mut packet_type).is_err() {
+        return;
     }
 
-    let Some(buf) = buf else {
+    if UdpPacketTypes::new(packet_type[0]) != UdpPacketTypes::GameState {
+        // quit bevy app
+        exit.send(AppExit);
         return;
-    };
+    }
+
+    const INITIAL_BUFFER: [u8; GameState::MIN_NUM_BYTES] = [0; GameState::MIN_NUM_BYTES];
+    let mut min_buf = INITIAL_BUFFER;
+    if socket.0.peek_from(&mut min_buf).is_err() {
+        return;
+    }
+
+    if game_state.tick_count > GameState::read_tick_count(&min_buf) {
+        drop(socket.0.recv_from(&mut [0]));
+        return;
+    }
+
+    let mut buf = vec![0; GameState::get_num_bytes(&min_buf)];
+    if socket.0.recv_from(&mut buf).is_err() {
+        return;
+    }
 
     *game_state = GameState::from_bytes(&buf);
 
@@ -319,8 +346,10 @@ fn step_arena(
                     }),
                     ..default()
                 },
-                PickableBundle::default(),
                 EntityName::new("generic_boost_pad"),
+                RaycastPickTarget::default(),
+                OnPointer::<Over>::target_insert(HighlightedEntity),
+                OnPointer::<Out>::target_remove::<HighlightedEntity>(),
             ));
         }
     }

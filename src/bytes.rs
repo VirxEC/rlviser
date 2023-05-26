@@ -487,6 +487,7 @@ pub trait FromBytes {
     const MIN_NUM_BYTES: usize;
     fn get_num_bytes(bytes: &[u8]) -> usize;
     fn read_tick_count(bytes: &[u8]) -> u64;
+    fn read_tick_rate(bytes: &[u8]) -> f32;
     fn read_num_pads(bytes: &[u8]) -> usize;
     fn read_num_cars(bytes: &[u8]) -> usize;
     fn from_bytes(bytes: &[u8]) -> Self;
@@ -506,6 +507,11 @@ impl FromBytes for GameState {
     }
 
     #[inline]
+    fn read_tick_rate(bytes: &[u8]) -> f32 {
+        f32::from_bytes(&bytes[u64::NUM_BYTES..u64::NUM_BYTES + f32::NUM_BYTES])
+    }
+
+    #[inline]
     fn read_num_pads(bytes: &[u8]) -> usize {
         u32::from_bytes(&bytes[u64::NUM_BYTES + f32::NUM_BYTES..u64::NUM_BYTES + f32::NUM_BYTES + u32::NUM_BYTES]) as usize
     }
@@ -519,7 +525,7 @@ impl FromBytes for GameState {
     fn from_bytes(bytes: &[u8]) -> Self {
         Self {
             tick_count: Self::read_tick_count(bytes),
-            tick_rate: f32::from_bytes(&bytes[u64::NUM_BYTES..u64::NUM_BYTES + f32::NUM_BYTES]),
+            tick_rate: Self::read_tick_rate(bytes),
             ball: BallState::from_bytes(&bytes[Self::MIN_NUM_BYTES..Self::MIN_NUM_BYTES + BallState::NUM_BYTES]),
             ball_rot: Quat::from_xyzw(
                 f32::from_bytes(&bytes[Self::MIN_NUM_BYTES + BallState::NUM_BYTES..Self::MIN_NUM_BYTES + BallState::NUM_BYTES + f32::NUM_BYTES]),

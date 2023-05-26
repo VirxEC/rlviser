@@ -2,13 +2,13 @@ use bevy::{
     prelude::*,
     render::mesh::{self, VertexAttributeValues},
 };
-use bevy_mod_picking::PickableBundle;
+use bevy_mod_picking::prelude::*;
 use serde::Deserialize;
 use std::io::{self, Read};
 
 use crate::{
     assets::*,
-    camera::EntityName,
+    camera::{EntityName, HighlightedEntity},
     udp::{Ball, ToBevyVec, ToBevyVecFlat},
     LoadState,
 };
@@ -47,8 +47,11 @@ fn load_extra_field(mut commands: Commands, mut materials: ResMut<Assets<Standar
                 transform: Transform::from_xyz(0., 92., 0.),
                 ..default()
             },
+            EntityName::new("ball"),
+            RaycastPickTarget::default(),
+            OnPointer::<Over>::target_insert(HighlightedEntity),
+            OnPointer::<Out>::target_remove::<HighlightedEntity>(),
         ))
-        .insert((PickableBundle::default(), EntityName::new("ball")))
         .with_children(|parent| {
             parent.spawn(PointLightBundle {
                 point_light: PointLight {
@@ -217,14 +220,18 @@ fn load_field(
                 large_boost_pad_loc_rots.rots.push(node.rotation.map(|r| r[1]).unwrap_or_default());
             }
 
-            commands
-                .spawn(PbrBundle {
+            commands.spawn((
+                PbrBundle {
                     mesh: mesh.clone(),
                     material: material.clone(),
                     transform,
                     ..default()
-                })
-                .insert((PickableBundle::default(), EntityName::new(format!("{} | {mat}", node.static_mesh.clone()))));
+                },
+                EntityName::new(format!("{} | {mat}", node.static_mesh.clone())),
+                RaycastPickTarget::default(),
+                OnPointer::<Over>::target_insert(HighlightedEntity),
+                OnPointer::<Out>::target_remove::<HighlightedEntity>(),
+            ));
         }
     }
 

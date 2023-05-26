@@ -10,7 +10,7 @@ use bevy::{
 };
 use bevy_atmosphere::prelude::AtmosphereCamera;
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
-use bevy_mod_picking::{PickingCameraBundle, PickingPluginsState};
+use bevy_mod_picking::{picking_core::PickingPluginsSettings, prelude::*};
 
 use crate::{
     camera::{DaylightOffset, EntityName, HighlightedEntity, PrimaryCamera},
@@ -130,7 +130,7 @@ impl Options {
 #[allow(clippy::too_many_arguments)]
 fn ui_system(
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
-    mut picking_state: ResMut<PickingPluginsState>,
+    mut picking_state: ResMut<PickingPluginsSettings>,
     mut options: ResMut<Options>,
     mut contexts: EguiContexts,
     heq: Query<(&Transform, &EntityName), With<HighlightedEntity>>,
@@ -153,9 +153,7 @@ fn ui_system(
             false => CursorGrabMode::None,
         };
         window.cursor.visible = !options.focus;
-        picking_state.enable_picking = !options.focus;
-        picking_state.enable_interacting = !options.focus;
-        picking_state.enable_highlighting = !options.focus;
+        picking_state.enable = !options.focus;
     }
 
     if options.focus {
@@ -228,7 +226,7 @@ fn update_draw_distance(options: Res<Options>, mut commands: Commands, query: Qu
                 ..default()
             },
         ))
-        .insert((AtmosphereCamera::default(), Spectator, PickingCameraBundle::default()));
+        .insert((AtmosphereCamera::default(), Spectator, RaycastPickCamera::default()));
 }
 
 fn toggle_vsync(options: Res<Options>, mut windows: Query<&mut Window, With<PrimaryWindow>>) {

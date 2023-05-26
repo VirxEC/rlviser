@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use bevy::prelude::*;
 use bevy_atmosphere::prelude::*;
-use bevy_mod_picking::{CustomHighlightPlugin, DefaultPickingPlugins, HoverEvent, PickingCameraBundle, PickingEvent};
+use bevy_mod_picking::prelude::*;
 
 use crate::spectator::*;
 
@@ -49,18 +49,17 @@ fn setup(mut commands: Commands) {
 
     commands.spawn((DirectionalLightBundle::default(), Sun));
 
-    commands
-        .spawn((
-            PrimaryCamera::default(),
-            Camera3dBundle {
-                projection: PerspectiveProjection { far: 500000., ..default() }.into(),
-                transform: Transform::from_translation(Vec3::new(-3000., 1000., 0.)).looking_to(Vec3::X, Vec3::Y),
-                ..default()
-            },
-            AtmosphereCamera::default(),
-            Spectator,
-        ))
-        .insert(PickingCameraBundle::default());
+    commands.spawn((
+        PrimaryCamera::default(),
+        Camera3dBundle {
+            projection: PerspectiveProjection { far: 500000., ..default() }.into(),
+            transform: Transform::from_translation(Vec3::new(-3000., 1000., 0.)).looking_to(Vec3::X, Vec3::Y),
+            ..default()
+        },
+        AtmosphereCamera::default(),
+        RaycastPickCamera::default(),
+        Spectator,
+    ));
 }
 
 #[derive(Resource, Default)]
@@ -105,19 +104,8 @@ impl EntityName {
     }
 }
 
-#[derive(Component)]
+#[derive(Component, Clone, Copy)]
 pub struct HighlightedEntity;
-
-fn handle_picker_events(mut commands: Commands, mut events: EventReader<PickingEvent>) {
-    for event in events.iter() {
-        if let PickingEvent::Hover(hover) = event {
-            match hover {
-                HoverEvent::JustEntered(entity) => commands.entity(*entity).insert(HighlightedEntity),
-                HoverEvent::JustLeft(entity) => commands.entity(*entity).remove::<HighlightedEntity>(),
-            };
-        }
-    }
-}
 
 pub struct CameraPlugin;
 
@@ -134,9 +122,8 @@ impl Plugin for CameraPlugin {
         .insert_resource(DaylightOffset::default())
         .add_plugin(SpectatorPlugin)
         .add_plugin(AtmospherePlugin)
-        .add_plugins(DefaultPickingPlugins.build().disable::<CustomHighlightPlugin<StandardMaterial>>())
+        .add_plugins(DefaultPickingPlugins)
         .add_startup_system(setup)
-        .add_system(handle_picker_events)
         .add_system(daylight_cycle);
     }
 }
