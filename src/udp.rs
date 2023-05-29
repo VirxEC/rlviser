@@ -11,7 +11,7 @@ use crate::{
     assets::{get_material, get_mesh_info, BoostPickupGlows},
     bytes::{FromBytes, ToBytes},
     camera::{EntityName, HighlightedEntity, PrimaryCamera},
-    mesh::LargeBoostPadLocRots,
+    mesh::{ChangeCarPos, LargeBoostPadLocRots},
     rocketsim::{CarInfo, GameState, Team},
     LoadState, ServerPort,
 };
@@ -217,14 +217,16 @@ fn spawn_car(
     commands
         .spawn((
             Car(car_info.id),
-            GlobalTransform::default(),
-            Transform::default(),
-            Visibility::default(),
-            ComputedVisibility::default(),
+            PbrBundle {
+                mesh: meshes.add(shape::Box::new(hitbox.x * 2., hitbox.y * 2., hitbox.z * 2.).into()),
+                material: materials.add(Color::NONE.into()),
+                ..Default::default()
+            },
             EntityName::new(name),
             RaycastPickTarget::default(),
             OnPointer::<Over>::target_insert(HighlightedEntity),
             OnPointer::<Out>::target_remove::<HighlightedEntity>(),
+            OnPointer::<Drag>::send_event::<ChangeCarPos>(),
         ))
         .with_children(|parent| {
             mesh_info

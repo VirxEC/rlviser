@@ -13,7 +13,7 @@ use crate::{
     bytes::ToBytes,
     camera::{EntityName, HighlightedEntity, PrimaryCamera},
     rocketsim::GameState,
-    udp::{Ball, ToBevyVec, ToBevyVecFlat, UdpConnection},
+    udp::{Ball, Car, ToBevyVec, ToBevyVecFlat, UdpConnection},
     LoadState,
 };
 
@@ -25,7 +25,9 @@ impl Plugin for FieldLoaderPlugin {
             .add_system(load_field.run_if(in_state(LoadState::Field)))
             .add_system(load_extra_field.run_if(in_state(LoadState::FieldExtra)))
             .add_event::<ChangeBallPos>()
-            .add_system(change_ball_pos.run_if(on_event::<ChangeBallPos>()));
+            .add_system(change_ball_pos.run_if(on_event::<ChangeBallPos>()))
+            .add_event::<ChangeCarPos>()
+            .add_system(change_car_pos.run_if(on_event::<ChangeCarPos>()));
     }
 }
 
@@ -44,35 +46,69 @@ fn change_ball_pos(
     mut events: EventReader<ChangeBallPos>,
     camera: Query<(&Camera, &GlobalTransform), With<PrimaryCamera>>,
 ) {
-    if events.iter().count() == 0 {
-        return;
-    }
-
-    let (camera, global_transform) = camera.single();
-    let Some(cursor_coords) = windows.single().cursor_position() else {
+    events.clear();
+    let Some(target) = get_move_object_target(camera, windows, game_state.ball.pos.xzy()) else {
         return;
     };
+
+    game_state.ball.vel = (target.xzy() - game_state.ball.pos).normalize() * 2000.;
+    socket.0.send(&game_state.to_bytes()).unwrap();
+}
+
+pub struct ChangeCarPos(Entity);
+
+impl From<ListenedEvent<Drag>> for ChangeCarPos {
+    fn from(event: ListenedEvent<Drag>) -> Self {
+        ChangeCarPos(event.target)
+    }
+}
+
+fn change_car_pos(
+    cars: Query<&Car>,
+    windows: Query<&Window, With<PrimaryWindow>>,
+    socket: Res<UdpConnection>,
+    mut game_state: ResMut<GameState>,
+    mut events: EventReader<ChangeCarPos>,
+    camera: Query<(&Camera, &GlobalTransform), With<PrimaryCamera>>,
+) {
+    let Ok(car_id) = cars.get(events.iter().last().unwrap().0).map(|car| car.id()) else {
+        return;
+    };
+
+    let Some(car) = game_state.cars.iter_mut().find(|car| car.id == car_id) else {
+        return;
+    };
+
+    let Some(target) = get_move_object_target(camera, windows, car.state.pos.xzy()) else {
+        return;
+    };
+
+    car.state.vel = (target.xzy() - car.state.pos).normalize() * 2000.;
+    socket.0.send(&game_state.to_bytes()).unwrap();
+}
+
+fn get_move_object_target(
+    camera: Query<(&Camera, &GlobalTransform), With<PrimaryCamera>>,
+    windows: Query<&Window, With<PrimaryWindow>>,
+    plane_point: Vec3A,
+) -> Option<Vec3A> {
+    let (camera, global_transform) = camera.single();
+    let cursor_coords = windows.single().cursor_position()?;
 
     // Get the ray that goes from the camera through the cursor
-    let Some(global_ray) = camera.viewport_to_world(global_transform, cursor_coords) else {
-        return;
-    };
+    let global_ray = camera.viewport_to_world(global_transform, cursor_coords)?;
 
     let cam_pos = Vec3A::from(global_ray.origin);
     let cursor_dir = Vec3A::from(global_ray.direction);
 
     // define a plane that intersects the ball and is perpendicular to the camera direction
-    let plane_point = game_state.ball.pos.xzy();
     let plane_normal = (global_transform.affine().matrix3 * Vec3A::Z).normalize();
 
     // get projection factor
     let lambda = (plane_point - cam_pos).dot(plane_normal) / plane_normal.dot(cursor_dir);
 
     // project cursor ray onto plane
-    let target = cam_pos + lambda * cursor_dir;
-
-    game_state.ball.vel = (target.xzy() - game_state.ball.pos).normalize() * 2000.;
-    socket.0.send(&game_state.to_bytes()).unwrap();
+    Some(cam_pos + lambda * cursor_dir)
 }
 
 fn load_extra_field(
