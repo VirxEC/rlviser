@@ -276,15 +276,14 @@ fn step_arena(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut exit: EventWriter<AppExit>,
 ) {
-    let buf = loop {
-        const PACKET_TYPE_BUFFER: [u8; 1] = [0];
-        let mut packet_type = PACKET_TYPE_BUFFER;
-        if socket.0.recv_from(&mut packet_type).is_err() {
-            return;
-        }
+    let mut temp_buf = None;
 
+    const PACKET_TYPE_BUFFER: [u8; 1] = [0];
+    let mut packet_type = PACKET_TYPE_BUFFER;
+    
+    while socket.0.recv_from(&mut packet_type).is_ok() {
         let Some(packet_type) = UdpPacketTypes::new(packet_type[0]) else {
-            continue;
+            return;
         };
 
         if packet_type != UdpPacketTypes::GameState {
@@ -302,15 +301,19 @@ fn step_arena(
 
         if game_state.tick_count > GameState::read_tick_count(&min_buf) {
             drop(socket.0.recv_from(&mut [0]));
-            continue;
+            return;
         }
 
-        let mut buf = vec![0; GameState::get_num_bytes(&min_buf)];
-        if socket.0.recv_from(&mut buf).is_err() {
-            continue;
+        let mut full_buf = vec![0; GameState::get_num_bytes(&min_buf)];
+        if socket.0.recv_from(&mut full_buf).is_err() {
+            return;
         }
 
-        break buf;
+        temp_buf = Some(full_buf);
+    };
+
+    let Some(buf) = temp_buf else {
+        return;
     };
 
     *game_state = GameState::from_bytes(&buf);

@@ -9,7 +9,7 @@ mod udp;
 
 use bevy::{
     prelude::*,
-    render::render_resource::{AddressMode, SamplerDescriptor},
+    render::render_resource::{AddressMode, SamplerDescriptor}, window::PresentMode,
 };
 use bevy_asset_loader::prelude::*;
 
@@ -56,6 +56,7 @@ fn main() {
                 .set(WindowPlugin {
                     primary_window: Some(Window {
                         title: "RLViser-rs".into(),
+                        present_mode: PresentMode::AutoNoVsync,
                         ..default()
                     }),
                     ..default()

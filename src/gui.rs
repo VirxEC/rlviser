@@ -5,17 +5,13 @@ use std::{
 
 use bevy::{
     prelude::*,
-    render::camera::CameraProjection,
-    window::{CursorGrabMode, PresentMode, PrimaryWindow},
+    window::{CursorGrabMode, PrimaryWindow},
 };
-use bevy_atmosphere::prelude::AtmosphereCamera;
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
-use bevy_mod_picking::{picking_core::PickingPluginsSettings, prelude::*};
+use bevy_framepace::{FramepaceSettings, Limiter};
+use bevy_mod_picking::picking_core::PickingPluginsSettings;
 
-use crate::{
-    camera::{DaylightOffset, EntityName, HighlightedEntity, PrimaryCamera},
-    spectator::Spectator,
-};
+use crate::camera::{DaylightOffset, EntityName, HighlightedEntity, PrimaryCamera};
 
 pub struct DebugOverlayPlugin;
 
@@ -32,8 +28,8 @@ impl Plugin for DebugOverlayPlugin {
             .add_system(update_daytime)
             .add_system(update_msaa.after(ui_system))
             .add_system(update_msaa)
-            .add_system(update_draw_distance.after(ui_system))
-            .add_system(update_draw_distance)
+            // .add_system(update_draw_distance.after(ui_system))
+            // .add_system(update_draw_distance)
             .add_system(write_settings_to_file.after(ui_system))
             .add_system(write_settings_to_file);
     }
@@ -43,12 +39,14 @@ impl Plugin for DebugOverlayPlugin {
 struct Options {
     focus: bool,
     vsync: bool,
+    uncap_fps: bool,
+    fps_limit: f64,
     fps: (usize, [f32; 25]),
     stop_day: bool,
     daytime: f32,
     day_speed: f32,
     msaa: u8,
-    draw_distance: u8,
+    // draw_distance: u8,
 }
 
 impl Default for Options {
@@ -56,13 +54,15 @@ impl Default for Options {
     fn default() -> Self {
         Self {
             focus: false,
-            vsync: true,
+            vsync: false,
+            uncap_fps: false,
+            fps_limit: 120.,
             fps: Default::default(),
             stop_day: false,
             daytime: 0.,
             day_speed: 1.,
             msaa: 2,
-            draw_distance: 3,
+            // draw_distance: 3,
         }
     }
 }
@@ -88,6 +88,8 @@ impl Options {
 
             match key {
                 "vsync" => options.vsync = value.parse().unwrap(),
+                "uncap_fps" => options.uncap_fps = value.parse().unwrap(),
+                "fps_limit" => options.fps_limit = value.parse().unwrap(),
                 "stop_day" => options.stop_day = value.parse().unwrap(),
                 "daytime" => options.daytime = value.parse().unwrap(),
                 "day_speed" => options.day_speed = value.parse().unwrap(),
@@ -113,6 +115,8 @@ impl Options {
         let mut file = fs::File::create(Self::FILE_NAME)?;
 
         file.write_fmt(format_args!("vsync={}\n", self.vsync))?;
+        file.write_fmt(format_args!("uncap_fps={}\n", self.uncap_fps))?;
+        file.write_fmt(format_args!("fps_limit={}\n", self.fps_limit))?;
         file.write_fmt(format_args!("stop_day={}\n", self.stop_day))?;
         file.write_fmt(format_args!("daytime={}\n", self.daytime))?;
         file.write_fmt(format_args!("day_speed={}\n", self.day_speed))?;
@@ -124,6 +128,7 @@ impl Options {
     #[inline]
     fn is_not_similar(&self, other: &Options) -> bool {
         self.vsync != other.vsync
+            || self.fps_limit != other.fps_limit
             || self.stop_day != other.stop_day
             || self.daytime != other.daytime
             || self.day_speed != other.day_speed
@@ -191,6 +196,8 @@ fn ui_system(
         ui.label("Press Esc to close menu");
         ui.label(format!("FPS: {fps:.0}"));
         ui.checkbox(&mut options.vsync, "vsync");
+        ui.checkbox(&mut options.uncap_fps, "Uncap FPS");
+        ui.add(egui::DragValue::new(&mut options.fps_limit).speed(5.).clamp_range(30.0..=600.));
         ui.checkbox(&mut options.stop_day, "Stop day cycle");
         ui.add(egui::Slider::new(&mut options.daytime, 0.0..=150.0).text("Daytime"));
         ui.add(egui::Slider::new(&mut options.day_speed, 0.0..=10.0).text("Day speed"));
@@ -205,57 +212,53 @@ fn ui_system(
     });
 }
 
-fn update_draw_distance(
-    options: Res<Options>,
-    mut commands: Commands,
-    query: Query<(&PrimaryCamera, &Projection, &Transform, Entity)>,
-) {
-    let draw_distance = match options.draw_distance {
-        0 => 15000.,
-        1 => 50000.,
-        2 => 200000.,
-        3 => 500000.,
-        4 => 2000000.,
-        _ => unreachable!(),
-    };
+// fn update_draw_distance(
+//     options: Res<Options>,
+//     mut commands: Commands,
+//     query: Query<(&PrimaryCamera, &Projection, &Transform, Entity)>,
+// ) {
+//     let draw_distance = match options.draw_distance {
+//         0 => 15000.,
+//         1 => 50000.,
+//         2 => 200000.,
+//         3 => 500000.,
+//         4 => 2000000.,
+//         _ => unreachable!(),
+//     };
 
-    let (primary_camera, projection, transform, entity) = query.single();
+//     let (primary_camera, projection, transform, entity) = query.single();
 
-    if projection.far() == draw_distance {
-        return;
-    }
+//     if projection.far() == draw_distance {
+//         return;
+//     }
 
-    info!("Setting draw distance to {draw_distance}");
-    commands.entity(entity).despawn_recursive();
+//     info!("Setting draw distance to {draw_distance}");
+//     commands.entity(entity).despawn_recursive();
 
-    commands
-        .spawn((
-            *primary_camera,
-            Camera3dBundle {
-                projection: PerspectiveProjection {
-                    far: draw_distance,
-                    ..default()
-                }
-                .into(),
-                transform: *transform,
-                ..default()
-            },
-        ))
-        .insert((AtmosphereCamera::default(), Spectator, RaycastPickCamera::default()));
-}
+//     commands
+//         .spawn((
+//             *primary_camera,
+//             Camera3dBundle {
+//                 projection: PerspectiveProjection {
+//                     far: draw_distance,
+//                     ..default()
+//                 }
+//                 .into(),
+//                 transform: *transform,
+//                 ..default()
+//             },
+//         ))
+//         .insert((AtmosphereCamera::default(), Spectator, RaycastPickCamera::default()));
+// }
 
-fn toggle_vsync(options: Res<Options>, mut windows: Query<&mut Window, With<PrimaryWindow>>) {
-    let wanted_present_mode = if options.vsync {
-        PresentMode::AutoVsync
+fn toggle_vsync(options: Res<Options>, mut framepace: ResMut<FramepaceSettings>) {
+    framepace.limiter = if options.vsync {
+        Limiter::Auto
+    } else if options.uncap_fps {
+        Limiter::Off
     } else {
-        PresentMode::AutoNoVsync
+        Limiter::from_framerate(options.fps_limit)
     };
-
-    if windows.single().present_mode == wanted_present_mode {
-        return;
-    }
-
-    windows.single_mut().present_mode = wanted_present_mode;
 }
 
 fn update_msaa(options: Res<Options>, mut msaa: ResMut<Msaa>) {

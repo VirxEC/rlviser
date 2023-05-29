@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use bevy::prelude::*;
 use bevy_atmosphere::prelude::*;
+use bevy_framepace::{FramepacePlugin, FramepaceSettings};
 use bevy_mod_picking::prelude::*;
 
 use crate::spectator::*;
@@ -124,12 +125,16 @@ impl Plugin for CameraPlugin {
             sensitivity: 0.75,
             ..default()
         })
+        .insert_resource(FramepaceSettings {
+            limiter: bevy_framepace::Limiter::from_framerate(60.),
+        })
         .insert_resource(AtmosphereModel::default())
         .insert_resource(CycleTimer(Timer::new(
             Duration::from_secs_f32(1. / 60.),
             TimerMode::Repeating,
         )))
         .insert_resource(DaylightOffset::default())
+        .add_plugin(FramepacePlugin)
         .add_plugin(SpectatorPlugin)
         .add_plugin(AtmospherePlugin)
         .add_plugins(DefaultPickingPlugins)
