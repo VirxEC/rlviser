@@ -38,7 +38,15 @@ pub struct BoostPickupGlows {
     pub large: Handle<Mesh>,
 }
 
-const BLOCK_MESHES: [&str; 7] = ["CollisionMeshes", "FieldCollision_Standard", "Goal_STD_Outer", "SkySphere01", "Glow", "Fog", "FX_General"];
+const BLOCK_MESHES: [&str; 7] = [
+    "CollisionMeshes",
+    "FieldCollision_Standard",
+    "Goal_STD_Outer",
+    "SkySphere01",
+    "Glow",
+    "Fog",
+    "FX_General",
+];
 
 #[cfg(not(feature = "full_load"))]
 const WHITELIST_MESHES: [&str; 11] = [
@@ -145,7 +153,10 @@ const DOUBLE_SIDED_MATS: [&str; 20] = [
     "Stadium_Assets.Materials.GroomedGrass_FakeLight_Team2_MIC",
 ];
 
-const TRANSPARENT_MATS: [&str; 2] = ["Trees.Materials.LombardyPoplar_B_NoWind_MIC", "Trees.Materials.LombardyPoplar_B_Mat"];
+const TRANSPARENT_MATS: [&str; 2] = [
+    "Trees.Materials.LombardyPoplar_B_NoWind_MIC",
+    "Trees.Materials.LombardyPoplar_B_Mat",
+];
 
 const ADD_MATS: [&str; 13] = [
     "FutureTech.Materials.ForceField_HexGage_MIC",
@@ -200,7 +211,12 @@ fn retreive_material(name: &str, asset_server: &AssetServer, base_color: Color) 
             StandardMaterial::from(Color::SILVER)
         } else if name == "FutureTech.Materials.CrossHatched_Grate_MIC" {
             StandardMaterial::from(Color::TOMATO)
-        } else if ["Pickup_Boost.Materials.BoostPad_Small_MIC", "Pickup_Boost.Materials.BoostPad_Large_MIC"].contains(&name) {
+        } else if [
+            "Pickup_Boost.Materials.BoostPad_Small_MIC",
+            "Pickup_Boost.Materials.BoostPad_Large_MIC",
+        ]
+        .contains(&name)
+        {
             StandardMaterial::from(Color::rgb(0.8, 0.1, 0.1))
         } else if name.contains("Advert") {
             StandardMaterial::from(Color::BISQUE)
@@ -228,7 +244,10 @@ fn retreive_material(name: &str, asset_server: &AssetServer, base_color: Color) 
     } else {
         ".Material3."
     };
-    let mut pre_path = name.replace(".Materials.", material_folder).replace(".Mat.", material_folder).replace('.', "/");
+    let mut pre_path = name
+        .replace(".Materials.", material_folder)
+        .replace(".Mat.", material_folder)
+        .replace('.', "/");
 
     let mut split = pre_path.split('/');
     if let Some(first) = split.next() {
@@ -360,7 +379,12 @@ fn retreive_material(name: &str, asset_server: &AssetServer, base_color: Color) 
 
 static MATERIALS: Mutex<Lazy<HashMap<String, Handle<StandardMaterial>>>> = Mutex::new(Lazy::new(HashMap::new));
 
-pub fn get_material(name: &str, materials: &mut Assets<StandardMaterial>, asset_server: &AssetServer, base_color: Option<Color>) -> Handle<StandardMaterial> {
+pub fn get_material(
+    name: &str,
+    materials: &mut Assets<StandardMaterial>,
+    asset_server: &AssetServer,
+    base_color: Option<Color>,
+) -> Handle<StandardMaterial> {
     let mut material_names = MATERIALS.lock().unwrap();
 
     if let Some(material) = material_names.get(name) {
@@ -473,7 +497,10 @@ pub fn read_extra_uvs(chunk_data: &[u8], data_count: usize) -> Vec<[f32; 2]> {
 
     let mut reader = io::Cursor::new(chunk_data);
     for _ in 0..data_count {
-        extra_uvs.push([reader.read_f32::<LittleEndian>().unwrap(), reader.read_f32::<LittleEndian>().unwrap()]);
+        extra_uvs.push([
+            reader.read_f32::<LittleEndian>().unwrap(),
+            reader.read_f32::<LittleEndian>().unwrap(),
+        ]);
     }
 
     extra_uvs
@@ -510,7 +537,11 @@ pub struct PskxLoader;
 pub const PSK_FILE_HEADER: &[u8] = b"ACTRHEAD\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
 
 impl AssetLoader for PskxLoader {
-    fn load<'a>(&'a self, bytes: &'a [u8], load_context: &'a mut bevy::asset::LoadContext) -> bevy::utils::BoxedFuture<'a, Result<(), bevy::asset::Error>> {
+    fn load<'a>(
+        &'a self,
+        bytes: &'a [u8],
+        load_context: &'a mut bevy::asset::LoadContext,
+    ) -> bevy::utils::BoxedFuture<'a, Result<(), bevy::asset::Error>> {
         Box::pin(async move {
             let asset_name = load_context.path().file_name().and_then(|name| name.to_str()).unwrap();
             load_context.set_default_asset(LoadedAsset::new(MeshBuilder::from_pskx(asset_name, bytes)?.build_mesh(1.)));

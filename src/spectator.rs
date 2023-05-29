@@ -108,7 +108,11 @@ fn spectator_update(
         return;
     };
 
-    if primary_camera.get_single().map(|state| *state != PrimaryCamera::Spectator).unwrap_or_default() {
+    if primary_camera
+        .get_single()
+        .map(|state| *state != PrimaryCamera::Spectator)
+        .unwrap_or_default()
+    {
         motion.clear();
         return;
     }
@@ -159,7 +163,11 @@ fn spectator_update(
         let up = if keys.pressed(KeyCode::Space) { 1f32 } else { 0f32 };
         let down = if keys.pressed(KeyCode::LControl) { 1f32 } else { 0f32 };
 
-        let speed = if keys.pressed(KeyCode::LShift) { settings.alt_speed } else { settings.base_speed };
+        let speed = if keys.pressed(KeyCode::LShift) {
+            settings.alt_speed
+        } else {
+            settings.base_speed
+        };
 
         let delta_axial = (forward - backward) * speed;
         let delta_lateral = (right - left) * speed;

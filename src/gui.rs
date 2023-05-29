@@ -123,7 +123,11 @@ impl Options {
 
     #[inline]
     fn is_not_similar(&self, other: &Options) -> bool {
-        self.vsync != other.vsync || self.stop_day != other.stop_day || self.daytime != other.daytime || self.day_speed != other.day_speed || self.msaa != other.msaa
+        self.vsync != other.vsync
+            || self.stop_day != other.stop_day
+            || self.daytime != other.daytime
+            || self.day_speed != other.day_speed
+            || self.msaa != other.msaa
     }
 }
 
@@ -192,13 +196,20 @@ fn ui_system(
         ui.add(egui::Slider::new(&mut options.day_speed, 0.0..=10.0).text("Day speed"));
         ui.add(egui::Slider::new(&mut options.msaa, 0..=3).text("MSAA"));
         // ui.add(egui::Slider::new(&mut options.draw_distance, 0..=4).text("Draw distance"));
-        ui.label(format!("Primary camera position: [{:.0}, {:.0}, {:.0}]", camera_pos.x, camera_pos.y, camera_pos.z));
+        ui.label(format!(
+            "Primary camera position: [{:.0}, {:.0}, {:.0}]",
+            camera_pos.x, camera_pos.y, camera_pos.z
+        ));
         ui.label(format!("HE position: [{:.0}, {:.0}, {:.0}]", he_pos.x, he_pos.y, he_pos.z));
         ui.label(format!("Highlighted entity: {highlighted_entity_name}"));
     });
 }
 
-fn update_draw_distance(options: Res<Options>, mut commands: Commands, query: Query<(&PrimaryCamera, &Projection, &Transform, Entity)>) {
+fn update_draw_distance(
+    options: Res<Options>,
+    mut commands: Commands,
+    query: Query<(&PrimaryCamera, &Projection, &Transform, Entity)>,
+) {
     let draw_distance = match options.draw_distance {
         0 => 15000.,
         1 => 50000.,
@@ -221,7 +232,11 @@ fn update_draw_distance(options: Res<Options>, mut commands: Commands, query: Qu
         .spawn((
             *primary_camera,
             Camera3dBundle {
-                projection: PerspectiveProjection { far: draw_distance, ..default() }.into(),
+                projection: PerspectiveProjection {
+                    far: draw_distance,
+                    ..default()
+                }
+                .into(),
                 transform: *transform,
                 ..default()
             },
@@ -230,7 +245,11 @@ fn update_draw_distance(options: Res<Options>, mut commands: Commands, query: Qu
 }
 
 fn toggle_vsync(options: Res<Options>, mut windows: Query<&mut Window, With<PrimaryWindow>>) {
-    let wanted_present_mode = if options.vsync { PresentMode::AutoVsync } else { PresentMode::AutoNoVsync };
+    let wanted_present_mode = if options.vsync {
+        PresentMode::AutoVsync
+    } else {
+        PresentMode::AutoNoVsync
+    };
 
     if windows.single().present_mode == wanted_present_mode {
         return;
@@ -259,7 +278,12 @@ fn update_daytime(options: Res<Options>, mut daytime: ResMut<DaylightOffset>) {
     daytime.day_speed = options.day_speed;
 }
 
-fn write_settings_to_file(time: Res<Time>, options: Res<Options>, mut last_options: Local<Options>, mut last_time: Local<f32>) {
+fn write_settings_to_file(
+    time: Res<Time>,
+    options: Res<Options>,
+    mut last_options: Local<Options>,
+    mut last_time: Local<f32>,
+) {
     // ensure the time difference is > 1 second
     let secs = time.elapsed_seconds_wrapped();
     if (*last_time - secs).abs() < 1. {

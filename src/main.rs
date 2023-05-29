@@ -39,7 +39,10 @@ fn main() {
 
     App::new()
         .add_state::<LoadState>()
-        .insert_resource(ServerPort { primary_port, secondary_port })
+        .insert_resource(ServerPort {
+            primary_port,
+            secondary_port,
+        })
         .add_plugins(
             DefaultPlugins
                 .set(ImagePlugin {

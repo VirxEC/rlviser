@@ -33,7 +33,7 @@ impl Car {
 }
 
 #[derive(Resource)]
-struct UdpConnection(UdpSocket);
+pub struct UdpConnection(pub UdpSocket);
 
 fn establish_connection(port: Res<ServerPort>, mut commands: Commands, mut state: ResMut<NextState<LoadState>>) {
     let socket = UdpSocket::bind(("127.0.0.1", port.secondary_port)).unwrap();
@@ -100,7 +100,10 @@ impl ToBevyQuat for Quat {
     fn to_bevy(self) -> Quat {
         // In RocketSim, the Z axis is up, but in Bevy, the Z and Y axis are swapped
         // We also need to rotate 90 degrees around the X axis and 180 degrees around the Y axis
-        Quat::from_axis_angle(Vec3::Y, PI) * Quat::from_axis_angle(Vec3::X, PI / 2.) * self * Quat::from_mat3a(&Mat3A::from_cols(Vec3A::X, -Vec3A::Z, Vec3A::Y))
+        Quat::from_axis_angle(Vec3::Y, PI)
+            * Quat::from_axis_angle(Vec3::X, PI / 2.)
+            * self
+            * Quat::from_mat3a(&Mat3A::from_cols(Vec3A::X, -Vec3A::Z, Vec3A::Y))
     }
 }
 
@@ -113,7 +116,14 @@ const CAR_BODIES: [(&str, &str); 6] = [
     ("merc_body", "Body_Vanquish.SkeletalMesh3.Body_Merc_PremiumSkin_SK"),
 ];
 
-fn spawn_default_car(id: u32, base_color: Color, hitbox: Vec3, commands: &mut Commands, meshes: &mut Assets<Mesh>, materials: &mut Assets<StandardMaterial>) {
+fn spawn_default_car(
+    id: u32,
+    base_color: Color,
+    hitbox: Vec3,
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+) {
     commands.spawn((
         Car(id),
         PbrBundle {
@@ -128,7 +138,13 @@ fn spawn_default_car(id: u32, base_color: Color, hitbox: Vec3, commands: &mut Co
     ));
 }
 
-fn spawn_car(car_info: &CarInfo, commands: &mut Commands, meshes: &mut Assets<Mesh>, materials: &mut Assets<StandardMaterial>, asset_server: &AssetServer) {
+fn spawn_car(
+    car_info: &CarInfo,
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    asset_server: &AssetServer,
+) {
     let hitbox = car_info.config.hitbox_size.to_bevy();
 
     #[cfg(feature = "full_load")]
@@ -233,11 +249,13 @@ enum UdpPacketTypes {
 }
 
 impl UdpPacketTypes {
-    fn new(byte: u8) -> Self {
-        match byte {
-            0 => Self::Quit,
-            1 => Self::GameState,
-            _ => unreachable!(),
+    fn new(byte: u8) -> Option<Self> {
+        if byte == 0 {
+            Some(Self::Quit)
+        } else if byte == 1 {
+            Some(Self::GameState)
+        } else {
+            None
         }
     }
 }
@@ -256,33 +274,42 @@ fn step_arena(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut exit: EventWriter<AppExit>,
 ) {
-    const PACKET_TYPE_BUFFER: [u8; 1] = [0];
-    let mut packet_type = PACKET_TYPE_BUFFER;
-    if socket.0.recv_from(&mut packet_type).is_err() {
-        return;
-    }
+    let buf = loop {
+        const PACKET_TYPE_BUFFER: [u8; 1] = [0];
+        let mut packet_type = PACKET_TYPE_BUFFER;
+        if socket.0.recv_from(&mut packet_type).is_err() {
+            return;
+        }
 
-    if UdpPacketTypes::new(packet_type[0]) != UdpPacketTypes::GameState {
-        // quit bevy app
-        exit.send(AppExit);
-        return;
-    }
+        let Some(packet_type) = UdpPacketTypes::new(packet_type[0]) else {
+            continue;
+        };
 
-    const INITIAL_BUFFER: [u8; GameState::MIN_NUM_BYTES] = [0; GameState::MIN_NUM_BYTES];
-    let mut min_buf = INITIAL_BUFFER;
-    if socket.0.peek_from(&mut min_buf).is_err() {
-        return;
-    }
+        if packet_type != UdpPacketTypes::GameState {
+            // quit bevy app
+            exit.send(AppExit);
+            return;
+        }
 
-    if game_state.tick_count > GameState::read_tick_count(&min_buf) {
-        drop(socket.0.recv_from(&mut [0]));
-        return;
-    }
+        const INITIAL_BUFFER: [u8; GameState::MIN_NUM_BYTES] = [0; GameState::MIN_NUM_BYTES];
+        let mut min_buf = INITIAL_BUFFER;
+        // wait until we receive the packet
+        // it should arrive VERY quickly, so a loop with no delay is fine
+        // if it doesn't, then there are other problems lol
+        while socket.0.peek_from(&mut min_buf).is_err() {}
 
-    let mut buf = vec![0; GameState::get_num_bytes(&min_buf)];
-    if socket.0.recv_from(&mut buf).is_err() {
-        return;
-    }
+        if game_state.tick_count > GameState::read_tick_count(&min_buf) {
+            drop(socket.0.recv_from(&mut [0]));
+            continue;
+        }
+
+        let mut buf = vec![0; GameState::get_num_bytes(&min_buf)];
+        if socket.0.recv_from(&mut buf).is_err() {
+            continue;
+        }
+
+        break buf;
+    };
 
     *game_state = GameState::from_bytes(&buf);
 
@@ -325,7 +352,9 @@ fn step_arena(
                     transform.rotate_y(PI / 3.);
                 }
 
-                if (1787f32..1789.).contains(&transform.translation.x.abs()) && (2299f32..2301.).contains(&transform.translation.z.abs()) {
+                if (1787f32..1789.).contains(&transform.translation.x.abs())
+                    && (2299f32..2301.).contains(&transform.translation.z.abs())
+                {
                     transform.rotate_y(PI.copysign(transform.translation.x * transform.translation.z) / 4.);
                 }
 
@@ -364,7 +393,10 @@ fn step_arena(
         }
         Ordering::Less => {
             let all_current_cars = cars.iter().map(|(_, car)| car.0).collect::<Vec<_>>();
-            let non_existant_cars = game_state.cars.iter().filter(|car_info| !all_current_cars.iter().any(|&id| id == car_info.id));
+            let non_existant_cars = game_state
+                .cars
+                .iter()
+                .filter(|car_info| !all_current_cars.iter().any(|&id| id == car_info.id));
 
             for car_info in non_existant_cars {
                 spawn_car(car_info, &mut commands, &mut meshes, &mut materials, &asset_server);
@@ -374,7 +406,11 @@ fn step_arena(
     }
 }
 
-fn update_ball(state: Res<GameState>, mut ball: Query<(&mut Transform, &Children), With<Ball>>, mut point_light: Query<&mut PointLight>) {
+fn update_ball(
+    state: Res<GameState>,
+    mut ball: Query<(&mut Transform, &Children), With<Ball>>,
+    mut point_light: Query<&mut PointLight>,
+) {
     let Ok((mut transform, children)) = ball.get_single_mut() else {
         return;
     };
@@ -394,7 +430,11 @@ fn update_ball(state: Res<GameState>, mut ball: Query<(&mut Transform, &Children
     transform.rotation = state.ball_rot.to_bevy();
 }
 
-fn update_car(state: Res<GameState>, mut cars: Query<(&mut Transform, &Car)>, mut camera_query: Query<(&PrimaryCamera, &mut Transform), Without<Car>>) {
+fn update_car(
+    state: Res<GameState>,
+    mut cars: Query<(&mut Transform, &Car)>,
+    mut camera_query: Query<(&PrimaryCamera, &mut Transform), Without<Car>>,
+) {
     let mut camera_info = if let Ok((PrimaryCamera::TrackCar(car_id), camera_transform)) = camera_query.get_single_mut() {
         Some((*car_id, camera_transform))
     } else {
@@ -409,7 +449,8 @@ fn update_car(state: Res<GameState>, mut cars: Query<(&mut Transform, &Car)>, mu
         if let Some((car_id, ref mut camera_transform)) = camera_info {
             if car_id == car.id() {
                 let camera_transform = camera_transform.as_mut();
-                camera_transform.translation = car_transform.translation - car_transform.right() * 300. + car_transform.up() * 150.;
+                camera_transform.translation =
+                    car_transform.translation - car_transform.right() * 300. + car_transform.up() * 150.;
                 camera_transform.look_to(car_transform.forward(), car_transform.up());
                 camera_transform.rotation *= Quat::from_rotation_y(-PI / 2.) * Quat::from_rotation_x(-PI / 16.);
             }
@@ -417,7 +458,11 @@ fn update_car(state: Res<GameState>, mut cars: Query<(&mut Transform, &Car)>, mu
     }
 }
 
-fn update_pads(state: Res<GameState>, query: Query<&Handle<StandardMaterial>, With<BoostPadI>>, mut materials: ResMut<Assets<StandardMaterial>>) {
+fn update_pads(
+    state: Res<GameState>,
+    query: Query<&Handle<StandardMaterial>, With<BoostPadI>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
     for (pad, handle) in state.pads.iter().zip(query.iter()) {
         let material = materials.get_mut(handle).unwrap();
         material.base_color = if pad.state.is_active {

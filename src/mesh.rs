@@ -1,6 +1,8 @@
 use bevy::{
+    math::{Vec3A, Vec3Swizzles},
     prelude::*,
     render::mesh::{self, VertexAttributeValues},
+    window::PrimaryWindow,
 };
 use bevy_mod_picking::prelude::*;
 use serde::Deserialize;
@@ -8,8 +10,10 @@ use std::io::{self, Read};
 
 use crate::{
     assets::*,
-    camera::{EntityName, HighlightedEntity},
-    udp::{Ball, ToBevyVec, ToBevyVecFlat},
+    bytes::ToBytes,
+    camera::{EntityName, HighlightedEntity, PrimaryCamera},
+    rocketsim::GameState,
+    udp::{Ball, ToBevyVec, ToBevyVecFlat, UdpConnection},
     LoadState,
 };
 
@@ -19,11 +23,64 @@ impl Plugin for FieldLoaderPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(LargeBoostPadLocRots::default())
             .add_system(load_field.run_if(in_state(LoadState::Field)))
-            .add_system(load_extra_field.run_if(in_state(LoadState::FieldExtra)));
+            .add_system(load_extra_field.run_if(in_state(LoadState::FieldExtra)))
+            .add_event::<ChangeBallPos>()
+            .add_system(change_ball_pos.run_if(on_event::<ChangeBallPos>()));
     }
 }
 
-fn load_extra_field(mut commands: Commands, mut materials: ResMut<Assets<StandardMaterial>>, mut state: ResMut<NextState<LoadState>>, ball_assets: Res<BallAssets>) {
+pub struct ChangeBallPos;
+
+impl From<ListenedEvent<Drag>> for ChangeBallPos {
+    fn from(_: ListenedEvent<Drag>) -> Self {
+        ChangeBallPos
+    }
+}
+
+fn change_ball_pos(
+    windows: Query<&Window, With<PrimaryWindow>>,
+    socket: Res<UdpConnection>,
+    mut game_state: ResMut<GameState>,
+    mut events: EventReader<ChangeBallPos>,
+    camera: Query<(&Camera, &GlobalTransform), With<PrimaryCamera>>,
+) {
+    if events.iter().count() == 0 {
+        return;
+    }
+
+    let (camera, global_transform) = camera.single();
+    let Some(cursor_coords) = windows.single().cursor_position() else {
+        return;
+    };
+
+    // Get the ray that goes from the camera through the cursor
+    let Some(global_ray) = camera.viewport_to_world(global_transform, cursor_coords) else {
+        return;
+    };
+
+    let cam_pos = Vec3A::from(global_ray.origin);
+    let cursor_dir = Vec3A::from(global_ray.direction);
+
+    // define a plane that intersects the ball and is perpendicular to the camera direction
+    let plane_point = game_state.ball.pos.xzy();
+    let plane_normal = (global_transform.affine().matrix3 * Vec3A::Z).normalize();
+
+    // get projection factor
+    let lambda = (plane_point - cam_pos).dot(plane_normal) / plane_normal.dot(cursor_dir);
+
+    // project cursor ray onto plane
+    let target = cam_pos + lambda * cursor_dir;
+
+    game_state.ball.vel = (target.xzy() - game_state.ball.pos).normalize() * 2000.;
+    socket.0.send(&game_state.to_bytes()).unwrap();
+}
+
+fn load_extra_field(
+    mut commands: Commands,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut state: ResMut<NextState<LoadState>>,
+    ball_assets: Res<BallAssets>,
+) {
     // load a glowing ball
 
     let initial_ball_color = Color::rgb(0.3, 0.3, 0.3);
@@ -51,6 +108,7 @@ fn load_extra_field(mut commands: Commands, mut materials: ResMut<Assets<Standar
             RaycastPickTarget::default(),
             OnPointer::<Over>::target_insert(HighlightedEntity),
             OnPointer::<Out>::target_remove::<HighlightedEntity>(),
+            OnPointer::<Drag>::send_event::<ChangeBallPos>(),
         ))
         .with_children(|parent| {
             parent.spawn(PointLightBundle {
@@ -171,14 +229,18 @@ fn load_field(
     mut large_boost_pad_loc_rots: ResMut<LargeBoostPadLocRots>,
     asset_server: Res<AssetServer>,
 ) {
-    let (pickup_boost, standard_common_prefab, the_world): (Section, Node, Node) = serde_json::from_str(include_str!("../stadiums/Stadium_P_MeshObjects.json")).unwrap();
+    let (pickup_boost, standard_common_prefab, the_world): (Section, Node, Node) =
+        serde_json::from_str(include_str!("../stadiums/Stadium_P_MeshObjects.json")).unwrap();
     debug_assert!(pickup_boost.name == "Pickup_Boost");
     debug_assert!(standard_common_prefab.name == "Standard_Common_Prefab");
     debug_assert!(the_world.name == "TheWorld");
     let persistent_level = &the_world.sub_nodes[0];
     debug_assert!(persistent_level.name == "PersistentLevel");
 
-    let prefab_nodes = standard_common_prefab.sub_nodes[0].sub_nodes.iter().flat_map(|node| node.get_info_node());
+    let prefab_nodes = standard_common_prefab.sub_nodes[0]
+        .sub_nodes
+        .iter()
+        .flat_map(|node| node.get_info_node());
     let world_nodes = persistent_level.sub_nodes.iter().flat_map(|node| match node.get_info_node() {
         Some(node) => vec![node],
         None => node.sub_nodes.clone(),
@@ -216,8 +278,12 @@ fn load_field(
             if node.static_mesh.contains("Grass.Grass") || node.static_mesh.contains("Grass_1x1") {
                 transform.translation.y += 10.;
             } else if node.static_mesh.contains("BoostPad_Large") {
-                large_boost_pad_loc_rots.locs.push(node.translation.map(|t| t.to_bevy_flat()).unwrap_or_default());
-                large_boost_pad_loc_rots.rots.push(node.rotation.map(|r| r[1]).unwrap_or_default());
+                large_boost_pad_loc_rots
+                    .locs
+                    .push(node.translation.map(|t| t.to_bevy_flat()).unwrap_or_default());
+                large_boost_pad_loc_rots
+                    .rots
+                    .push(node.rotation.map(|r| r[1]).unwrap_or_default());
             }
 
             commands.spawn((
@@ -285,7 +351,13 @@ impl MeshBuilder {
                 let verts = all_mat_ids
                     .chunks_exact(3)
                     .zip(all_verts.chunks_exact(3))
-                    .filter_map(|(mat_ids, verts)| if mat_ids[0] == mat_id { Some([verts[0], verts[1], verts[2]]) } else { None })
+                    .filter_map(|(mat_ids, verts)| {
+                        if mat_ids[0] == mat_id {
+                            Some([verts[0], verts[1], verts[2]])
+                        } else {
+                            None
+                        }
+                    })
                     .flatten()
                     .collect::<Vec<_>>();
                 mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, verts);
@@ -293,7 +365,13 @@ impl MeshBuilder {
                 let uvs = all_mat_ids
                     .chunks_exact(3)
                     .zip(all_uvs.chunks_exact(3))
-                    .filter_map(|(mat_ids, uvs)| if mat_ids[0] == mat_id { Some([uvs[0], uvs[1], uvs[2]]) } else { None })
+                    .filter_map(|(mat_ids, uvs)| {
+                        if mat_ids[0] == mat_id {
+                            Some([uvs[0], uvs[1], uvs[2]])
+                        } else {
+                            None
+                        }
+                    })
                     .flatten()
                     .collect::<Vec<_>>();
                 mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
@@ -301,7 +379,13 @@ impl MeshBuilder {
                 let normals = all_mat_ids
                     .chunks_exact(3)
                     .zip(all_normals.chunks_exact(3))
-                    .filter_map(|(mat_ids, normals)| if mat_ids[0] == mat_id { Some([normals[0], normals[1], normals[2]]) } else { None })
+                    .filter_map(|(mat_ids, normals)| {
+                        if mat_ids[0] == mat_id {
+                            Some([normals[0], normals[1], normals[2]])
+                        } else {
+                            None
+                        }
+                    })
                     .flatten()
                     .collect::<Vec<_>>();
                 mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
@@ -309,15 +393,13 @@ impl MeshBuilder {
                 let tangents = all_mat_ids
                     .chunks_exact(3)
                     .zip(all_tangents.chunks_exact(3))
-                    .filter_map(
-                        |(mat_ids, tangents)| {
-                            if mat_ids[0] == mat_id {
-                                Some([tangents[0], tangents[1], tangents[2]])
-                            } else {
-                                None
-                            }
-                        },
-                    )
+                    .filter_map(|(mat_ids, tangents)| {
+                        if mat_ids[0] == mat_id {
+                            Some([tangents[0], tangents[1], tangents[2]])
+                        } else {
+                            None
+                        }
+                    })
                     .flatten()
                     .collect::<Vec<_>>();
                 mesh.insert_attribute(Mesh::ATTRIBUTE_TANGENT, tangents);
@@ -326,7 +408,13 @@ impl MeshBuilder {
                     let colors = all_mat_ids
                         .chunks_exact(3)
                         .zip(all_colors.chunks_exact(3))
-                        .filter_map(|(mat_ids, colors)| if mat_ids[0] == mat_id { Some([colors[0], colors[1], colors[2]]) } else { None })
+                        .filter_map(|(mat_ids, colors)| {
+                            if mat_ids[0] == mat_id {
+                                Some([colors[0], colors[1], colors[2]])
+                            } else {
+                                None
+                            }
+                        })
                         .flatten()
                         .collect::<Vec<_>>();
                     mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
@@ -363,7 +451,10 @@ impl MeshBuilder {
         }
 
         if !self.colors.is_empty() {
-            mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, self.ids.iter().map(|&id| self.colors[id]).collect::<Vec<_>>());
+            mesh.insert_attribute(
+                Mesh::ATTRIBUTE_COLOR,
+                self.ids.iter().map(|&id| self.colors[id]).collect::<Vec<_>>(),
+            );
         }
 
         mesh
@@ -397,8 +488,10 @@ impl MeshBuilder {
 
             let chunk_id = std::str::from_utf8(&chunk_header[0..8])?;
             // let chunk_type = i32::from_le_bytes([chunk_header[20], chunk_header[21], chunk_header[22], chunk_header[23]]);
-            let chunk_data_size = i32::from_le_bytes([chunk_header[24], chunk_header[25], chunk_header[26], chunk_header[27]]) as usize;
-            let chunk_data_count = i32::from_le_bytes([chunk_header[28], chunk_header[29], chunk_header[30], chunk_header[31]]) as usize;
+            let chunk_data_size =
+                i32::from_le_bytes([chunk_header[24], chunk_header[25], chunk_header[26], chunk_header[27]]) as usize;
+            let chunk_data_count =
+                i32::from_le_bytes([chunk_header[28], chunk_header[29], chunk_header[30], chunk_header[31]]) as usize;
 
             if chunk_data_count == 0 {
                 continue;
@@ -420,11 +513,14 @@ impl MeshBuilder {
                     debug_assert_eq!(wedges.len(), chunk_data_count);
                 }
                 "FACE0000" => {
-                    read_faces(&chunk_data, chunk_data_count, &wedges).into_iter().flatten().for_each(|(id, uv, mat_id)| {
-                        ids.push(id as usize);
-                        uvs.push(uv);
-                        mat_ids.push(mat_id);
-                    });
+                    read_faces(&chunk_data, chunk_data_count, &wedges)
+                        .into_iter()
+                        .flatten()
+                        .for_each(|(id, uv, mat_id)| {
+                            ids.push(id as usize);
+                            uvs.push(uv);
+                            mat_ids.push(mat_id);
+                        });
                     debug_assert_eq!(ids.len() / 3, chunk_data_count);
                 }
                 "MATT0000" => {
@@ -457,7 +553,11 @@ impl MeshBuilder {
             }
 
             let mut last_euv = vec![0; num_materials];
-            for (uv, mat_id) in uvs.iter_mut().zip(mat_ids.iter().copied()).filter(|(_, mat_id)| *mat_id < extra_uvs.len()) {
+            for (uv, mat_id) in uvs
+                .iter_mut()
+                .zip(mat_ids.iter().copied())
+                .filter(|(_, mat_id)| *mat_id < extra_uvs.len())
+            {
                 if last_euv[mat_id] < extra_uvs[mat_id].len() {
                     *uv = extra_uvs[mat_id][last_euv[mat_id]];
                     last_euv[mat_id] += 1;

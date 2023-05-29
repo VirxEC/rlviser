@@ -3,7 +3,10 @@ use bevy::{
     prelude::Quat,
 };
 
-use crate::rocketsim::{BallHitInfo, BallState, BoostPad, BoostPadState, CarConfig, CarControls, CarInfo, CarState, GameState, Team, WheelPairConfig};
+use crate::rocketsim::{
+    BallHitInfo, BallState, BoostPad, BoostPadState, CarConfig, CarControls, CarInfo, CarState, GameState, Team,
+    WheelPairConfig,
+};
 
 trait ToBytesExact<const N: usize>: FromBytesExact {
     fn to_bytes(&self) -> [u8; N];
@@ -58,8 +61,10 @@ impl ToBytesExact<{ Self::NUM_BYTES }> for CarConfig {
         let mut bytes = [0; Self::NUM_BYTES];
         bytes[..Vec3::NUM_BYTES].copy_from_slice(&self.hitbox_size.to_bytes());
         bytes[Vec3::NUM_BYTES..Vec3::NUM_BYTES * 2].copy_from_slice(&self.hitbox_pos_offset.to_bytes());
-        bytes[Vec3::NUM_BYTES * 2..Vec3::NUM_BYTES * 2 + WheelPairConfig::NUM_BYTES].copy_from_slice(&self.front_wheels.to_bytes());
-        bytes[Vec3::NUM_BYTES * 2 + WheelPairConfig::NUM_BYTES..Vec3::NUM_BYTES * 2 + WheelPairConfig::NUM_BYTES * 2].copy_from_slice(&self.back_wheels.to_bytes());
+        bytes[Vec3::NUM_BYTES * 2..Vec3::NUM_BYTES * 2 + WheelPairConfig::NUM_BYTES]
+            .copy_from_slice(&self.front_wheels.to_bytes());
+        bytes[Vec3::NUM_BYTES * 2 + WheelPairConfig::NUM_BYTES..Vec3::NUM_BYTES * 2 + WheelPairConfig::NUM_BYTES * 2]
+            .copy_from_slice(&self.back_wheels.to_bytes());
         bytes[Vec3::NUM_BYTES * 2 + WheelPairConfig::NUM_BYTES * 2..].copy_from_slice(&self.dodge_deadzone.to_le_bytes());
         bytes
     }
@@ -72,8 +77,10 @@ impl ToBytesExact<{ Self::NUM_BYTES }> for BallHitInfo {
         bytes[1..1 + Vec3::NUM_BYTES].copy_from_slice(&self.relative_pos_on_ball.to_bytes());
         bytes[1 + Vec3::NUM_BYTES..1 + Vec3::NUM_BYTES * 2].copy_from_slice(&self.ball_pos.to_bytes());
         bytes[1 + Vec3::NUM_BYTES * 2..1 + Vec3::NUM_BYTES * 3].copy_from_slice(&self.extra_hit_vel.to_bytes());
-        bytes[1 + Vec3::NUM_BYTES * 3..1 + Vec3::NUM_BYTES * 3 + u64::NUM_BYTES].copy_from_slice(&self.tick_count_when_hit.to_le_bytes());
-        bytes[1 + Vec3::NUM_BYTES * 3 + u64::NUM_BYTES..].copy_from_slice(&self.tick_count_when_extra_impulse_applied.to_le_bytes());
+        bytes[1 + Vec3::NUM_BYTES * 3..1 + Vec3::NUM_BYTES * 3 + u64::NUM_BYTES]
+            .copy_from_slice(&self.tick_count_when_hit.to_le_bytes());
+        bytes[1 + Vec3::NUM_BYTES * 3 + u64::NUM_BYTES..]
+            .copy_from_slice(&self.tick_count_when_extra_impulse_applied.to_le_bytes());
         bytes
     }
 }
@@ -101,62 +108,84 @@ impl ToBytesExact<{ Self::NUM_BYTES }> for CarState {
         // rot_mat: RotMat,
         bytes[Vec3::NUM_BYTES..Vec3::NUM_BYTES + RotMat::NUM_BYTES].copy_from_slice(&self.rot_mat.to_bytes());
         // vel: Vec3,
-        bytes[Vec3::NUM_BYTES + RotMat::NUM_BYTES..Vec3::NUM_BYTES * 2 + RotMat::NUM_BYTES].copy_from_slice(&self.vel.to_bytes());
+        bytes[Vec3::NUM_BYTES + RotMat::NUM_BYTES..Vec3::NUM_BYTES * 2 + RotMat::NUM_BYTES]
+            .copy_from_slice(&self.vel.to_bytes());
         // ang_vel: Vec3,
-        bytes[Vec3::NUM_BYTES * 2 + RotMat::NUM_BYTES..Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES].copy_from_slice(&self.ang_vel.to_bytes());
+        bytes[Vec3::NUM_BYTES * 2 + RotMat::NUM_BYTES..Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES]
+            .copy_from_slice(&self.ang_vel.to_bytes());
         // is_on_ground: bool,
-        bytes[Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES..Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES + 1].copy_from_slice(&(self.is_on_ground as u8).to_le_bytes());
+        bytes[Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES..Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES + 1]
+            .copy_from_slice(&(self.is_on_ground as u8).to_le_bytes());
         // has_jumped: bool,
-        bytes[Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES + 1..Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES + 2].copy_from_slice(&(self.has_jumped as u8).to_le_bytes());
+        bytes[Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES + 1..Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES + 2]
+            .copy_from_slice(&(self.has_jumped as u8).to_le_bytes());
         // has_double_jumped: bool,
-        bytes[Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES + 2..Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES + 3].copy_from_slice(&(self.has_double_jumped as u8).to_le_bytes());
+        bytes[Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES + 2..Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES + 3]
+            .copy_from_slice(&(self.has_double_jumped as u8).to_le_bytes());
         // has_flipped: bool,
-        bytes[Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES + 3..Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES + 4].copy_from_slice(&(self.has_flipped as u8).to_le_bytes());
+        bytes[Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES + 3..Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES + 4]
+            .copy_from_slice(&(self.has_flipped as u8).to_le_bytes());
         // last_rel_dodge_torque: Vec3,
-        bytes[Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES + 4..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 4].copy_from_slice(&self.last_rel_dodge_torque.to_bytes());
+        bytes[Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES + 4..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 4]
+            .copy_from_slice(&self.last_rel_dodge_torque.to_bytes());
         // jump_time: f32,
-        bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 4..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 4 + f32::NUM_BYTES].copy_from_slice(&self.jump_time.to_le_bytes());
+        bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 4..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 4 + f32::NUM_BYTES]
+            .copy_from_slice(&self.jump_time.to_le_bytes());
         // flip_time: f32,
-        bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 4 + f32::NUM_BYTES..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 4 + f32::NUM_BYTES * 2]
+        bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 4 + f32::NUM_BYTES
+            ..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 4 + f32::NUM_BYTES * 2]
             .copy_from_slice(&self.flip_time.to_le_bytes());
         // is_jumping: bool,
-        bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 4 + f32::NUM_BYTES * 2..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 5 + f32::NUM_BYTES * 2]
+        bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 4 + f32::NUM_BYTES * 2
+            ..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 5 + f32::NUM_BYTES * 2]
             .copy_from_slice(&(self.is_jumping as u8).to_le_bytes());
         // air_time_since_jump: f32,
-        bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 5 + f32::NUM_BYTES * 2..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 5 + f32::NUM_BYTES * 3]
+        bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 5 + f32::NUM_BYTES * 2
+            ..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 5 + f32::NUM_BYTES * 3]
             .copy_from_slice(&self.air_time_since_jump.to_le_bytes());
         // boost: f32,
-        bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 5 + f32::NUM_BYTES * 3..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 5 + f32::NUM_BYTES * 4]
+        bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 5 + f32::NUM_BYTES * 3
+            ..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 5 + f32::NUM_BYTES * 4]
             .copy_from_slice(&self.boost.to_le_bytes());
         // time_spent_boosting: f32,
-        bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 5 + f32::NUM_BYTES * 4..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 5 + f32::NUM_BYTES * 5]
+        bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 5 + f32::NUM_BYTES * 4
+            ..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 5 + f32::NUM_BYTES * 5]
             .copy_from_slice(&self.time_spent_boosting.to_le_bytes());
         // is_supersonic: bool,
-        bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 5 + f32::NUM_BYTES * 5..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 6 + f32::NUM_BYTES * 5]
+        bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 5 + f32::NUM_BYTES * 5
+            ..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 6 + f32::NUM_BYTES * 5]
             .copy_from_slice(&(self.is_supersonic as u8).to_le_bytes());
         // supersonic_time: f32,
-        bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 6 + f32::NUM_BYTES * 5..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 6 + f32::NUM_BYTES * 6]
+        bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 6 + f32::NUM_BYTES * 5
+            ..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 6 + f32::NUM_BYTES * 6]
             .copy_from_slice(&self.supersonic_time.to_le_bytes());
         // handbrake_val: f32,
-        bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 6 + f32::NUM_BYTES * 6..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 6 + f32::NUM_BYTES * 7]
+        bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 6 + f32::NUM_BYTES * 6
+            ..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 6 + f32::NUM_BYTES * 7]
             .copy_from_slice(&self.handbrake_val.to_le_bytes());
         // is_auto_flipping: bool,
-        bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 6 + f32::NUM_BYTES * 7..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 7 + f32::NUM_BYTES * 7]
+        bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 6 + f32::NUM_BYTES * 7
+            ..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 7 + f32::NUM_BYTES * 7]
             .copy_from_slice(&(self.is_auto_flipping as u8).to_le_bytes());
         // auto_flip_timer: f32,
-        bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 7 + f32::NUM_BYTES * 7..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 7 + f32::NUM_BYTES * 8]
+        bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 7 + f32::NUM_BYTES * 7
+            ..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 7 + f32::NUM_BYTES * 8]
             .copy_from_slice(&self.auto_flip_timer.to_le_bytes());
         // auto_flip_torque_scale: f32,
-        bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 7 + f32::NUM_BYTES * 8..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 7 + f32::NUM_BYTES * 9]
+        bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 7 + f32::NUM_BYTES * 8
+            ..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 7 + f32::NUM_BYTES * 9]
             .copy_from_slice(&self.auto_flip_torque_scale.to_le_bytes());
         // has_contact: bool,
-        bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 7 + f32::NUM_BYTES * 9..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 8 + f32::NUM_BYTES * 9]
+        bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 7 + f32::NUM_BYTES * 9
+            ..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 8 + f32::NUM_BYTES * 9]
             .copy_from_slice(&(self.has_contact as u8).to_le_bytes());
         // contact_normal: Vec3,
-        bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 8 + f32::NUM_BYTES * 9..Vec3::NUM_BYTES * 5 + RotMat::NUM_BYTES + 8 + f32::NUM_BYTES * 9]
+        bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 8 + f32::NUM_BYTES * 9
+            ..Vec3::NUM_BYTES * 5 + RotMat::NUM_BYTES + 8 + f32::NUM_BYTES * 9]
             .copy_from_slice(&self.contact_normal.to_bytes());
         // other_car_id: u32,
-        bytes[Vec3::NUM_BYTES * 5 + RotMat::NUM_BYTES + 8 + f32::NUM_BYTES * 9..Vec3::NUM_BYTES * 5 + RotMat::NUM_BYTES + 8 + f32::NUM_BYTES * 9 + u32::NUM_BYTES]
+        bytes[Vec3::NUM_BYTES * 5 + RotMat::NUM_BYTES + 8 + f32::NUM_BYTES * 9
+            ..Vec3::NUM_BYTES * 5 + RotMat::NUM_BYTES + 8 + f32::NUM_BYTES * 9 + u32::NUM_BYTES]
             .copy_from_slice(&self.other_car_id.to_le_bytes());
         // cooldown_timer: f32,
         bytes[Vec3::NUM_BYTES * 5 + RotMat::NUM_BYTES + 8 + f32::NUM_BYTES * 9 + u32::NUM_BYTES
@@ -175,7 +204,8 @@ impl ToBytesExact<{ Self::NUM_BYTES }> for CarState {
             ..Vec3::NUM_BYTES * 5 + RotMat::NUM_BYTES + 9 + f32::NUM_BYTES * 11 + u32::NUM_BYTES + BallHitInfo::NUM_BYTES]
             .copy_from_slice(&self.ball_hit_info.to_bytes());
         // last_controls: CarControls,
-        bytes[Vec3::NUM_BYTES * 5 + RotMat::NUM_BYTES + 9 + f32::NUM_BYTES * 11 + u32::NUM_BYTES + BallHitInfo::NUM_BYTES..].copy_from_slice(&self.last_controls.to_bytes());
+        bytes[Vec3::NUM_BYTES * 5 + RotMat::NUM_BYTES + 9 + f32::NUM_BYTES * 11 + u32::NUM_BYTES + BallHitInfo::NUM_BYTES..]
+            .copy_from_slice(&self.last_controls.to_bytes());
         bytes
     }
 }
@@ -214,7 +244,12 @@ impl ToBytesExact<{ Self::NUM_BYTES }> for BoostPad {
 
 impl ToBytes for GameState {
     fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(Self::MIN_NUM_BYTES + BallState::NUM_BYTES + self.pads.len() * BoostPad::NUM_BYTES + self.cars.len() * CarInfo::NUM_BYTES);
+        let mut bytes = Vec::with_capacity(
+            Self::MIN_NUM_BYTES
+                + BallState::NUM_BYTES
+                + self.pads.len() * BoostPad::NUM_BYTES
+                + self.cars.len() * CarInfo::NUM_BYTES,
+        );
 
         bytes.extend(self.tick_count.to_le_bytes());
         bytes.extend(self.tick_rate.to_le_bytes());
@@ -378,7 +413,13 @@ impl FromBytesExact for CarControls {
 }
 
 impl FromBytesExact for CarState {
-    const NUM_BYTES: usize = Vec3::NUM_BYTES * 5 + RotMat::NUM_BYTES + 9 + f32::NUM_BYTES * 11 + u32::NUM_BYTES + BallHitInfo::NUM_BYTES + CarControls::NUM_BYTES;
+    const NUM_BYTES: usize = Vec3::NUM_BYTES * 5
+        + RotMat::NUM_BYTES
+        + 9
+        + f32::NUM_BYTES * 11
+        + u32::NUM_BYTES
+        + BallHitInfo::NUM_BYTES
+        + CarControls::NUM_BYTES;
 
     #[inline]
     fn from_bytes(bytes: &[u8]) -> Self {
@@ -386,42 +427,63 @@ impl FromBytesExact for CarState {
             pos: Vec3::from_bytes(&bytes[..Vec3::NUM_BYTES]),
             rot_mat: RotMat::from_bytes(&bytes[Vec3::NUM_BYTES..Vec3::NUM_BYTES + RotMat::NUM_BYTES]),
             vel: Vec3::from_bytes(&bytes[Vec3::NUM_BYTES + RotMat::NUM_BYTES..Vec3::NUM_BYTES * 2 + RotMat::NUM_BYTES]),
-            ang_vel: Vec3::from_bytes(&bytes[Vec3::NUM_BYTES * 2 + RotMat::NUM_BYTES..Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES]),
+            ang_vel: Vec3::from_bytes(
+                &bytes[Vec3::NUM_BYTES * 2 + RotMat::NUM_BYTES..Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES],
+            ),
             is_on_ground: bytes[Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES] != 0,
             has_jumped: bytes[Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES + 1] != 0,
             has_double_jumped: bytes[Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES + 2] != 0,
             has_flipped: bytes[Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES + 3] != 0,
-            last_rel_dodge_torque: Vec3::from_bytes(&bytes[Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES + 4..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 4]),
-            jump_time: f32::from_bytes(&bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 4..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 4 + f32::NUM_BYTES]),
-            flip_time: f32::from_bytes(&bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 4 + f32::NUM_BYTES..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 4 + f32::NUM_BYTES * 2]),
+            last_rel_dodge_torque: Vec3::from_bytes(
+                &bytes[Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES + 4..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 4],
+            ),
+            jump_time: f32::from_bytes(
+                &bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 4
+                    ..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 4 + f32::NUM_BYTES],
+            ),
+            flip_time: f32::from_bytes(
+                &bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 4 + f32::NUM_BYTES
+                    ..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 4 + f32::NUM_BYTES * 2],
+            ),
             is_jumping: bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 4 + f32::NUM_BYTES * 2] != 0,
             air_time_since_jump: f32::from_bytes(
-                &bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 5 + f32::NUM_BYTES * 2..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 5 + f32::NUM_BYTES * 3],
+                &bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 5 + f32::NUM_BYTES * 2
+                    ..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 5 + f32::NUM_BYTES * 3],
             ),
-            boost: f32::from_bytes(&bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 5 + f32::NUM_BYTES * 3..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 5 + f32::NUM_BYTES * 4]),
+            boost: f32::from_bytes(
+                &bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 5 + f32::NUM_BYTES * 3
+                    ..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 5 + f32::NUM_BYTES * 4],
+            ),
             time_spent_boosting: f32::from_bytes(
-                &bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 5 + f32::NUM_BYTES * 4..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 5 + f32::NUM_BYTES * 5],
+                &bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 5 + f32::NUM_BYTES * 4
+                    ..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 5 + f32::NUM_BYTES * 5],
             ),
             is_supersonic: bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 5 + f32::NUM_BYTES * 5] != 0,
             supersonic_time: f32::from_bytes(
-                &bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 6 + f32::NUM_BYTES * 5..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 6 + f32::NUM_BYTES * 6],
+                &bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 6 + f32::NUM_BYTES * 5
+                    ..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 6 + f32::NUM_BYTES * 6],
             ),
             handbrake_val: f32::from_bytes(
-                &bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 6 + f32::NUM_BYTES * 5..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 6 + f32::NUM_BYTES * 7],
+                &bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 6 + f32::NUM_BYTES * 5
+                    ..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 6 + f32::NUM_BYTES * 7],
             ),
             is_auto_flipping: bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 6 + f32::NUM_BYTES * 7] != 0,
             auto_flip_timer: f32::from_bytes(
-                &bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 7 + f32::NUM_BYTES * 6..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 7 + f32::NUM_BYTES * 8],
+                &bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 7 + f32::NUM_BYTES * 6
+                    ..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 7 + f32::NUM_BYTES * 8],
             ),
             auto_flip_torque_scale: f32::from_bytes(
-                &bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 7 + f32::NUM_BYTES * 7..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 7 + f32::NUM_BYTES * 9],
+                &bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 7 + f32::NUM_BYTES * 7
+                    ..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 7 + f32::NUM_BYTES * 9],
             ),
             has_contact: bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 7 + f32::NUM_BYTES * 9] != 0,
             contact_normal: Vec3::from_bytes(
-                &bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 8 + f32::NUM_BYTES * 8..Vec3::NUM_BYTES * 5 + RotMat::NUM_BYTES + 8 + f32::NUM_BYTES * 9],
+                &bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 8 + f32::NUM_BYTES * 8
+                    ..Vec3::NUM_BYTES * 5 + RotMat::NUM_BYTES + 8 + f32::NUM_BYTES * 9],
             ),
             other_car_id: u32::from_bytes(
-                &bytes[Vec3::NUM_BYTES * 5 + RotMat::NUM_BYTES + 8 + f32::NUM_BYTES * 8..Vec3::NUM_BYTES * 5 + RotMat::NUM_BYTES + 8 + f32::NUM_BYTES * 9 + u32::NUM_BYTES],
+                &bytes[Vec3::NUM_BYTES * 5 + RotMat::NUM_BYTES + 8 + f32::NUM_BYTES * 8
+                    ..Vec3::NUM_BYTES * 5 + RotMat::NUM_BYTES + 8 + f32::NUM_BYTES * 9 + u32::NUM_BYTES],
             ),
             cooldown_timer: f32::from_bytes(
                 &bytes[Vec3::NUM_BYTES * 5 + RotMat::NUM_BYTES + 8 + f32::NUM_BYTES * 8 + u32::NUM_BYTES
@@ -434,9 +496,21 @@ impl FromBytesExact for CarState {
             ),
             ball_hit_info: BallHitInfo::from_bytes(
                 &bytes[Vec3::NUM_BYTES * 5 + RotMat::NUM_BYTES + 9 + f32::NUM_BYTES * 11 + u32::NUM_BYTES
-                    ..Vec3::NUM_BYTES * 5 + RotMat::NUM_BYTES + 9 + f32::NUM_BYTES * 11 + u32::NUM_BYTES + BallHitInfo::NUM_BYTES],
+                    ..Vec3::NUM_BYTES * 5
+                        + RotMat::NUM_BYTES
+                        + 9
+                        + f32::NUM_BYTES * 11
+                        + u32::NUM_BYTES
+                        + BallHitInfo::NUM_BYTES],
             ),
-            last_controls: CarControls::from_bytes(&bytes[Vec3::NUM_BYTES * 5 + RotMat::NUM_BYTES + 9 + f32::NUM_BYTES * 11 + u32::NUM_BYTES + BallHitInfo::NUM_BYTES..]),
+            last_controls: CarControls::from_bytes(
+                &bytes[Vec3::NUM_BYTES * 5
+                    + RotMat::NUM_BYTES
+                    + 9
+                    + f32::NUM_BYTES * 11
+                    + u32::NUM_BYTES
+                    + BallHitInfo::NUM_BYTES..],
+            ),
         }
     }
 }
@@ -462,8 +536,13 @@ impl FromBytesExact for CarConfig {
         Self {
             hitbox_size: Vec3::from_bytes(&bytes[..Vec3::NUM_BYTES]),
             hitbox_pos_offset: Vec3::from_bytes(&bytes[Vec3::NUM_BYTES..Vec3::NUM_BYTES * 2]),
-            front_wheels: WheelPairConfig::from_bytes(&bytes[Vec3::NUM_BYTES * 2..Vec3::NUM_BYTES * 2 + WheelPairConfig::NUM_BYTES]),
-            back_wheels: WheelPairConfig::from_bytes(&bytes[Vec3::NUM_BYTES * 2 + WheelPairConfig::NUM_BYTES..Vec3::NUM_BYTES * 2 + WheelPairConfig::NUM_BYTES * 2]),
+            front_wheels: WheelPairConfig::from_bytes(
+                &bytes[Vec3::NUM_BYTES * 2..Vec3::NUM_BYTES * 2 + WheelPairConfig::NUM_BYTES],
+            ),
+            back_wheels: WheelPairConfig::from_bytes(
+                &bytes
+                    [Vec3::NUM_BYTES * 2 + WheelPairConfig::NUM_BYTES..Vec3::NUM_BYTES * 2 + WheelPairConfig::NUM_BYTES * 2],
+            ),
             dodge_deadzone: f32::from_bytes(&bytes[Vec3::NUM_BYTES * 2 + WheelPairConfig::NUM_BYTES * 2..]),
         }
     }
@@ -477,7 +556,9 @@ impl FromBytesExact for CarInfo {
         Self {
             id: u32::from_bytes(&bytes[..u32::NUM_BYTES]),
             team: Team::from_bytes(&bytes[u32::NUM_BYTES..u32::NUM_BYTES + Team::NUM_BYTES]),
-            state: CarState::from_bytes(&bytes[u32::NUM_BYTES + Team::NUM_BYTES..u32::NUM_BYTES + Team::NUM_BYTES + CarState::NUM_BYTES]),
+            state: CarState::from_bytes(
+                &bytes[u32::NUM_BYTES + Team::NUM_BYTES..u32::NUM_BYTES + Team::NUM_BYTES + CarState::NUM_BYTES],
+            ),
             config: CarConfig::from_bytes(&bytes[u32::NUM_BYTES + Team::NUM_BYTES + CarState::NUM_BYTES..]),
         }
     }
@@ -498,7 +579,11 @@ impl FromBytes for GameState {
 
     #[inline]
     fn get_num_bytes(bytes: &[u8]) -> usize {
-        Self::MIN_NUM_BYTES + BallState::NUM_BYTES + f32::NUM_BYTES * 4 + Self::read_num_pads(bytes) * BoostPad::NUM_BYTES + Self::read_num_cars(bytes) * CarInfo::NUM_BYTES
+        Self::MIN_NUM_BYTES
+            + BallState::NUM_BYTES
+            + f32::NUM_BYTES * 4
+            + Self::read_num_pads(bytes) * BoostPad::NUM_BYTES
+            + Self::read_num_cars(bytes) * CarInfo::NUM_BYTES
     }
 
     #[inline]
@@ -528,17 +613,35 @@ impl FromBytes for GameState {
             tick_rate: Self::read_tick_rate(bytes),
             ball: BallState::from_bytes(&bytes[Self::MIN_NUM_BYTES..Self::MIN_NUM_BYTES + BallState::NUM_BYTES]),
             ball_rot: Quat::from_xyzw(
-                f32::from_bytes(&bytes[Self::MIN_NUM_BYTES + BallState::NUM_BYTES..Self::MIN_NUM_BYTES + BallState::NUM_BYTES + f32::NUM_BYTES]),
-                f32::from_bytes(&bytes[Self::MIN_NUM_BYTES + BallState::NUM_BYTES + f32::NUM_BYTES..Self::MIN_NUM_BYTES + BallState::NUM_BYTES + f32::NUM_BYTES * 2]),
-                f32::from_bytes(&bytes[Self::MIN_NUM_BYTES + BallState::NUM_BYTES + f32::NUM_BYTES * 2..Self::MIN_NUM_BYTES + BallState::NUM_BYTES + f32::NUM_BYTES * 3]),
-                f32::from_bytes(&bytes[Self::MIN_NUM_BYTES + BallState::NUM_BYTES + f32::NUM_BYTES * 3..Self::MIN_NUM_BYTES + BallState::NUM_BYTES + f32::NUM_BYTES * 4]),
+                f32::from_bytes(
+                    &bytes[Self::MIN_NUM_BYTES + BallState::NUM_BYTES
+                        ..Self::MIN_NUM_BYTES + BallState::NUM_BYTES + f32::NUM_BYTES],
+                ),
+                f32::from_bytes(
+                    &bytes[Self::MIN_NUM_BYTES + BallState::NUM_BYTES + f32::NUM_BYTES
+                        ..Self::MIN_NUM_BYTES + BallState::NUM_BYTES + f32::NUM_BYTES * 2],
+                ),
+                f32::from_bytes(
+                    &bytes[Self::MIN_NUM_BYTES + BallState::NUM_BYTES + f32::NUM_BYTES * 2
+                        ..Self::MIN_NUM_BYTES + BallState::NUM_BYTES + f32::NUM_BYTES * 3],
+                ),
+                f32::from_bytes(
+                    &bytes[Self::MIN_NUM_BYTES + BallState::NUM_BYTES + f32::NUM_BYTES * 3
+                        ..Self::MIN_NUM_BYTES + BallState::NUM_BYTES + f32::NUM_BYTES * 4],
+                ),
             ),
             pads: bytes[Self::MIN_NUM_BYTES + BallState::NUM_BYTES + f32::NUM_BYTES * 4
-                ..Self::MIN_NUM_BYTES + BallState::NUM_BYTES + f32::NUM_BYTES * 4 + Self::read_num_pads(bytes) * BoostPad::NUM_BYTES]
+                ..Self::MIN_NUM_BYTES
+                    + BallState::NUM_BYTES
+                    + f32::NUM_BYTES * 4
+                    + Self::read_num_pads(bytes) * BoostPad::NUM_BYTES]
                 .chunks_exact(BoostPad::NUM_BYTES)
                 .map(BoostPad::from_bytes)
                 .collect(),
-            cars: bytes[Self::MIN_NUM_BYTES + BallState::NUM_BYTES + f32::NUM_BYTES * 4 + Self::read_num_pads(bytes) * BoostPad::NUM_BYTES..]
+            cars: bytes[Self::MIN_NUM_BYTES
+                + BallState::NUM_BYTES
+                + f32::NUM_BYTES * 4
+                + Self::read_num_pads(bytes) * BoostPad::NUM_BYTES..]
                 .chunks_exact(CarInfo::NUM_BYTES)
                 .map(CarInfo::from_bytes)
                 .collect(),

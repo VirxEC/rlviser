@@ -45,14 +45,21 @@ fn setup(mut commands: Commands) {
         ..default()
     });
 
-    commands.insert_resource(AmbientLight { brightness: 0.3, ..default() });
+    commands.insert_resource(AmbientLight {
+        brightness: 0.3,
+        ..default()
+    });
 
     commands.spawn((DirectionalLightBundle::default(), Sun));
 
     commands.spawn((
         PrimaryCamera::default(),
         Camera3dBundle {
-            projection: PerspectiveProjection { far: 500000., ..default() }.into(),
+            projection: PerspectiveProjection {
+                far: 500000.,
+                ..default()
+            }
+            .into(),
             transform: Transform::from_translation(Vec3::new(-3000., 1000., 0.)).looking_to(Vec3::X, Vec3::Y),
             ..default()
         },
@@ -118,7 +125,10 @@ impl Plugin for CameraPlugin {
             ..default()
         })
         .insert_resource(AtmosphereModel::default())
-        .insert_resource(CycleTimer(Timer::new(Duration::from_secs_f32(1. / 60.), TimerMode::Repeating)))
+        .insert_resource(CycleTimer(Timer::new(
+            Duration::from_secs_f32(1. / 60.),
+            TimerMode::Repeating,
+        )))
         .insert_resource(DaylightOffset::default())
         .add_plugin(SpectatorPlugin)
         .add_plugin(AtmospherePlugin)
