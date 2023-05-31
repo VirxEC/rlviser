@@ -27,7 +27,6 @@ fn setup(mut commands: Commands) {
             range: 10000.,
             radius: 100.,
             intensity: 10000000.,
-            shadows_enabled: true,
             ..default()
         },
         transform: Transform::from_xyz(0., 300., 5500.),
@@ -39,7 +38,6 @@ fn setup(mut commands: Commands) {
             range: 10000.,
             radius: 100.,
             intensity: 10000000.,
-            shadows_enabled: true,
             ..default()
         },
         transform: Transform::from_xyz(0., 300., -5500.),

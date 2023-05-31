@@ -252,6 +252,10 @@ fn ui_system(
 // }
 
 fn toggle_vsync(options: Res<Options>, mut framepace: ResMut<FramepaceSettings>) {
+    if options.focus {
+        return;
+    }
+
     framepace.limiter = if options.vsync {
         Limiter::Auto
     } else if options.uncap_fps {
@@ -262,6 +266,10 @@ fn toggle_vsync(options: Res<Options>, mut framepace: ResMut<FramepaceSettings>)
 }
 
 fn update_msaa(options: Res<Options>, mut msaa: ResMut<Msaa>) {
+    if options.focus {
+        return;
+    }
+
     if options.msaa == msaa.samples() as u8 {
         return;
     }
@@ -276,6 +284,10 @@ fn update_msaa(options: Res<Options>, mut msaa: ResMut<Msaa>) {
 }
 
 fn update_daytime(options: Res<Options>, mut daytime: ResMut<DaylightOffset>) {
+    if options.focus {
+        return;
+    }
+
     daytime.offset = options.daytime * 10. / options.day_speed;
     daytime.stop_day = options.stop_day;
     daytime.day_speed = options.day_speed;

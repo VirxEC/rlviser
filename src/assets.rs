@@ -49,6 +49,12 @@ const BLOCK_MESHES: [&str; 7] = [
 ];
 
 #[cfg(not(feature = "full_load"))]
+const EXTRA_BLACKLIST: [&str; 2] = [
+    "Side_Trim",
+    "AdvertStrip"
+];
+
+#[cfg(not(feature = "full_load"))]
 const WHITELIST_MESHES: [&str; 11] = [
     "Field_STD",
     "FF",
@@ -66,7 +72,7 @@ const WHITELIST_MESHES: [&str; 11] = [
 #[cfg(not(feature = "full_load"))]
 #[inline]
 fn load_mesh(name: &str) -> bool {
-    WHITELIST_MESHES.into_iter().any(|x| name.contains(x))
+    WHITELIST_MESHES.into_iter().any(|x| name.contains(x)) && !EXTRA_BLACKLIST.into_iter().any(|x| name.contains(x))
 }
 
 #[cfg(feature = "full_load")]
