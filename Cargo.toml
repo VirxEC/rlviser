@@ -10,7 +10,7 @@ bevy = { version = "0.10.0", features = ["bevy_core_pipeline", "bevy_pbr", "bevy
 bevy_asset_loader = "0.16.0"
 bevy_atmosphere = "0.6.0"
 bevy_egui = "0.20.2"
-bevy_framepace = { path = "../bevy_framepace", version = "0.12.1", default-features = false }
+bevy_framepace = { git = "https://github.com/VirxEC/bevy_framepace.git", version = "0.12.1", default-features = false }
 bevy_mod_picking = { version = "0.13.0", default-features = false, features = ["backend_raycast"] }
 byteorder = "1.4.3"
 once_cell = "1.17.1"

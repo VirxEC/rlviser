@@ -501,6 +501,7 @@ dependencies = [
 [[package]]
 name = "bevy_framepace"
 version = "0.12.1"
+source = "git+https://github.com/VirxEC/bevy_framepace.git#55773571eed85f653bad0f989186c5a8551ae2ec"
 dependencies = [
  "bevy",
  "spin_sleep",
