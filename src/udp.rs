@@ -280,7 +280,7 @@ fn step_arena(
 
     const PACKET_TYPE_BUFFER: [u8; 1] = [0];
     let mut packet_type = PACKET_TYPE_BUFFER;
-    
+
     while socket.0.recv_from(&mut packet_type).is_ok() {
         let Some(packet_type) = UdpPacketTypes::new(packet_type[0]) else {
             return;
@@ -310,7 +310,7 @@ fn step_arena(
         }
 
         temp_buf = Some(full_buf);
-    };
+    }
 
     let Some(buf) = temp_buf else {
         return;

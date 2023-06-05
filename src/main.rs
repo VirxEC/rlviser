@@ -9,7 +9,8 @@ mod udp;
 
 use bevy::{
     prelude::*,
-    render::render_resource::{AddressMode, SamplerDescriptor}, window::PresentMode,
+    render::render_resource::{AddressMode, SamplerDescriptor},
+    window::PresentMode,
 };
 use bevy_asset_loader::prelude::*;
 

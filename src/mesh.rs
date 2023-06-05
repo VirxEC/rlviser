@@ -151,7 +151,6 @@ fn load_extra_field(
                 point_light: PointLight {
                     color: initial_ball_color,
                     radius: 90.,
-                    shadows_enabled: true,
                     intensity: 2_000_000.,
                     range: 1000.,
                     ..default()

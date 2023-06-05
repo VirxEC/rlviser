@@ -197,7 +197,11 @@ fn ui_system(
         ui.label(format!("FPS: {fps:.0}"));
         ui.checkbox(&mut options.vsync, "vsync");
         ui.checkbox(&mut options.uncap_fps, "Uncap FPS");
-        ui.add(egui::DragValue::new(&mut options.fps_limit).speed(5.).clamp_range(30.0..=600.));
+        ui.add(
+            egui::DragValue::new(&mut options.fps_limit)
+                .speed(5.)
+                .clamp_range(30.0..=600.),
+        );
         ui.checkbox(&mut options.stop_day, "Stop day cycle");
         ui.add(egui::Slider::new(&mut options.daytime, 0.0..=150.0).text("Daytime"));
         ui.add(egui::Slider::new(&mut options.day_speed, 0.0..=10.0).text("Day speed"));

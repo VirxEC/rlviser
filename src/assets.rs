@@ -49,10 +49,7 @@ const BLOCK_MESHES: [&str; 7] = [
 ];
 
 #[cfg(not(feature = "full_load"))]
-const EXTRA_BLACKLIST: [&str; 2] = [
-    "Side_Trim",
-    "AdvertStrip"
-];
+const EXTRA_BLACKLIST: [&str; 2] = ["Side_Trim", "AdvertStrip"];
 
 #[cfg(not(feature = "full_load"))]
 const WHITELIST_MESHES: [&str; 11] = [
@@ -560,6 +557,7 @@ impl AssetLoader for PskxLoader {
     }
 }
 
+const UMODEL: &str = if cfg!(windows) { "umodel.exe" } else { "./umodel" };
 const OUT_DIR: &str = "./assets/";
 const OUT_DIR_VER: &str = "./assets/files.txt";
 
@@ -624,6 +622,10 @@ pub fn uncook() -> io::Result<()> {
     //         }
     //     })
     //     .collect::<Vec<_>>();
+
+    if !Path::new(UMODEL).exists() {
+        panic!("Couldn't find umodel.exe! Make sure it's in the same folder as the executable.");
+    }
 
     for (i, file) in UPK_FILES.into_iter().enumerate() {
         print!("Processing file {i}/{} ({file})...                       \r", UPK_FILES.len());
