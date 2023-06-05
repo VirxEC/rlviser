@@ -632,7 +632,7 @@ pub fn uncook() -> io::Result<()> {
         io::stdout().flush()?;
 
         // call umodel to uncook all the map files
-        let mut child = Command::new(if cfg!(windows) { "umodel.exe" } else { "./umodel" })
+        let mut child = Command::new(UMODEL)
             .args([
                 format!("-path={}", input_dir),
                 format!("-out={}", OUT_DIR),

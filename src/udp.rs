@@ -138,6 +138,27 @@ fn spawn_default_car(
     ));
 }
 
+#[inline]
+/// Use colors that are a bit darker if we don't have the full_load feature
+fn get_color_from_team(team: Team) -> Color {
+    match team {
+        Team::Blue => {
+            if cfg!(feature = "full_load") {
+                Color::rgb(0.03, 0.09, 0.79)
+            } else {
+                Color::rgb(0.01, 0.03, 0.39)
+            }
+        }
+        Team::Orange => {
+            if cfg!(feature = "full_load") {
+                Color::rgb(0.41, 0.21, 0.01)
+            } else {
+                Color::rgb(0.82, 0.42, 0.02)
+            }
+        }
+    }
+}
+
 fn spawn_car(
     car_info: &CarInfo,
     commands: &mut Commands,
@@ -146,19 +167,7 @@ fn spawn_car(
     asset_server: &AssetServer,
 ) {
     let hitbox = car_info.config.hitbox_size.to_bevy();
-
-    #[cfg(feature = "full_load")]
-    let base_color = match car_info.team {
-        Team::Blue => Color::rgb(0.03, 0.09, 0.79),
-        Team::Orange => Color::rgb(0.82, 0.42, 0.02),
-    };
-
-    #[cfg(not(feature = "full_load"))]
-    // use colors that are a bit darker
-    let base_color = match car_info.team {
-        Team::Blue => Color::rgb(0.01, 0.03, 0.39),
-        Team::Orange => Color::rgb(0.41, 0.21, 0.01),
-    };
+    let base_color = get_color_from_team(car_info.team);
 
     let (name, mesh_id) = CAR_BODIES[if (120f32..121.).contains(&hitbox.x) {
         // octane
@@ -184,34 +193,14 @@ fn spawn_car(
         return;
     }];
 
-    let mesh_path = mesh_id.replace('.', "/");
-    let props = fs::read_to_string(format!("./assets/{mesh_path}.props.txt")).unwrap();
-    let mut mesh_materials = Vec::with_capacity(2);
-
-    let mut inside_mats = false;
-    for line in props.lines() {
-        if !inside_mats {
-            if line.starts_with("Materials[") {
-                inside_mats = true;
-            }
-            continue;
-        }
-
-        if line.starts_with('{') {
-            continue;
-        }
-
-        if line.starts_with('}') {
-            break;
-        }
-
-        let material_name = line.split('\'').nth(1).unwrap();
-
-        mesh_materials.push(get_material(material_name, materials, asset_server, Some(base_color)));
-    }
-
     let Some(mesh_info) = get_mesh_info(mesh_id, meshes) else {
         return;
+    };
+
+    let mesh_materials = if cfg!(feature = "full_load") {
+        get_car_mesh_materials(mesh_id, materials, asset_server, base_color)
+    } else {
+        vec![materials.add(base_color.into()); mesh_info.len()]
     };
 
     commands
@@ -241,6 +230,40 @@ fn spawn_car(
                     parent.spawn(bundle);
                 });
         });
+}
+
+fn get_car_mesh_materials(
+    mesh_id: &str,
+    materials: &mut Assets<StandardMaterial>,
+    asset_server: &AssetServer,
+    base_color: Color,
+) -> Vec<Handle<StandardMaterial>> {
+    let mesh_path = mesh_id.replace('.', "/");
+    let props = fs::read_to_string(format!("./assets/{mesh_path}.props.txt")).unwrap();
+    let mut mesh_materials = Vec::with_capacity(2);
+
+    let mut inside_mats = false;
+    for line in props.lines() {
+        if !inside_mats {
+            if line.starts_with("Materials[") {
+                inside_mats = true;
+            }
+            continue;
+        }
+
+        if line.starts_with('{') {
+            continue;
+        }
+
+        if line.starts_with('}') {
+            break;
+        }
+
+        let material_name = line.split('\'').nth(1).unwrap();
+
+        mesh_materials.push(get_material(material_name, materials, asset_server, Some(base_color)));
+    }
+    mesh_materials
 }
 
 #[repr(u8)]
