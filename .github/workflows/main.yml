@@ -17,7 +17,6 @@ jobs:
       - run: |
           sudo apt update
           sudo apt install g++ pkg-config libx11-dev libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev libwayland-client0
-          sudo cp /usr/lib/x86_64-linux-gnu/pkgconfig/wayland-client.pc /usr/lib/pkgconfig
       - name: Update Rust to last stable
         run: rustup update stable
       - name: Compile and release
