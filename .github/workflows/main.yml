@@ -27,3 +27,4 @@ jobs:
           RUSTTARGET: ${{ matrix.target }}
           EXTRA_FILES: "README.md LICENSE"
           MINIFY: "true"
+          PRE_BUILD: prebuild.sh
