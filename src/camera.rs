@@ -17,6 +17,7 @@ struct CycleTimer(Timer);
 pub enum PrimaryCamera {
     #[default]
     Spectator,
+    Director(u32),
     TrackCar(u32),
 }
 

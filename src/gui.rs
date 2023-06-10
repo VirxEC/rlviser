@@ -15,15 +15,23 @@ use crate::camera::{DaylightOffset, EntityName, HighlightedEntity, PrimaryCamera
 
 pub struct DebugOverlayPlugin;
 
+#[derive(Resource)]
+pub struct BallCam {
+    pub enabled: bool,
+}
+
 impl Plugin for DebugOverlayPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugin(EguiPlugin)
             .insert_resource(Msaa::default())
+            .insert_resource(BallCam { enabled: true })
             .insert_resource(Options::read_from_file().unwrap_or_else(|_| Options::create_file_from_defualt()))
             .add_system(listen)
             .add_system(ui_system)
             .add_system(toggle_vsync.after(ui_system))
             .add_system(toggle_vsync)
+            .add_system(toggle_ballcam.after(ui_system))
+            .add_system(toggle_ballcam)
             .add_system(update_daytime.after(ui_system))
             .add_system(update_daytime)
             .add_system(update_msaa.after(ui_system))
@@ -42,6 +50,7 @@ struct Options {
     uncap_fps: bool,
     fps_limit: f64,
     fps: (usize, [f32; 25]),
+    ball_cam: bool,
     stop_day: bool,
     daytime: f32,
     day_speed: f32,
@@ -58,6 +67,7 @@ impl Default for Options {
             uncap_fps: false,
             fps_limit: 120.,
             fps: Default::default(),
+            ball_cam: true,
             stop_day: false,
             daytime: 0.,
             day_speed: 1.,
@@ -90,6 +100,7 @@ impl Options {
                 "vsync" => options.vsync = value.parse().unwrap(),
                 "uncap_fps" => options.uncap_fps = value.parse().unwrap(),
                 "fps_limit" => options.fps_limit = value.parse().unwrap(),
+                "ball_cam" => options.ball_cam = value.parse().unwrap(),
                 "stop_day" => options.stop_day = value.parse().unwrap(),
                 "daytime" => options.daytime = value.parse().unwrap(),
                 "day_speed" => options.day_speed = value.parse().unwrap(),
@@ -117,6 +128,7 @@ impl Options {
         file.write_fmt(format_args!("vsync={}\n", self.vsync))?;
         file.write_fmt(format_args!("uncap_fps={}\n", self.uncap_fps))?;
         file.write_fmt(format_args!("fps_limit={}\n", self.fps_limit))?;
+        file.write_fmt(format_args!("ball_cam={}\n", self.ball_cam))?;
         file.write_fmt(format_args!("stop_day={}\n", self.stop_day))?;
         file.write_fmt(format_args!("daytime={}\n", self.daytime))?;
         file.write_fmt(format_args!("day_speed={}\n", self.day_speed))?;
@@ -128,7 +140,9 @@ impl Options {
     #[inline]
     fn is_not_similar(&self, other: &Options) -> bool {
         self.vsync != other.vsync
+            || self.uncap_fps != other.uncap_fps
             || self.fps_limit != other.fps_limit
+            || self.ball_cam != other.ball_cam
             || self.stop_day != other.stop_day
             || self.daytime != other.daytime
             || self.day_speed != other.day_speed
@@ -202,6 +216,7 @@ fn ui_system(
                 .speed(5.)
                 .clamp_range(30.0..=600.),
         );
+        ui.checkbox(&mut options.ball_cam, "Ball cam");
         ui.checkbox(&mut options.stop_day, "Stop day cycle");
         ui.add(egui::Slider::new(&mut options.daytime, 0.0..=150.0).text("Daytime"));
         ui.add(egui::Slider::new(&mut options.day_speed, 0.0..=10.0).text("Day speed"));
@@ -254,6 +269,14 @@ fn ui_system(
 //         ))
 //         .insert((AtmosphereCamera::default(), Spectator, RaycastPickCamera::default()));
 // }
+
+fn toggle_ballcam(options: Res<Options>, mut ballcam: ResMut<BallCam>) {
+    if options.focus {
+        return;
+    }
+
+    ballcam.enabled = options.ball_cam;
+}
 
 fn toggle_vsync(options: Res<Options>, mut framepace: ResMut<FramepaceSettings>) {
     if options.focus {
@@ -320,7 +343,11 @@ fn write_settings_to_file(
     }
 }
 
-fn listen(key: Res<Input<KeyCode>>, mut primary_camera: Query<&mut PrimaryCamera>) {
+fn listen(key: Res<Input<KeyCode>>, mut primary_camera: Query<&mut PrimaryCamera>, options: Res<Options>) {
+    if !options.focus {
+        return;
+    }
+
     let mut state = primary_camera.single_mut();
 
     if key.just_pressed(KeyCode::Key1) || key.just_pressed(KeyCode::Numpad1) {
@@ -335,6 +362,8 @@ fn listen(key: Res<Input<KeyCode>>, mut primary_camera: Query<&mut PrimaryCamera
         *state = PrimaryCamera::TrackCar(5);
     } else if key.just_pressed(KeyCode::Key6) || key.just_pressed(KeyCode::Numpad2) {
         *state = PrimaryCamera::TrackCar(6);
+    } else if key.just_pressed(KeyCode::Key9) || key.just_pressed(KeyCode::Numpad9) {
+        *state = PrimaryCamera::Director(0);
     } else if key.just_pressed(KeyCode::Key0) || key.just_pressed(KeyCode::Numpad0) {
         *state = PrimaryCamera::Spectator;
     }

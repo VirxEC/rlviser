@@ -2318,7 +2318,7 @@ checksum = "f1382d1f0a252c4bf97dc20d979a2fdd05b024acd7c2ed0f7595d7817666a157"
 
 [[package]]
 name = "rlviser"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "bevy",
  "bevy_asset_loader",

@@ -80,6 +80,7 @@ pub struct CarState {
     pub last_rel_dodge_torque: Vec3,
     pub jump_time: f32,
     pub flip_time: f32,
+    pub is_flipping: bool,
     pub is_jumping: bool,
     pub air_time_since_jump: f32,
     pub boost: f32,

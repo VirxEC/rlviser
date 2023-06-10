@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, f32::consts::PI, fs, net::UdpSocket};
+use std::{cmp::Ordering, f32::consts::PI, fs, net::UdpSocket, time::Duration};
 
 use bevy::{
     app::AppExit,
@@ -11,6 +11,7 @@ use crate::{
     assets::{get_material, get_mesh_info, BoostPickupGlows},
     bytes::{FromBytes, ToBytes},
     camera::{EntityName, HighlightedEntity, PrimaryCamera},
+    gui::BallCam,
     mesh::{ChangeCarPos, LargeBoostPadLocRots},
     rocketsim::{CarInfo, GameState, Team},
     LoadState, ServerPort,
@@ -31,6 +32,8 @@ impl Car {
         self.0
     }
 }
+#[derive(Resource)]
+struct DirectorTimer(Timer);
 
 #[derive(Resource)]
 pub struct UdpConnection(pub UdpSocket);
@@ -458,15 +461,41 @@ fn update_ball(
     transform.rotation = state.ball_rot.to_bevy();
 }
 
+const MIN_DIST_FROM_BALL: f32 = 175.;
+const MIN_DIST_FROM_BALL_SQ: f32 = MIN_DIST_FROM_BALL * MIN_DIST_FROM_BALL;
+
+const MIN_CAMERA_BALLCAM_HEIGHT: f32 = 10.;
+
 fn update_car(
     state: Res<GameState>,
+    ballcam: Res<BallCam>,
     mut cars: Query<(&mut Transform, &Car)>,
-    mut camera_query: Query<(&PrimaryCamera, &mut Transform), Without<Car>>,
+    mut camera_query: Query<(&mut PrimaryCamera, &mut Transform), Without<Car>>,
+    mut timer: ResMut<DirectorTimer>,
+    time: Res<Time>,
 ) {
-    let mut camera_info = if let Ok((PrimaryCamera::TrackCar(car_id), camera_transform)) = camera_query.get_single_mut() {
-        Some((*car_id, camera_transform))
-    } else {
-        None
+    timer.0.tick(time.delta());
+
+    let (mut primary_camera, mut camera_transform) = camera_query.single_mut();
+
+    let car_id = match primary_camera.as_mut() {
+        PrimaryCamera::TrackCar(id) => *id,
+        PrimaryCamera::Director(id) => {
+            if *id == 0 || timer.0.finished() {
+                // get the car closest to the ball
+                let mut min_dist = f32::MAX;
+                for car in &state.cars {
+                    let dist = car.state.pos.distance_squared(state.ball.pos);
+                    if dist < min_dist {
+                        *id = car.id;
+                        min_dist = dist;
+                    }
+                }
+            }
+
+            *id
+        }
+        _ => 0,
     };
 
     for (mut car_transform, car) in cars.iter_mut() {
@@ -474,9 +503,19 @@ fn update_car(
         car_transform.translation = car_state.pos.to_bevy();
         car_transform.rotation = car_state.rot_mat.to_bevy();
 
-        if let Some((car_id, ref mut camera_transform)) = camera_info {
-            if car_id == car.id() {
-                let camera_transform = camera_transform.as_mut();
+        if car_id == car.id() {
+            let camera_transform = camera_transform.as_mut();
+
+            if ballcam.enabled && car_state.pos.distance_squared(state.ball.pos) > MIN_DIST_FROM_BALL_SQ {
+                let ball_pos = state.ball.pos.to_bevy();
+                camera_transform.translation =
+                    car_transform.translation + (car_transform.translation - ball_pos).normalize() * 300. + Vec3::Y * 150.;
+                camera_transform.look_at(ball_pos, Vec3::Y);
+
+                if camera_transform.translation.y < MIN_CAMERA_BALLCAM_HEIGHT {
+                    camera_transform.translation.y = MIN_CAMERA_BALLCAM_HEIGHT;
+                }
+            } else {
                 camera_transform.translation =
                     car_transform.translation - car_transform.right() * 300. + car_transform.up() * 150.;
                 camera_transform.look_to(car_transform.forward(), car_transform.up());
@@ -520,6 +559,7 @@ pub struct RocketSimPlugin;
 impl Plugin for RocketSimPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(GameState::default())
+            .insert_resource(DirectorTimer(Timer::new(Duration::from_secs(12), TimerMode::Repeating)))
             .add_system(establish_connection.run_if(in_state(LoadState::Connect)))
             .add_system(step_arena.run_if(in_state(LoadState::None)))
             .add_systems((update_ball, update_car, update_pads).after(step_arena).before(listen))
