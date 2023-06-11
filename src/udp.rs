@@ -506,7 +506,9 @@ fn update_car(
         if car_id == car.id() {
             let camera_transform = camera_transform.as_mut();
 
-            if ballcam.enabled && car_state.pos.distance_squared(state.ball.pos) > MIN_DIST_FROM_BALL_SQ {
+            if ballcam.enabled
+                && (!car_state.is_on_ground || car_state.pos.distance_squared(state.ball.pos) > MIN_DIST_FROM_BALL_SQ)
+            {
                 let ball_pos = state.ball.pos.to_bevy();
                 camera_transform.translation =
                     car_transform.translation + (car_transform.translation - ball_pos).normalize() * 300.;
