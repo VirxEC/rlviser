@@ -461,10 +461,10 @@ fn update_ball(
     transform.rotation = state.ball_rot.to_bevy();
 }
 
-const MIN_DIST_FROM_BALL: f32 = 175.;
+const MIN_DIST_FROM_BALL: f32 = 200.;
 const MIN_DIST_FROM_BALL_SQ: f32 = MIN_DIST_FROM_BALL * MIN_DIST_FROM_BALL;
 
-const MIN_CAMERA_BALLCAM_HEIGHT: f32 = 10.;
+const MIN_CAMERA_BALLCAM_HEIGHT: f32 = 20.;
 
 fn update_car(
     state: Res<GameState>,
@@ -509,17 +509,21 @@ fn update_car(
             if ballcam.enabled && car_state.pos.distance_squared(state.ball.pos) > MIN_DIST_FROM_BALL_SQ {
                 let ball_pos = state.ball.pos.to_bevy();
                 camera_transform.translation =
-                    car_transform.translation + (car_transform.translation - ball_pos).normalize() * 300. + Vec3::Y * 150.;
+                    car_transform.translation + (car_transform.translation - ball_pos).normalize() * 300.;
+                camera_transform.look_at(ball_pos, Vec3::Y);
+                camera_transform.translation += camera_transform.up() * 150.;
                 camera_transform.look_at(ball_pos, Vec3::Y);
 
                 if camera_transform.translation.y < MIN_CAMERA_BALLCAM_HEIGHT {
                     camera_transform.translation.y = MIN_CAMERA_BALLCAM_HEIGHT;
                 }
             } else {
-                camera_transform.translation =
-                    car_transform.translation - car_transform.right() * 300. + car_transform.up() * 150.;
-                camera_transform.look_to(car_transform.forward(), car_transform.up());
-                camera_transform.rotation *= Quat::from_rotation_y(-PI / 2.) * Quat::from_rotation_x(-PI / 16.);
+                let car_look = Vec3::new(car_state.vel.x, 0., car_state.vel.y)
+                    .try_normalize()
+                    .unwrap_or_else(|| car_transform.forward());
+                camera_transform.translation = car_transform.translation - car_look * 300. + Vec3::Y * 150.;
+                camera_transform.look_to(car_look, Vec3::Y);
+                camera_transform.rotation *= Quat::from_rotation_x(-PI / 16.);
             }
         }
     }

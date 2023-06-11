@@ -241,7 +241,7 @@ fn retreive_material(name: &str, asset_server: &AssetServer, base_color: Color) 
         return Some(material);
     }
 
-    info!("Retreiving material {name}");
+    debug!("Retreiving material {name}");
     let material_folder = if name.ends_with("MIC") || name.contains(".MIC_") || name.ends_with("Mic") {
         ".MaterialInstanceConstant."
     } else {
@@ -359,7 +359,7 @@ fn retreive_material(name: &str, asset_server: &AssetServer, base_color: Color) 
     }
 
     if let Some(texture_name) = diffuse {
-        info!("Found texture for {name}");
+        debug!("Found texture for {name}");
         if texture_name == "ForcefieldHex" {
             material.base_color = Color::rgba(0.3, 0.3, 0.3, 0.3);
         }

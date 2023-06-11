@@ -56,6 +56,7 @@ fn setup(mut commands: Commands) {
         PrimaryCamera::default(),
         Camera3dBundle {
             projection: PerspectiveProjection {
+                near: 5.,
                 far: 500000.,
                 ..default()
             }

@@ -1,6 +1,6 @@
 [package]
-name = "rlviser"
 version = "0.3.0"
+name = "rlviser"
 edition = "2021"
 publish = false
 

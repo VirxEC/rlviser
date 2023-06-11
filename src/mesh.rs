@@ -300,7 +300,7 @@ fn load_field(
             }
         };
 
-        info!("Spawning {}", node.static_mesh);
+        debug!("Spawning {}", node.static_mesh);
         for (mesh, mat) in mesh.into_iter().zip(mats) {
             if BLACKLIST_MESH_MATS.contains(&mat.as_str()) {
                 continue;
