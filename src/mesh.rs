@@ -4,6 +4,7 @@ use bevy::{
     render::mesh::{self, VertexAttributeValues},
     window::PrimaryWindow,
 };
+use bevy_eventlistener::callbacks::ListenerInput;
 use bevy_mod_picking::prelude::*;
 use serde::Deserialize;
 use std::io::{self, Read};
@@ -22,19 +23,25 @@ pub struct FieldLoaderPlugin;
 impl Plugin for FieldLoaderPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(LargeBoostPadLocRots::default())
-            .add_system(load_field.run_if(in_state(LoadState::Field)))
-            .add_system(load_extra_field.run_if(in_state(LoadState::FieldExtra)))
+            .add_systems(
+                Update,
+                (
+                    load_field.run_if(in_state(LoadState::Field)),
+                    load_extra_field.run_if(in_state(LoadState::FieldExtra)),
+                    change_ball_pos.run_if(on_event::<ChangeBallPos>()),
+                    change_car_pos.run_if(on_event::<ChangeCarPos>()),
+                ),
+            )
             .add_event::<ChangeBallPos>()
-            .add_system(change_ball_pos.run_if(on_event::<ChangeBallPos>()))
-            .add_event::<ChangeCarPos>()
-            .add_system(change_car_pos.run_if(on_event::<ChangeCarPos>()));
+            .add_event::<ChangeCarPos>();
     }
 }
 
+#[derive(Event)]
 pub struct ChangeBallPos;
 
-impl From<ListenedEvent<Drag>> for ChangeBallPos {
-    fn from(_: ListenedEvent<Drag>) -> Self {
+impl From<ListenerInput<Pointer<Drag>>> for ChangeBallPos {
+    fn from(_: ListenerInput<Pointer<Drag>>) -> Self {
         ChangeBallPos
     }
 }
@@ -55,10 +62,11 @@ fn change_ball_pos(
     socket.0.send(&game_state.to_bytes()).unwrap();
 }
 
+#[derive(Event)]
 pub struct ChangeCarPos(Entity);
 
-impl From<ListenedEvent<Drag>> for ChangeCarPos {
-    fn from(event: ListenedEvent<Drag>) -> Self {
+impl From<ListenerInput<Pointer<Drag>>> for ChangeCarPos {
+    fn from(event: ListenerInput<Pointer<Drag>>) -> Self {
         ChangeCarPos(event.target)
     }
 }
@@ -142,9 +150,9 @@ fn load_extra_field(
             },
             EntityName::new("ball"),
             RaycastPickTarget::default(),
-            OnPointer::<Over>::target_insert(HighlightedEntity),
-            OnPointer::<Out>::target_remove::<HighlightedEntity>(),
-            OnPointer::<Drag>::send_event::<ChangeBallPos>(),
+            On::<Pointer<Over>>::target_insert(HighlightedEntity),
+            On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
+            On::<Pointer<Drag>>::send_event::<ChangeBallPos>(),
         ))
         .with_children(|parent| {
             parent.spawn(PointLightBundle {
@@ -323,15 +331,15 @@ fn load_field(
 
             commands.spawn((
                 PbrBundle {
-                    mesh: mesh.clone(),
-                    material: material.clone(),
+                    mesh,
+                    material,
                     transform,
                     ..default()
                 },
                 EntityName::new(format!("{} | {mat}", node.static_mesh.clone())),
                 RaycastPickTarget::default(),
-                OnPointer::<Over>::target_insert(HighlightedEntity),
-                OnPointer::<Out>::target_remove::<HighlightedEntity>(),
+                On::<Pointer<Over>>::target_insert(HighlightedEntity),
+                On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
             ));
         }
     }

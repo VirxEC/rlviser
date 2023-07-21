@@ -67,11 +67,9 @@ pub struct SpectatorPlugin;
 
 impl Plugin for SpectatorPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<SpectatorSettings>();
-
-        app.add_startup_system(spectator_init.in_base_set(StartupSet::PostStartup));
-
-        app.add_system(spectator_update);
+        app.init_resource::<SpectatorSettings>()
+            .add_systems(PostStartup, spectator_init)
+            .add_systems(Update, spectator_update);
     }
 }
 
@@ -133,40 +131,31 @@ fn spectator_update(
 
     // rotation
     {
-        let mouse_delta = {
-            let mut total = Vec2::ZERO;
-            for d in motion.iter() {
-                total += d.delta;
-            }
-            total
-        };
+        let mouse_delta = motion.iter().fold(Vec2::ZERO, |acc, d| acc + d.delta) * -settings.sensitivity;
+        let (x, y, _) = camera_transform.rotation.to_euler(EulerRot::YXZ);
 
-        let mouse_x = -mouse_delta.x * time.delta_seconds() * settings.sensitivity;
-        let mouse_y = -mouse_delta.y * time.delta_seconds() * settings.sensitivity;
-
-        let mut dof: Vec3 = camera_transform.rotation.to_euler(EulerRot::YXZ).into();
-
-        dof.x += mouse_x;
-        // At 90 degrees, yaw gets misinterpeted as roll. Making 89 the limit fixes that.
-        dof.y = (dof.y + mouse_y).clamp(-89f32.to_radians(), 89f32.to_radians());
-        dof.z = 0f32;
-
-        camera_transform.rotation = Quat::from_euler(EulerRot::YXZ, dof.x, dof.y, dof.z);
+        camera_transform.rotation = Quat::from_euler(
+            EulerRot::YXZ,
+            x + mouse_delta.x,
+            // At 90 degrees, yaw gets misinterpeted as roll. Making 89 the limit fixes that.
+            (y + mouse_delta.y).clamp(-89.9f32.to_radians(), 89.9f32.to_radians()),
+            0.,
+        );
     }
 
     // translation
     {
-        let forward = if keys.pressed(KeyCode::W) { 1f32 } else { 0f32 };
-        let backward = if keys.pressed(KeyCode::S) { 1f32 } else { 0f32 };
-        let right = if keys.pressed(KeyCode::D) { 1f32 } else { 0f32 };
-        let left = if keys.pressed(KeyCode::A) { 1f32 } else { 0f32 };
-        let up = if keys.pressed(KeyCode::Space) { 1f32 } else { 0f32 };
-        let down = if keys.pressed(KeyCode::LControl) { 1f32 } else { 0f32 };
+        let forward = f32::from(keys.pressed(KeyCode::W));
+        let backward = f32::from(keys.pressed(KeyCode::S));
+        let right = f32::from(keys.pressed(KeyCode::D));
+        let left = f32::from(keys.pressed(KeyCode::A));
+        let up = f32::from(keys.pressed(KeyCode::Space));
+        let down = f32::from(keys.pressed(KeyCode::ControlLeft));
 
-        let speed = if keys.pressed(KeyCode::LShift) {
-            settings.alt_speed
+        let speed = if keys.pressed(KeyCode::ShiftLeft) {
+            settings.alt_speed * time.delta_seconds()
         } else {
-            settings.base_speed
+            settings.base_speed * time.delta_seconds()
         };
 
         let delta_axial = (forward - backward) * speed;

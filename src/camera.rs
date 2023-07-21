@@ -1,6 +1,12 @@
-use std::time::Duration;
+use std::{f32::consts::PI, time::Duration};
 
-use bevy::prelude::*;
+#[cfg(feature = "ssao")]
+use bevy::{
+    core_pipeline::experimental::taa::{TemporalAntiAliasBundle, TemporalAntiAliasPlugin},
+    pbr::ScreenSpaceAmbientOcclusionBundle,
+};
+
+use bevy::{core_pipeline::clear_color::ClearColorConfig, prelude::*};
 use bevy_atmosphere::prelude::*;
 use bevy_framepace::{FramepacePlugin, FramepaceSettings};
 use bevy_mod_picking::prelude::*;
@@ -12,6 +18,9 @@ struct Sun;
 
 #[derive(Resource)]
 struct CycleTimer(Timer);
+
+#[derive(Component, Clone, Copy)]
+pub struct MenuCamera;
 
 #[derive(Component, Clone, Copy, Default, PartialEq, Eq)]
 pub enum PrimaryCamera {
@@ -27,7 +36,7 @@ fn setup(mut commands: Commands) {
         point_light: PointLight {
             range: 10000.,
             radius: 100.,
-            intensity: 10000000.,
+            intensity: 100000.,
             ..default()
         },
         transform: Transform::from_xyz(0., 300., 5500.),
@@ -38,7 +47,7 @@ fn setup(mut commands: Commands) {
         point_light: PointLight {
             range: 10000.,
             radius: 100.,
-            intensity: 10000000.,
+            intensity: 100000.,
             ..default()
         },
         transform: Transform::from_xyz(0., 300., -5500.),
@@ -50,24 +59,79 @@ fn setup(mut commands: Commands) {
         ..default()
     });
 
-    commands.spawn((DirectionalLightBundle::default(), Sun));
-
     commands.spawn((
+        DirectionalLightBundle {
+            directional_light: DirectionalLight {
+                shadows_enabled: cfg!(feature = "ssao"),
+                ..default()
+            },
+            ..default()
+        },
+        Sun,
+    ));
+
+    #[allow(unused_variables, unused_mut)]
+    let mut camera_spawn = commands.spawn((
         PrimaryCamera::default(),
         Camera3dBundle {
             projection: PerspectiveProjection {
                 near: 5.,
                 far: 500000.,
+                fov: PI / 3.,
                 ..default()
             }
             .into(),
             transform: Transform::from_translation(Vec3::new(-3000., 1000., 0.)).looking_to(Vec3::X, Vec3::Y),
+            camera: Camera { hdr: true, ..default() },
             ..default()
         },
         AtmosphereCamera::default(),
         RaycastPickCamera::default(),
         Spectator,
     ));
+    #[cfg(feature = "ssao")]
+    camera_spawn
+        .insert(ScreenSpaceAmbientOcclusionBundle::default())
+        .insert(TemporalAntiAliasBundle::default());
+
+    commands.spawn((
+        MenuCamera,
+        Camera2dBundle {
+            camera_2d: Camera2d {
+                clear_color: ClearColorConfig::None,
+            },
+            camera: Camera {
+                order: 1,
+                hdr: true,
+                ..default()
+            },
+            ..default()
+        },
+    ));
+
+    // commands.spawn(MaterialMesh2dBundle {
+    //     mesh: meshes.add(shape::Circle::new(50.).into()).into(),
+    //     material: materials.add(ColorMaterial::from(Color::GREEN)),
+    //     transform: Transform::from_translation(Vec3::new(-200., -200., 0.)),
+    //     ..default()
+    // });
+
+    // commands.spawn(
+    //     TextBundle::from_section(
+    //         "100",
+    //         TextStyle {
+    //             font_size: 60.0,
+    //             color: Color::BLACK,
+    //             ..default()
+    //         },
+    //     )
+    //     .with_style(Style {
+    //         position_type: PositionType::Absolute,
+    //         bottom: Val::Px(200.),
+    //         right: Val::Px(200.),
+    //         ..default()
+    //     }),
+    // );
 }
 
 #[derive(Resource, Default)]
@@ -90,12 +154,13 @@ fn daylight_cycle(
         let secs = if offset.stop_day { 0. } else { time.elapsed_seconds_wrapped() };
         let t = (offset.offset + secs) / (200. / offset.day_speed);
 
-        atmosphere.sun_position = Vec3::new(-t.cos(), t.sin(), 0.);
+        let sun_position = Vec3::new(-t.cos(), t.sin(), 0.);
+        atmosphere.sun_position = sun_position;
 
         if let Some((mut light_trans, mut directional)) = query.single_mut().into() {
-            light_trans.translation = atmosphere.sun_position * 100000000.;
+            light_trans.translation = sun_position * 10000000.;
             light_trans.look_at(Vec3::ZERO, Vec3::Y);
-            directional.illuminance = t.sin().max(0.0).powf(2.0) * 100000.;
+            directional.illuminance = t.sin().max(0.0).powf(2.0) * 50000.;
         }
     }
 }
@@ -120,9 +185,9 @@ pub struct CameraPlugin;
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(SpectatorSettings {
-            base_speed: 25.,
-            alt_speed: 10.,
-            sensitivity: 0.75,
+            base_speed: 2500.,
+            alt_speed: 750.,
+            sensitivity: 0.003,
             ..default()
         })
         .insert_resource(FramepaceSettings {
@@ -134,11 +199,15 @@ impl Plugin for CameraPlugin {
             TimerMode::Repeating,
         )))
         .insert_resource(DaylightOffset::default())
-        .add_plugin(FramepacePlugin)
-        .add_plugin(SpectatorPlugin)
-        .add_plugin(AtmospherePlugin)
-        .add_plugins(DefaultPickingPlugins)
-        .add_startup_system(setup)
-        .add_system(daylight_cycle);
+        .add_plugins((
+            FramepacePlugin,
+            SpectatorPlugin,
+            DefaultPickingPlugins,
+            AtmospherePlugin,
+            #[cfg(feature = "ssao")]
+            TemporalAntiAliasPlugin,
+        ))
+        .add_systems(Startup, setup)
+        .add_systems(Update, daylight_cycle);
     }
 }

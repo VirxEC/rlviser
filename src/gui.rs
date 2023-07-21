@@ -20,26 +20,38 @@ pub struct BallCam {
     pub enabled: bool,
 }
 
+impl Default for BallCam {
+    #[inline]
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
 impl Plugin for DebugOverlayPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugin(EguiPlugin)
-            .insert_resource(Msaa::default())
-            .insert_resource(BallCam { enabled: true })
-            .insert_resource(Options::read_from_file().unwrap_or_else(|_| Options::create_file_from_defualt()))
-            .add_system(listen)
-            .add_system(ui_system)
-            .add_system(toggle_vsync.after(ui_system))
-            .add_system(toggle_vsync)
-            .add_system(toggle_ballcam.after(ui_system))
-            .add_system(toggle_ballcam)
-            .add_system(update_daytime.after(ui_system))
-            .add_system(update_daytime)
-            .add_system(update_msaa.after(ui_system))
-            .add_system(update_msaa)
-            // .add_system(update_draw_distance.after(ui_system))
-            // .add_system(update_draw_distance)
-            .add_system(write_settings_to_file.after(ui_system))
-            .add_system(write_settings_to_file);
+        app.add_plugins(EguiPlugin)
+            .insert_resource(if cfg!(feature = "ssao") { Msaa::Off } else { Msaa::default() })
+            .insert_resource(BallCam::default())
+            .insert_resource(Options::default_read_file())
+            .add_systems(
+                Update,
+                (
+                    listen,
+                    (
+                        ui_system,
+                        (
+                            toggle_vsync,
+                            toggle_ballcam,
+                            update_daytime,
+                            #[cfg(not(feature = "ssao"))]
+                            update_msaa,
+                            write_settings_to_file,
+                            // update_draw_distance,
+                        ),
+                    )
+                        .chain(),
+                ),
+            );
     }
 }
 
@@ -79,6 +91,11 @@ impl Default for Options {
 
 impl Options {
     const FILE_NAME: &str = "settings.txt";
+
+    #[inline]
+    fn default_read_file() -> Self {
+        Options::read_from_file().unwrap_or_else(|_| Options::create_file_from_defualt())
+    }
 
     fn read_from_file() -> io::Result<Self> {
         let mut options = Options::default();
@@ -190,14 +207,14 @@ fn ui_system(
 
     let ctx = contexts.ctx_mut();
 
-    let dt = time.raw_delta_seconds_f64();
+    let dt = time.raw_delta_seconds();
     if dt == 0.0 {
         return;
     }
 
     let (i, history) = &mut options.fps;
 
-    history[*i] = dt as f32;
+    history[*i] = dt;
     *i += 1;
     *i %= history.len();
 
@@ -211,15 +228,12 @@ fn ui_system(
         ui.label(format!("FPS: {fps:.0}"));
         ui.checkbox(&mut options.vsync, "vsync");
         ui.checkbox(&mut options.uncap_fps, "Uncap FPS");
-        ui.add(
-            egui::DragValue::new(&mut options.fps_limit)
-                .speed(5.)
-                .clamp_range(30.0..=600.),
-        );
+        ui.add(egui::DragValue::new(&mut options.fps_limit).speed(5.).clamp_range(30..=600));
         ui.checkbox(&mut options.ball_cam, "Ball cam");
         ui.checkbox(&mut options.stop_day, "Stop day cycle");
         ui.add(egui::Slider::new(&mut options.daytime, 0.0..=150.0).text("Daytime"));
         ui.add(egui::Slider::new(&mut options.day_speed, 0.0..=10.0).text("Day speed"));
+        #[cfg(not(feature = "ssao"))]
         ui.add(egui::Slider::new(&mut options.msaa, 0..=3).text("MSAA"));
         // ui.add(egui::Slider::new(&mut options.draw_distance, 0..=4).text("Draw distance"));
         ui.label(format!(
@@ -292,6 +306,7 @@ fn toggle_vsync(options: Res<Options>, mut framepace: ResMut<FramepaceSettings>)
     };
 }
 
+#[cfg(not(feature = "ssao"))]
 fn update_msaa(options: Res<Options>, mut msaa: ResMut<Msaa>) {
     if options.focus {
         return;

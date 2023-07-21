@@ -49,7 +49,7 @@ const BLOCK_MESHES: [&str; 7] = [
 ];
 
 #[cfg(not(feature = "full_load"))]
-const EXTRA_BLACKLIST: [&str; 2] = ["Side_Trim", "AdvertStrip"];
+const EXTRA_BLACKLIST: [&str; 1] = ["Side_Trim"];
 
 #[cfg(not(feature = "full_load"))]
 const WHITELIST_MESHES: [&str; 11] = [

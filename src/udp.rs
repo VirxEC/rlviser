@@ -136,8 +136,8 @@ fn spawn_default_car(
         },
         EntityName::new("generic_body"),
         RaycastPickTarget::default(),
-        OnPointer::<Over>::target_insert(HighlightedEntity),
-        OnPointer::<Out>::target_remove::<HighlightedEntity>(),
+        On::<Pointer<Over>>::target_insert(HighlightedEntity),
+        On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
     ));
 }
 
@@ -216,9 +216,9 @@ fn spawn_car(
             },
             EntityName::new(name),
             RaycastPickTarget::default(),
-            OnPointer::<Over>::target_insert(HighlightedEntity),
-            OnPointer::<Out>::target_remove::<HighlightedEntity>(),
-            OnPointer::<Drag>::send_event::<ChangeCarPos>(),
+            On::<Pointer<Over>>::target_insert(HighlightedEntity),
+            On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
+            On::<Pointer<Drag>>::send_event::<ChangeCarPos>(),
         ))
         .with_children(|parent| {
             mesh_info
@@ -408,8 +408,8 @@ fn step_arena(
                 },
                 EntityName::new("generic_boost_pad"),
                 RaycastPickTarget::default(),
-                OnPointer::<Over>::target_insert(HighlightedEntity),
-                OnPointer::<Out>::target_remove::<HighlightedEntity>(),
+                On::<Pointer<Over>>::target_insert(HighlightedEntity),
+                On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
             ));
         }
     }
@@ -523,9 +523,9 @@ fn update_car(
                 let car_look = Vec3::new(car_state.vel.x, 0., car_state.vel.y)
                     .try_normalize()
                     .unwrap_or_else(|| car_transform.forward());
-                camera_transform.translation = car_transform.translation - car_look * 300. + Vec3::Y * 150.;
+                camera_transform.translation = car_transform.translation - car_look * 280. + Vec3::Y * 110.;
                 camera_transform.look_to(car_look, Vec3::Y);
-                camera_transform.rotation *= Quat::from_rotation_x(-PI / 16.);
+                camera_transform.rotation *= Quat::from_rotation_x(-PI / 30.);
             }
         }
     }
@@ -566,12 +566,12 @@ impl Plugin for RocketSimPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(GameState::default())
             .insert_resource(DirectorTimer(Timer::new(Duration::from_secs(12), TimerMode::Repeating)))
-            .add_system(establish_connection.run_if(in_state(LoadState::Connect)))
-            .add_system(step_arena.run_if(in_state(LoadState::None)))
-            .add_systems((update_ball, update_car, update_pads).after(step_arena).before(listen))
-            .add_system(update_ball)
-            .add_system(update_car)
-            .add_system(update_pads)
-            .add_system(listen.run_if(in_state(LoadState::None)));
+            .add_systems(
+                Update,
+                (
+                    establish_connection.run_if(in_state(LoadState::Connect)),
+                    (step_arena, (update_ball, update_car, update_pads).chain(), listen).run_if(in_state(LoadState::None)),
+                ),
+            );
     }
 }
