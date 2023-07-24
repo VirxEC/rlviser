@@ -315,7 +315,24 @@ fn step_arena(
         // wait until we receive the packet
         // it should arrive VERY quickly, so a loop with no delay is fine
         // if it doesn't, then there are other problems lol
-        while socket.0.peek_from(&mut min_buf).is_err() {}
+        // UPDATE: Windows throws a specific error that we need to look for
+        // despite the fact that it actually worked
+
+        #[cfg(windows)]
+        {
+            while let Err(e) = socket.0.peek_from(&mut min_buf) {
+                if let Some(code) = e.raw_os_error() {
+                    if code == 10040 {
+                        break;
+                    }
+                }
+            }
+        }
+
+        #[cfg(not(windows))]
+        {
+            while socket.0.peek_from(&mut min_buf).is_err() {}
+        }
 
         if game_state.tick_count > GameState::read_tick_count(&min_buf) {
             drop(socket.0.recv_from(&mut [0]));
