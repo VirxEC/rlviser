@@ -288,19 +288,11 @@ impl UdpPacketTypes {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn step_arena(
     socket: Res<UdpConnection>,
-    cars: Query<(Entity, &Car)>,
-    pads: Query<(Entity, &BoostPadI)>,
-    asset_server: Res<AssetServer>,
-    pad_glows: Res<BoostPickupGlows>,
-    large_boost_pad_loc_rots: Res<LargeBoostPadLocRots>,
     mut game_state: ResMut<GameState>,
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
     mut exit: EventWriter<AppExit>,
+    mut packet_updated: ResMut<PacketUpdated>,
 ) {
     let mut temp_buf = None;
 
@@ -339,12 +331,146 @@ fn step_arena(
     }
 
     let Some(buf) = temp_buf else {
+        packet_updated.0 = false;
         return;
     };
 
+    packet_updated.0 = true;
     *game_state = GameState::from_bytes(&buf);
+}
 
-    if pads.iter().count() != game_state.pads.len() {
+fn update_ball(
+    state: Res<GameState>,
+    mut ball: Query<(&mut Transform, &Children), With<Ball>>,
+    mut point_light: Query<&mut PointLight>,
+) {
+    let Ok((mut transform, children)) = ball.get_single_mut() else {
+        return;
+    };
+
+    let new_pos = state.ball.pos.to_bevy();
+    transform.translation = new_pos;
+
+    let mut point_light = point_light.get_mut(children.first().copied().unwrap()).unwrap();
+
+    let amount = (transform.translation.z.abs() + 500.) / 3500.;
+    point_light.color = if new_pos.z > 0. {
+        Color::rgb(amount.max(0.5), (amount * (2. / 3.)).max(0.5), 0.5)
+    } else {
+        Color::rgb(0.5, 0.5, amount.max(0.5))
+    };
+
+    transform.rotation = state.ball_rot.to_bevy();
+}
+
+const MIN_DIST_FROM_BALL: f32 = 200.;
+const MIN_DIST_FROM_BALL_SQ: f32 = MIN_DIST_FROM_BALL * MIN_DIST_FROM_BALL;
+
+const MIN_CAMERA_BALLCAM_HEIGHT: f32 = 20.;
+
+#[allow(clippy::too_many_arguments)]
+fn update_car(
+    time: Res<Time>,
+    state: Res<GameState>,
+    ballcam: Res<BallCam>,
+    asset_server: Res<AssetServer>,
+    car_entities: Query<(Entity, &Car)>,
+    mut cars: Query<(&mut Transform, &Car)>,
+    mut camera_query: Query<(&mut PrimaryCamera, &mut Transform), Without<Car>>,
+    mut timer: ResMut<DirectorTimer>,
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    match cars.iter().count().cmp(&state.cars.len()) {
+        Ordering::Greater => {
+            for (entity, car) in &car_entities {
+                if !state.cars.iter().any(|car_info| car.0 == car_info.id) {
+                    commands.entity(entity).despawn_recursive();
+                }
+            }
+        }
+        Ordering::Less => {
+            let all_current_cars = cars.iter().map(|(_, car)| car.0).collect::<Vec<_>>();
+            let non_existant_cars = state
+                .cars
+                .iter()
+                .filter(|car_info| !all_current_cars.iter().any(|&id| id == car_info.id));
+
+            for car_info in non_existant_cars {
+                spawn_car(car_info, &mut commands, &mut meshes, &mut materials, &asset_server);
+            }
+        }
+        _ => {}
+    }
+
+    timer.0.tick(time.delta());
+
+    let (mut primary_camera, mut camera_transform) = camera_query.single_mut();
+
+    let car_id = match primary_camera.as_mut() {
+        PrimaryCamera::TrackCar(id) => *id,
+        PrimaryCamera::Director(id) => {
+            if *id == 0 || timer.0.finished() {
+                // get the car closest to the ball
+                let mut min_dist = f32::MAX;
+                for car in &state.cars {
+                    let dist = car.state.pos.distance_squared(state.ball.pos);
+                    if dist < min_dist {
+                        *id = car.id;
+                        min_dist = dist;
+                    }
+                }
+            }
+
+            *id
+        }
+        _ => 0,
+    };
+
+    for (mut car_transform, car) in cars.iter_mut() {
+        let car_state = &state.cars.iter().find(|car_info| car.0 == car_info.id).unwrap().state;
+        car_transform.translation = car_state.pos.to_bevy();
+        car_transform.rotation = car_state.rot_mat.to_bevy();
+
+        if car_id == car.id() {
+            let camera_transform = camera_transform.as_mut();
+
+            if ballcam.enabled
+                && (!car_state.is_on_ground || car_state.pos.distance_squared(state.ball.pos) > MIN_DIST_FROM_BALL_SQ)
+            {
+                let ball_pos = state.ball.pos.to_bevy();
+                camera_transform.translation =
+                    car_transform.translation + (car_transform.translation - ball_pos).normalize() * 300.;
+                camera_transform.look_at(ball_pos, Vec3::Y);
+                camera_transform.translation += camera_transform.up() * 150.;
+                camera_transform.look_at(ball_pos, Vec3::Y);
+
+                if camera_transform.translation.y < MIN_CAMERA_BALLCAM_HEIGHT {
+                    camera_transform.translation.y = MIN_CAMERA_BALLCAM_HEIGHT;
+                }
+            } else {
+                let car_look = Vec3::new(car_state.vel.x, 0., car_state.vel.y)
+                    .try_normalize()
+                    .unwrap_or_else(|| car_transform.forward());
+                camera_transform.translation = car_transform.translation - car_look * 280. + Vec3::Y * 110.;
+                camera_transform.look_to(car_look, Vec3::Y);
+                camera_transform.rotation *= Quat::from_rotation_x(-PI / 30.);
+            }
+        }
+    }
+}
+
+fn update_pads(
+    state: Res<GameState>,
+    pads: Query<(Entity, &BoostPadI)>,
+    query: Query<&Handle<StandardMaterial>, With<BoostPadI>>,
+    pad_glows: Res<BoostPickupGlows>,
+    large_boost_pad_loc_rots: Res<LargeBoostPadLocRots>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut commands: Commands,
+) {
+    if pads.iter().count() != state.pads.len() {
         // The number of pads shouldn't change often
         // There's also not an easy way to determine
         // if a previous pad a new pad are same pad
@@ -353,7 +479,7 @@ fn step_arena(
             commands.entity(entity).despawn_recursive();
         }
 
-        for pad in &game_state.pads {
+        for pad in &state.pads {
             let mut transform = Transform::from_translation(pad.position.to_bevy() - Vec3::Y * 70.);
 
             let mesh = if pad.is_big {
@@ -414,128 +540,6 @@ fn step_arena(
         }
     }
 
-    match cars.iter().count().cmp(&game_state.cars.len()) {
-        Ordering::Greater => {
-            for (entity, car) in cars.iter() {
-                if !game_state.cars.iter().any(|car_info| car.0 == car_info.id) {
-                    commands.entity(entity).despawn_recursive();
-                }
-            }
-        }
-        Ordering::Less => {
-            let all_current_cars = cars.iter().map(|(_, car)| car.0).collect::<Vec<_>>();
-            let non_existant_cars = game_state
-                .cars
-                .iter()
-                .filter(|car_info| !all_current_cars.iter().any(|&id| id == car_info.id));
-
-            for car_info in non_existant_cars {
-                spawn_car(car_info, &mut commands, &mut meshes, &mut materials, &asset_server);
-            }
-        }
-        _ => {}
-    }
-}
-
-fn update_ball(
-    state: Res<GameState>,
-    mut ball: Query<(&mut Transform, &Children), With<Ball>>,
-    mut point_light: Query<&mut PointLight>,
-) {
-    let Ok((mut transform, children)) = ball.get_single_mut() else {
-        return;
-    };
-
-    let new_pos = state.ball.pos.to_bevy();
-    transform.translation = new_pos;
-
-    let mut point_light = point_light.get_mut(children.first().copied().unwrap()).unwrap();
-
-    let amount = (transform.translation.z.abs() + 500.) / 3500.;
-    point_light.color = if new_pos.z > 0. {
-        Color::rgb(amount.max(0.5), (amount * (2. / 3.)).max(0.5), 0.5)
-    } else {
-        Color::rgb(0.5, 0.5, amount.max(0.5))
-    };
-
-    transform.rotation = state.ball_rot.to_bevy();
-}
-
-const MIN_DIST_FROM_BALL: f32 = 200.;
-const MIN_DIST_FROM_BALL_SQ: f32 = MIN_DIST_FROM_BALL * MIN_DIST_FROM_BALL;
-
-const MIN_CAMERA_BALLCAM_HEIGHT: f32 = 20.;
-
-fn update_car(
-    state: Res<GameState>,
-    ballcam: Res<BallCam>,
-    mut cars: Query<(&mut Transform, &Car)>,
-    mut camera_query: Query<(&mut PrimaryCamera, &mut Transform), Without<Car>>,
-    mut timer: ResMut<DirectorTimer>,
-    time: Res<Time>,
-) {
-    timer.0.tick(time.delta());
-
-    let (mut primary_camera, mut camera_transform) = camera_query.single_mut();
-
-    let car_id = match primary_camera.as_mut() {
-        PrimaryCamera::TrackCar(id) => *id,
-        PrimaryCamera::Director(id) => {
-            if *id == 0 || timer.0.finished() {
-                // get the car closest to the ball
-                let mut min_dist = f32::MAX;
-                for car in &state.cars {
-                    let dist = car.state.pos.distance_squared(state.ball.pos);
-                    if dist < min_dist {
-                        *id = car.id;
-                        min_dist = dist;
-                    }
-                }
-            }
-
-            *id
-        }
-        _ => 0,
-    };
-
-    for (mut car_transform, car) in cars.iter_mut() {
-        let car_state = &state.cars.iter().find(|car_info| car.0 == car_info.id).unwrap().state;
-        car_transform.translation = car_state.pos.to_bevy();
-        car_transform.rotation = car_state.rot_mat.to_bevy();
-
-        if car_id == car.id() {
-            let camera_transform = camera_transform.as_mut();
-
-            if ballcam.enabled
-                && (!car_state.is_on_ground || car_state.pos.distance_squared(state.ball.pos) > MIN_DIST_FROM_BALL_SQ)
-            {
-                let ball_pos = state.ball.pos.to_bevy();
-                camera_transform.translation =
-                    car_transform.translation + (car_transform.translation - ball_pos).normalize() * 300.;
-                camera_transform.look_at(ball_pos, Vec3::Y);
-                camera_transform.translation += camera_transform.up() * 150.;
-                camera_transform.look_at(ball_pos, Vec3::Y);
-
-                if camera_transform.translation.y < MIN_CAMERA_BALLCAM_HEIGHT {
-                    camera_transform.translation.y = MIN_CAMERA_BALLCAM_HEIGHT;
-                }
-            } else {
-                let car_look = Vec3::new(car_state.vel.x, 0., car_state.vel.y)
-                    .try_normalize()
-                    .unwrap_or_else(|| car_transform.forward());
-                camera_transform.translation = car_transform.translation - car_look * 280. + Vec3::Y * 110.;
-                camera_transform.look_to(car_look, Vec3::Y);
-                camera_transform.rotation *= Quat::from_rotation_x(-PI / 30.);
-            }
-        }
-    }
-}
-
-fn update_pads(
-    state: Res<GameState>,
-    query: Query<&Handle<StandardMaterial>, With<BoostPadI>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
     for (pad, handle) in state.pads.iter().zip(query.iter()) {
         let material = materials.get_mut(handle).unwrap();
         material.base_color = if pad.state.is_active {
@@ -560,17 +564,28 @@ fn listen(socket: Res<UdpConnection>, key: Res<Input<KeyCode>>, mut game_state: 
         socket.0.send(&game_state.to_bytes()).unwrap();
     }
 }
+
+#[derive(Resource)]
+struct PacketUpdated(bool);
+
 pub struct RocketSimPlugin;
 
 impl Plugin for RocketSimPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(GameState::default())
             .insert_resource(DirectorTimer(Timer::new(Duration::from_secs(12), TimerMode::Repeating)))
+            .insert_resource(PacketUpdated(false))
             .add_systems(
                 Update,
                 (
                     establish_connection.run_if(in_state(LoadState::Connect)),
-                    (step_arena, (update_ball, update_car, update_pads).chain(), listen).run_if(in_state(LoadState::None)),
+                    (
+                        step_arena,
+                        (update_ball, update_car, update_pads).run_if(|updated: Res<PacketUpdated>| updated.0),
+                        listen,
+                    )
+                        .chain()
+                        .run_if(in_state(LoadState::None)),
                 ),
             );
     }

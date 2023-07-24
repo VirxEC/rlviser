@@ -10,6 +10,7 @@ use bevy::{core_pipeline::clear_color::ClearColorConfig, prelude::*};
 use bevy_atmosphere::prelude::*;
 use bevy_framepace::{FramepacePlugin, FramepaceSettings};
 use bevy_mod_picking::prelude::*;
+// use bevy_vector_shapes::prelude::*;
 
 use crate::spectator::*;
 
@@ -105,15 +106,27 @@ fn setup(mut commands: Commands) {
                 hdr: true,
                 ..default()
             },
+            transform: Transform::from_translation(Vec3::Z),
             ..default()
         },
     ));
 
-    // commands.spawn(MaterialMesh2dBundle {
-    //     mesh: meshes.add(shape::Circle::new(50.).into()).into(),
-    //     material: materials.add(ColorMaterial::from(Color::GREEN)),
-    //     transform: Transform::from_translation(Vec3::new(-200., -200., 0.)),
-    //     ..default()
+    // commands.spawn(
+    //     ShapeBundle::circle(
+    //         &ShapeConfig {
+    //             transform: Transform::from_xyz(0.7, 0.7, 0.),
+    //             color: Color::MIDNIGHT_BLUE,
+    //             ..ShapeConfig::default_3d()
+    //         },
+    //         1000.,
+    //     )
+    //     .insert_3d(),
+    // );
+    // shapes.circle(1.0).with_children(|parent| {
+    //     for _ in 0..4 {
+    //         parent.rotate_z(PI / 2.0);
+    //         parent.line(Vec3::ZERO, Vec3::Y * 15.0);
+    //     }
     // });
 
     // commands.spawn(
@@ -204,6 +217,7 @@ impl Plugin for CameraPlugin {
             SpectatorPlugin,
             DefaultPickingPlugins,
             AtmospherePlugin,
+            // Shape2dPlugin::default(),
             #[cfg(feature = "ssao")]
             TemporalAntiAliasPlugin,
         ))

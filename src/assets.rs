@@ -4,7 +4,7 @@ use std::{
     collections::HashMap,
     fs,
     io::{self, Read, Write},
-    path::Path,
+    path::{Path, MAIN_SEPARATOR},
     process::{Command, Stdio},
     sync::Mutex,
 };
@@ -120,6 +120,9 @@ pub fn get_mesh_info(name: &str, meshes: &mut Assets<Mesh>) -> Option<Vec<Handle
 }
 
 fn load_texture(name: &str, asset_server: &AssetServer) -> Handle<Image> {
+    let mut assets_path = String::from("assets");
+    assets_path.push(MAIN_SEPARATOR);
+
     let path = WalkDir::new("assets")
         .into_iter()
         .flatten()
@@ -128,7 +131,7 @@ fn load_texture(name: &str, asset_server: &AssetServer) -> Handle<Image> {
         .path()
         .to_string_lossy()
         .to_string()
-        .replace("assets/", "");
+        .replace(&assets_path, "");
 
     asset_server.load(path)
 }

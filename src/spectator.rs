@@ -1,43 +1,4 @@
-//! # bevy_spectator
-//!
-//! A spectator camera plugin for the [Bevy game engine](https://bevyengine.org/).
-//!
-//! ## Controls
-//!
-//! |Action|Key|
-//! |-|-|
-//! |Forward|`W`|
-//! |Left|`A`|
-//! |Backward|`S`|
-//! |Right|`D`|
-//! |Up|`Space`|
-//! |Down|`LControl`|
-//! |Alternative Speed|`LShift`|
-//! |Release Cursor|`Escape`|
-//!
-//! Movement is constrained to the appropriate axes. (`WASD` to X & Z axes, `Space` & `LShift` to the Y axis)
-//!
-//! ## `basic` Example
-//! ```
-//! use bevy::prelude::*;
-//! use bevy_spectator::*;
-//!
-//! fn main() {
-//!     App::new()
-//!         .add_plugins(DefaultPlugins)
-//!         .add_plugin(SpectatorPlugin)
-//!         .add_startup_system(setup)
-//!         .run();
-//! }
-//!
-//! fn setup(mut commands: Commands) {
-//!     commands.spawn((
-//!         Camera3dBundle::default(), Spectator
-//!     ));
-//! }
-//! ```
-
-// Copied over because base functions aren't public and changes are required to make it work nice
+// Copied over from bevy_spectator because base functions aren't public and changes are required to make it work nice
 
 use bevy::{
     input::mouse::MouseMotion,
@@ -153,10 +114,10 @@ fn spectator_update(
         let down = f32::from(keys.pressed(KeyCode::ControlLeft));
 
         let speed = if keys.pressed(KeyCode::ShiftLeft) {
-            settings.alt_speed * time.delta_seconds()
+            settings.alt_speed
         } else {
-            settings.base_speed * time.delta_seconds()
-        };
+            settings.base_speed
+        } * time.delta_seconds();
 
         let delta_axial = (forward - backward) * speed;
         let delta_lateral = (right - left) * speed;
