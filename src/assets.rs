@@ -560,7 +560,7 @@ impl AssetLoader for PskxLoader {
     }
 }
 
-const UMODEL: &str = if cfg!(windows) { "umodel.exe" } else { "./umodel" };
+const UMODEL: &str = if cfg!(windows) { ".\\umodel.exe" } else { "./umodel" };
 const OUT_DIR: &str = "./assets/";
 const OUT_DIR_VER: &str = "./assets/files.txt";
 
