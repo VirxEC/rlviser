@@ -14,6 +14,8 @@ jobs:
         target: [x86_64-pc-windows-gnu, x86_64-unknown-linux-musl]
     steps:
       - uses: actions/checkout@master
+      - name: Update Rust to last stable
+        run: rustup update stable
       - name: Compile and release
         uses: rust-build/rust-build.action@v1.4.3
         env:
@@ -21,5 +23,4 @@ jobs:
         with:
           RUSTTARGET: ${{ matrix.target }}
           EXTRA_FILES: "README.md LICENSE"
-          MINIFY: "true"
           PRE_BUILD: "prebuild.sh"
