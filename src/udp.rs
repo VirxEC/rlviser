@@ -162,6 +162,9 @@ fn get_color_from_team(team: Team) -> Color {
     }
 }
 
+#[derive(Component)]
+pub struct CarBoost;
+
 fn spawn_car(
     car_info: &CarInfo,
     commands: &mut Commands,
@@ -170,6 +173,7 @@ fn spawn_car(
     asset_server: &AssetServer,
 ) {
     let hitbox = car_info.config.hitbox_size.to_bevy();
+    let hitbox_offset = car_info.config.hitbox_pos_offset.to_bevy();
     let base_color = get_color_from_team(car_info.team);
 
     let (name, mesh_id) = CAR_BODIES[if (120f32..121.).contains(&hitbox.x) {
@@ -221,17 +225,48 @@ fn spawn_car(
             On::<Pointer<Drag>>::send_event::<ChangeCarPos>(),
         ))
         .with_children(|parent| {
+            const CAR_BOOST_LENGTH: f32 = 50.;
             mesh_info
                 .into_iter()
                 .zip(mesh_materials)
                 .map(|(mesh, material)| PbrBundle {
                     mesh,
                     material,
-                    ..Default::default()
+                    transform: Transform::from_translation(hitbox_offset),
+                    ..default()
                 })
                 .for_each(|bundle| {
                     parent.spawn(bundle);
                 });
+
+            parent.spawn((
+                MaterialMeshBundle {
+                    mesh: meshes.add(Mesh::from(shape::Cylinder {
+                        height: CAR_BOOST_LENGTH,
+                        radius: 10.,
+                        resolution: 16,
+                        ..default()
+                    })),
+                    material: materials.add(StandardMaterial {
+                        base_color: Color::Rgba {
+                            red: 1.,
+                            green: 1.,
+                            blue: 0.,
+                            alpha: 0.,
+                        },
+                        alpha_mode: AlphaMode::Add,
+                        cull_mode: None,
+                        ..default()
+                    }),
+                    transform: Transform {
+                        translation: Vec3::new((hitbox.x + CAR_BOOST_LENGTH) / -2., hitbox.y / 2., 0.) + hitbox_offset,
+                        rotation: Quat::from_rotation_z(PI / 2.),
+                        ..default()
+                    },
+                    ..default()
+                },
+                CarBoost,
+            ));
         });
 }
 
@@ -392,12 +427,14 @@ fn update_car(
     ballcam: Res<BallCam>,
     asset_server: Res<AssetServer>,
     car_entities: Query<(Entity, &Car)>,
-    mut cars: Query<(&mut Transform, &Car)>,
+    mut cars: Query<(&mut Transform, &Car, &Children)>,
+    mut car_boosts: Query<&Handle<StandardMaterial>, With<CarBoost>>,
     mut camera_query: Query<(&mut PrimaryCamera, &mut Transform), Without<Car>>,
     mut timer: ResMut<DirectorTimer>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut last_boost_states: Local<Vec<u32>>,
 ) {
     match cars.iter().count().cmp(&state.cars.len()) {
         Ordering::Greater => {
@@ -408,7 +445,7 @@ fn update_car(
             }
         }
         Ordering::Less => {
-            let all_current_cars = cars.iter().map(|(_, car)| car.0).collect::<Vec<_>>();
+            let all_current_cars = cars.iter().map(|(_, car, _)| car.0).collect::<Vec<_>>();
             let non_existant_cars = state
                 .cars
                 .iter()
@@ -445,10 +482,30 @@ fn update_car(
         _ => 0,
     };
 
-    for (mut car_transform, car) in cars.iter_mut() {
+    for (mut car_transform, car, children) in cars.iter_mut() {
         let car_state = &state.cars.iter().find(|car_info| car.0 == car_info.id).unwrap().state;
         car_transform.translation = car_state.pos.to_bevy();
         car_transform.rotation = car_state.rot_mat.to_bevy();
+
+        let is_boosting = car_state.last_controls.boost && car_state.boost > f32::EPSILON;
+        let last_boosted = last_boost_states.iter().any(|&id| id == car.id());
+
+        if is_boosting != last_boosted {
+            for child in children.iter() {
+                let Ok(material_handle) = car_boosts.get_mut(*child) else {
+                    continue;
+                };
+
+                let material = materials.get_mut(material_handle).unwrap();
+                if is_boosting {
+                    material.base_color.set_a(0.7);
+                    last_boost_states.push(car.id());
+                } else {
+                    material.base_color.set_a(0.0);
+                    last_boost_states.retain(|&id| id != car.id());
+                }
+            }
+        }
 
         if car_id == car.id() {
             let camera_transform = camera_transform.as_mut();
