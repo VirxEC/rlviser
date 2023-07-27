@@ -331,7 +331,8 @@ fn step_arena(
     mut exit: EventWriter<AppExit>,
     mut packet_updated: ResMut<PacketUpdated>,
 ) {
-    let mut temp_buf = None;
+    packet_updated.0 = false;
+    let mut buf = Vec::new();
 
     const PACKET_TYPE_BUFFER: [u8; 1] = [0];
     let mut packet_type = PACKET_TYPE_BUFFER;
@@ -347,8 +348,7 @@ fn step_arena(
             return;
         }
 
-        const INITIAL_BUFFER: [u8; GameState::MIN_NUM_BYTES] = [0; GameState::MIN_NUM_BYTES];
-        let mut min_buf = INITIAL_BUFFER;
+        static mut INITIAL_BUFFER: [u8; GameState::MIN_NUM_BYTES] = [0; GameState::MIN_NUM_BYTES];
         // wait until we receive the packet
         // it should arrive VERY quickly, so a loop with no delay is fine
         // if it doesn't, then there are other problems lol
@@ -357,7 +357,7 @@ fn step_arena(
 
         #[cfg(windows)]
         {
-            while let Err(e) = socket.0.peek_from(&mut min_buf) {
+            while let Err(e) = socket.0.peek_from(unsafe { &mut INITIAL_BUFFER }) {
                 if let Some(code) = e.raw_os_error() {
                     if code == 10040 {
                         break;
@@ -368,26 +368,23 @@ fn step_arena(
 
         #[cfg(not(windows))]
         {
-            while socket.0.peek_from(&mut min_buf).is_err() {}
+            while socket.0.peek_from(unsafe { &mut INITIAL_BUFFER }).is_err() {}
         }
 
-        if game_state.tick_count > GameState::read_tick_count(&min_buf) {
+        if game_state.tick_count > GameState::read_tick_count(unsafe { &INITIAL_BUFFER }) {
             drop(socket.0.recv_from(&mut [0]));
             return;
         }
 
-        let mut full_buf = vec![0; GameState::get_num_bytes(&min_buf)];
-        if socket.0.recv_from(&mut full_buf).is_err() {
+        buf.resize(GameState::get_num_bytes(unsafe { &INITIAL_BUFFER }), 0);
+        if socket.0.recv_from(&mut buf).is_err() {
             return;
         }
-
-        temp_buf = Some(full_buf);
     }
 
-    let Some(buf) = temp_buf else {
-        packet_updated.0 = false;
+    if buf.is_empty() {
         return;
-    };
+    }
 
     packet_updated.0 = true;
     *game_state = GameState::from_bytes(&buf);
