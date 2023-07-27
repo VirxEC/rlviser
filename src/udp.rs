@@ -12,7 +12,7 @@ use bevy_vector_shapes::prelude::*;
 use crate::{
     assets::{get_material, get_mesh_info, BoostPickupGlows},
     bytes::{FromBytes, ToBytes},
-    camera::{BoostAmount, EntityName, HighlightedEntity, PrimaryCamera, BOOST_INDICATOR_POS},
+    camera::{BoostAmount, EntityName, HighlightedEntity, PrimaryCamera, TimeDisplay, BOOST_INDICATOR_POS},
     gui::BallCam,
     mesh::{ChangeCarPos, LargeBoostPadLocRots},
     rocketsim::{CarInfo, GameState, Team},
@@ -626,8 +626,7 @@ fn update_pads(
     }
 }
 
-fn update_hud(
-    // time: Res<Time>,
+fn update_boost_meter(
     state: Res<GameState>,
     camera: Query<&PrimaryCamera>,
     windows: Query<&Window, With<PrimaryWindow>>,
@@ -659,7 +658,6 @@ fn update_hud(
     painter.circle(100.0);
 
     let scale = car_state.boost / 100.;
-    // let scale = (time.elapsed_seconds_wrapped().sin() + 1.) / 2.;
 
     let start_angle = 7. * PI / 6.;
     let full_angle = 11. * PI / 6.;
@@ -673,9 +671,63 @@ fn update_hud(
     painter.reset();
 
     boost_amount.single_mut().sections[0].value = car_state.boost.round().to_string();
-    // boost_amount.single_mut().sections[0].value = (scale * 100.).round().to_string();
 
     *was_last_director = true;
+}
+
+fn update_time(state: Res<GameState>, mut text_display: Query<&mut Text, With<TimeDisplay>>) {
+    const MINUTE: u64 = 60;
+    const HOUR: u64 = 60 * MINUTE;
+    const DAY: u64 = 24 * HOUR;
+    const WEEK: u64 = 7 * DAY;
+    const MONTH: u64 = 30 * DAY;
+    const YEAR: u64 = 365 * DAY;
+
+    if state.tick_rate == 0. {
+        return;
+    }
+
+    let mut seconds = state.tick_count / state.tick_rate.round() as u64;
+
+    let mut time_segments = Vec::with_capacity(7);
+
+    let years = seconds / YEAR;
+    if years > 0 {
+        time_segments.push(format!("{}y", years));
+    }
+    seconds -= years * YEAR;
+
+    let months = seconds / MONTH;
+    if months > 0 {
+        time_segments.push(format!("{:02}m", months));
+    }
+    seconds -= months * MONTH;
+
+    let weeks = seconds / WEEK;
+    if weeks > 0 {
+        time_segments.push(format!("{:02}w", weeks));
+    }
+    seconds -= weeks * WEEK;
+
+    let days = seconds / DAY;
+    if days > 0 {
+        time_segments.push(format!("{}d", days));
+    }
+    seconds -= days * DAY;
+
+    let hours = seconds / HOUR;
+    if hours > 0 {
+        time_segments.push(format!("{:02}h", hours));
+    }
+    seconds -= hours * HOUR;
+
+    let minutes = seconds / MINUTE;
+    time_segments.push(format!("{:02}m", minutes));
+    seconds -= minutes * MINUTE;
+
+    time_segments.push(format!("{:02}s", seconds));
+
+    text_display.single_mut().sections[0].value = time_segments.join(":");
 }
 
 fn listen(socket: Res<UdpConnection>, key: Res<Input<KeyCode>>, mut game_state: ResMut<GameState>) {
@@ -715,7 +767,8 @@ impl Plugin for RocketSimPlugin {
                             ),
                         )
                             .chain(),
-                        update_hud,
+                        update_boost_meter,
+                        update_time,
                     )
                         .run_if(in_state(LoadState::None)),
                 ),

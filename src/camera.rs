@@ -26,6 +26,9 @@ pub struct MenuCamera;
 #[derive(Component)]
 pub struct BoostAmount;
 
+#[derive(Component)]
+pub struct TimeDisplay;
+
 #[derive(Component, Clone, Copy, Default, PartialEq, Eq)]
 pub enum PrimaryCamera {
     #[default]
@@ -35,6 +38,7 @@ pub enum PrimaryCamera {
 }
 
 pub const BOOST_INDICATOR_POS: Vec2 = Vec2::new(150., 150.);
+pub const TIME_DISPLAY_POS: Vec2 = Vec2::new(0., 60.);
 
 fn setup(mut commands: Commands) {
     // lights in the goals
@@ -133,6 +137,36 @@ fn setup(mut commands: Commands) {
         }),
         BoostAmount,
     ));
+
+    commands
+        .spawn(NodeBundle {
+            style: Style {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            ..default()
+        })
+        .with_children(|parent| {
+            parent.spawn((
+                TextBundle::from_section(
+                    "00m:00s",
+                    TextStyle {
+                        font_size: 40.0,
+                        color: Color::DARK_GRAY,
+                        ..default()
+                    },
+                )
+                .with_style(Style {
+                    position_type: PositionType::Absolute,
+                    top: Val::Px(TIME_DISPLAY_POS.x),
+                    ..default()
+                }),
+                TimeDisplay,
+            ));
+        });
 }
 
 #[derive(Resource, Default)]
