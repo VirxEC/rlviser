@@ -10,7 +10,7 @@ use bevy::{core_pipeline::clear_color::ClearColorConfig, prelude::*};
 use bevy_atmosphere::prelude::*;
 use bevy_framepace::{FramepacePlugin, FramepaceSettings};
 use bevy_mod_picking::prelude::*;
-// use bevy_vector_shapes::prelude::*;
+use bevy_vector_shapes::prelude::*;
 
 use crate::spectator::*;
 
@@ -20,8 +20,11 @@ struct Sun;
 #[derive(Resource)]
 struct CycleTimer(Timer);
 
-#[derive(Component, Clone, Copy)]
+#[derive(Component)]
 pub struct MenuCamera;
+
+#[derive(Component)]
+pub struct BoostAmount;
 
 #[derive(Component, Clone, Copy, Default, PartialEq, Eq)]
 pub enum PrimaryCamera {
@@ -30,6 +33,8 @@ pub enum PrimaryCamera {
     Director(u32),
     TrackCar(u32),
 }
+
+pub const BOOST_INDICATOR_POS: Vec2 = Vec2::new(150., 150.);
 
 fn setup(mut commands: Commands) {
     // lights in the goals
@@ -111,40 +116,23 @@ fn setup(mut commands: Commands) {
         },
     ));
 
-    // commands.spawn(
-    //     ShapeBundle::circle(
-    //         &ShapeConfig {
-    //             transform: Transform::from_xyz(0.7, 0.7, 0.),
-    //             color: Color::MIDNIGHT_BLUE,
-    //             ..ShapeConfig::default_3d()
-    //         },
-    //         1000.,
-    //     )
-    //     .insert_3d(),
-    // );
-    // shapes.circle(1.0).with_children(|parent| {
-    //     for _ in 0..4 {
-    //         parent.rotate_z(PI / 2.0);
-    //         parent.line(Vec3::ZERO, Vec3::Y * 15.0);
-    //     }
-    // });
-
-    // commands.spawn(
-    //     TextBundle::from_section(
-    //         "100",
-    //         TextStyle {
-    //             font_size: 60.0,
-    //             color: Color::BLACK,
-    //             ..default()
-    //         },
-    //     )
-    //     .with_style(Style {
-    //         position_type: PositionType::Absolute,
-    //         bottom: Val::Px(200.),
-    //         right: Val::Px(200.),
-    //         ..default()
-    //     }),
-    // );
+    commands.spawn((
+        TextBundle::from_section(
+            "",
+            TextStyle {
+                font_size: 60.0,
+                color: Color::SILVER,
+                ..default()
+            },
+        )
+        .with_style(Style {
+            position_type: PositionType::Absolute,
+            right: Val::Px(BOOST_INDICATOR_POS.x - 25.),
+            bottom: Val::Px(BOOST_INDICATOR_POS.y),
+            ..default()
+        }),
+        BoostAmount,
+    ));
 }
 
 #[derive(Resource, Default)]
@@ -217,7 +205,7 @@ impl Plugin for CameraPlugin {
             SpectatorPlugin,
             DefaultPickingPlugins,
             AtmospherePlugin,
-            // Shape2dPlugin::default(),
+            Shape2dPlugin::default(),
             #[cfg(feature = "ssao")]
             TemporalAntiAliasPlugin,
         ))

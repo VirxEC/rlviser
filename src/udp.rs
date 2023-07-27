@@ -4,13 +4,15 @@ use bevy::{
     app::AppExit,
     math::{Mat3A, Vec3A, Vec3Swizzles},
     prelude::*,
+    window::PrimaryWindow,
 };
 use bevy_mod_picking::prelude::*;
+use bevy_vector_shapes::prelude::*;
 
 use crate::{
     assets::{get_material, get_mesh_info, BoostPickupGlows},
     bytes::{FromBytes, ToBytes},
-    camera::{EntityName, HighlightedEntity, PrimaryCamera},
+    camera::{BoostAmount, EntityName, HighlightedEntity, PrimaryCamera, BOOST_INDICATOR_POS},
     gui::BallCam,
     mesh::{ChangeCarPos, LargeBoostPadLocRots},
     rocketsim::{CarInfo, GameState, Team},
@@ -615,14 +617,65 @@ fn update_pads(
     }
 
     for (pad, handle) in state.pads.iter().zip(query.iter()) {
-        let material = materials.get_mut(handle).unwrap();
-        material.base_color = if pad.state.is_active {
-            Color::rgba(0.9, 0.9, 0.1, 0.6)
+        materials.get_mut(handle).unwrap().base_color.set_a(if pad.state.is_active {
+            0.6
         } else {
             // make the glow on inactive pads dissapear
-            Color::NONE
-        };
+            0.0
+        });
     }
+}
+
+fn update_hud(
+    // time: Res<Time>,
+    state: Res<GameState>,
+    camera: Query<&PrimaryCamera>,
+    windows: Query<&Window, With<PrimaryWindow>>,
+    mut painter: ShapePainter,
+    mut boost_amount: Query<&mut Text, With<BoostAmount>>,
+    mut was_last_director: Local<bool>,
+) {
+    let id = match camera.single() {
+        PrimaryCamera::Director(id) | PrimaryCamera::TrackCar(id) => *id,
+        _ => {
+            if *was_last_director {
+                *was_last_director = false;
+                boost_amount.single_mut().sections[0].value.clear();
+            }
+            return;
+        }
+    };
+
+    let Some(car_state) = &state.cars.iter().find(|info| id == info.id).map(|info| info.state) else {
+        return;
+    };
+
+    let primary_window = windows.single();
+    let window_res = Vec2::new(primary_window.width(), primary_window.height());
+    let painter_pos = (window_res / 2. - (BOOST_INDICATOR_POS + 25.)) * Vec2::new(1., -1.);
+
+    painter.set_translation(painter_pos.extend(0.));
+    painter.color = Color::rgb(0.075, 0.075, 0.15);
+    painter.circle(100.0);
+
+    let scale = car_state.boost / 100.;
+    // let scale = (time.elapsed_seconds_wrapped().sin() + 1.) / 2.;
+
+    let start_angle = 7. * PI / 6.;
+    let full_angle = 11. * PI / 6.;
+    let end_angle = start_angle + (full_angle - start_angle) * scale;
+
+    painter.color = Color::rgb(1., 0.84 * scale, 0.);
+    painter.hollow = true;
+    painter.thickness = 4.;
+    painter.arc(80., start_angle, end_angle);
+
+    painter.reset();
+
+    boost_amount.single_mut().sections[0].value = car_state.boost.round().to_string();
+    // boost_amount.single_mut().sections[0].value = (scale * 100.).round().to_string();
+
+    *was_last_director = true;
 }
 
 fn listen(socket: Res<UdpConnection>, key: Res<Input<KeyCode>>, mut game_state: ResMut<GameState>) {
@@ -654,11 +707,16 @@ impl Plugin for RocketSimPlugin {
                 (
                     establish_connection.run_if(in_state(LoadState::Connect)),
                     (
-                        step_arena,
-                        (update_ball, update_car, update_pads).run_if(|updated: Res<PacketUpdated>| updated.0),
-                        listen,
+                        (
+                            step_arena,
+                            (
+                                (update_ball, update_car, update_pads).run_if(|updated: Res<PacketUpdated>| updated.0),
+                                listen,
+                            ),
+                        )
+                            .chain(),
+                        update_hud,
                     )
-                        .chain()
                         .run_if(in_state(LoadState::None)),
                 ),
             );
