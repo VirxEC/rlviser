@@ -131,11 +131,11 @@ fn load_extra_field(
 
     let ball_material = StandardMaterial {
         base_color_texture: Some(ball_assets.ball_diffuse.clone()),
-        unlit: true,
         // normal_map_texture: Some(ball_assets.ball_normal.clone()),
+        // flip_normal_map_y: true,
         // occlusion_texture: Some(ball_assets.ball_occlude.clone()),
-        // perceptual_roughness: 0.4,
-        // metallic: 0.,
+        perceptual_roughness: 0.7,
+        reflectance: 0.25,
         ..default()
     };
 
