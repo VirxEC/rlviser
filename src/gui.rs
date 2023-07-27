@@ -37,6 +37,8 @@ impl Plugin for DebugOverlayPlugin {
                 Update,
                 (
                     listen,
+                    #[cfg(debug_assertions)]
+                    debug_ui,
                     (
                         ui_system,
                         (
@@ -167,14 +169,35 @@ impl Options {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[cfg(debug_assertions)]
+fn debug_ui(
+    mut contexts: EguiContexts,
+    heq: Query<(&Transform, &EntityName), With<HighlightedEntity>>,
+    cam_pos: Query<&Transform, With<PrimaryCamera>>,
+) {
+    let ctx = contexts.ctx_mut();
+    let camera_pos = cam_pos.single().translation;
+
+    let (he_pos, highlighted_entity_name) = heq
+        .get_single()
+        .map(|(transform, he)| (transform.translation, he.name.clone()))
+        .unwrap_or((Vec3::default(), String::from("None")));
+
+    egui::Window::new("Debug").show(ctx, |ui| {
+        ui.label(format!(
+            "Primary camera position: [{:.0}, {:.0}, {:.0}]",
+            camera_pos.x, camera_pos.y, camera_pos.z
+        ));
+        ui.label(format!("HE position: [{:.0}, {:.0}, {:.0}]", he_pos.x, he_pos.y, he_pos.z));
+        ui.label(format!("Highlighted entity: {highlighted_entity_name}"));
+    });
+}
+
 fn ui_system(
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
     mut picking_state: ResMut<PickingPluginsSettings>,
     mut options: ResMut<Options>,
     mut contexts: EguiContexts,
-    heq: Query<(&Transform, &EntityName), With<HighlightedEntity>>,
-    cam_pos: Query<&Transform, With<PrimaryCamera>>,
     keys: Res<Input<KeyCode>>,
     time: Res<Time>,
 ) {
@@ -200,11 +223,6 @@ fn ui_system(
         return;
     }
 
-    let (he_pos, highlighted_entity_name) = heq
-        .get_single()
-        .map(|(transform, he)| (transform.translation, he.name.clone()))
-        .unwrap_or((Vec3::default(), String::from("None")));
-
     let ctx = contexts.ctx_mut();
 
     let dt = time.raw_delta_seconds();
@@ -221,10 +239,7 @@ fn ui_system(
     let avg_dt = history.iter().sum::<f32>() / history.len() as f32;
     let fps = 1. / avg_dt;
 
-    let camera_pos = cam_pos.single().translation;
-
-    egui::SidePanel::left("left_panel").show(ctx, |ui| {
-        ui.label("Press Esc to close menu");
+    egui::Window::new("Menu (Esc to close)").show(ctx, |ui| {
         ui.label(format!("FPS: {fps:.0}"));
         ui.checkbox(&mut options.vsync, "vsync");
         ui.checkbox(&mut options.uncap_fps, "Uncap FPS");
@@ -236,12 +251,6 @@ fn ui_system(
         #[cfg(not(feature = "ssao"))]
         ui.add(egui::Slider::new(&mut options.msaa, 0..=3).text("MSAA"));
         // ui.add(egui::Slider::new(&mut options.draw_distance, 0..=4).text("Draw distance"));
-        ui.label(format!(
-            "Primary camera position: [{:.0}, {:.0}, {:.0}]",
-            camera_pos.x, camera_pos.y, camera_pos.z
-        ));
-        ui.label(format!("HE position: [{:.0}, {:.0}, {:.0}]", he_pos.x, he_pos.y, he_pos.z));
-        ui.label(format!("Highlighted entity: {highlighted_entity_name}"));
     });
 }
 
