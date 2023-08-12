@@ -680,11 +680,12 @@ fn update_time(state: Res<GameState>, mut text_display: Query<&mut Text, With<Ti
     const MONTH: u64 = 30 * DAY;
     const YEAR: u64 = 365 * DAY;
 
-    if state.tick_rate == 0. {
+    let tick_rate = state.tick_rate.round() as u64;
+    if tick_rate == 0 {
         return;
     }
 
-    let mut seconds = state.tick_count / state.tick_rate.round() as u64;
+    let mut seconds = state.tick_count / tick_rate;
 
     let mut time_segments = Vec::with_capacity(7);
 
