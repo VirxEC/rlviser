@@ -2,6 +2,7 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use once_cell::sync::Lazy;
 use std::{
     collections::HashMap,
+    ffi::OsStr,
     fs,
     io::{self, Read, Write},
     path::{Path, MAIN_SEPARATOR},
@@ -126,7 +127,7 @@ fn load_texture(name: &str, asset_server: &AssetServer) -> Handle<Image> {
     let path = WalkDir::new("assets")
         .into_iter()
         .flatten()
-        .find(|x| x.file_name().to_string_lossy() == format!("{}.tga", name))
+        .find(|x| x.file_name().to_string_lossy() == format!("{name}.tga"))
         .unwrap()
         .path()
         .to_string_lossy()
@@ -207,41 +208,7 @@ fn retreive_material(name: &str, asset_server: &AssetServer, base_color: Color) 
 
     if !is_in_whitelist(name) {
         // load custom material instead
-        let mut material = if name == "Stadium_Assets.Materials.Grass_Base_Team1_MIC" {
-            StandardMaterial::from(Color::rgb(0.1, 0.6, 0.1))
-        } else if name == "FutureTech.Materials.Reflective_Floor_V2_Mat" {
-            StandardMaterial::from(Color::rgb(0.1, 0.1, 0.8))
-        } else if name == "FutureTech.Materials.Frame_01_V2_Mat" {
-            StandardMaterial::from(Color::rgb(0.25, 0.1, 0.25))
-        } else if name == "FutureTech.Materials.Frame_01_White_MIC" {
-            StandardMaterial::from(Color::SILVER)
-        } else if name == "FutureTech.Materials.CrossHatched_Grate_MIC" {
-            StandardMaterial::from(Color::TOMATO)
-        } else if [
-            "Pickup_Boost.Materials.BoostPad_Small_MIC",
-            "Pickup_Boost.Materials.BoostPad_Large_MIC",
-        ]
-        .contains(&name)
-        {
-            StandardMaterial::from(Color::rgb(0.8, 0.1, 0.1))
-        } else if name.contains("Advert") {
-            StandardMaterial::from(Color::BISQUE)
-        } else {
-            return None;
-        };
-
-        if TRANSPARENT_MATS.contains(&name) {
-            material.alpha_mode = AlphaMode::Blend;
-        } else if ADD_MATS.contains(&name) {
-            material.alpha_mode = AlphaMode::Add;
-        }
-
-        if DOUBLE_SIDED_MATS.contains(&name) {
-            material.cull_mode = None;
-            material.double_sided = true;
-        }
-
-        return Some(material);
+        return get_default_material(name);
     }
 
     debug!("Retreiving material {name}");
@@ -383,6 +350,41 @@ fn retreive_material(name: &str, asset_server: &AssetServer, base_color: Color) 
     Some(material)
 }
 
+fn get_default_material(name: &str) -> Option<StandardMaterial> {
+    let mut material = if name == "Stadium_Assets.Materials.Grass_Base_Team1_MIC" {
+        StandardMaterial::from(Color::rgb(0.1, 0.6, 0.1))
+    } else if name == "FutureTech.Materials.Reflective_Floor_V2_Mat" {
+        StandardMaterial::from(Color::rgb(0.1, 0.1, 0.8))
+    } else if name == "FutureTech.Materials.Frame_01_V2_Mat" {
+        StandardMaterial::from(Color::rgb(0.25, 0.1, 0.25))
+    } else if name == "FutureTech.Materials.Frame_01_White_MIC" {
+        StandardMaterial::from(Color::SILVER)
+    } else if name == "FutureTech.Materials.CrossHatched_Grate_MIC" {
+        StandardMaterial::from(Color::TOMATO)
+    } else if [
+        "Pickup_Boost.Materials.BoostPad_Small_MIC",
+        "Pickup_Boost.Materials.BoostPad_Large_MIC",
+    ]
+    .contains(&name)
+    {
+        StandardMaterial::from(Color::rgb(0.8, 0.1, 0.1))
+    } else if name.contains("Advert") {
+        StandardMaterial::from(Color::BISQUE)
+    } else {
+        return None;
+    };
+    if TRANSPARENT_MATS.contains(&name) {
+        material.alpha_mode = AlphaMode::Blend;
+    } else if ADD_MATS.contains(&name) {
+        material.alpha_mode = AlphaMode::Add;
+    }
+    if DOUBLE_SIDED_MATS.contains(&name) {
+        material.cull_mode = None;
+        material.double_sided = true;
+    }
+    Some(material)
+}
+
 static MATERIALS: Mutex<Lazy<HashMap<String, Handle<StandardMaterial>>>> = Mutex::new(Lazy::new(HashMap::new));
 
 pub fn get_material(
@@ -488,10 +490,10 @@ pub fn read_vertex_colors(chunk_data: &[u8], data_count: usize) -> Vec<[f32; 4]>
     let mut reader = io::Cursor::new(chunk_data);
     for _ in 0..data_count {
         vertex_colors.push([
-            reader.read_u8().unwrap() as f32,
-            reader.read_u8().unwrap() as f32,
-            reader.read_u8().unwrap() as f32,
-            reader.read_u8().unwrap() as f32,
+            f32::from(reader.read_u8().unwrap()),
+            f32::from(reader.read_u8().unwrap()),
+            f32::from(reader.read_u8().unwrap()),
+            f32::from(reader.read_u8().unwrap()),
         ]);
     }
 
@@ -549,7 +551,7 @@ impl AssetLoader for PskxLoader {
         load_context: &'a mut bevy::asset::LoadContext,
     ) -> bevy::utils::BoxedFuture<'a, Result<(), bevy::asset::Error>> {
         Box::pin(async move {
-            let asset_name = load_context.path().file_name().and_then(|name| name.to_str()).unwrap();
+            let asset_name = load_context.path().file_name().and_then(OsStr::to_str).unwrap();
             load_context.set_default_asset(LoadedAsset::new(MeshBuilder::from_pskx(asset_name, bytes)?.build_mesh(1.)));
             Ok(())
         })
@@ -626,9 +628,10 @@ pub fn uncook() -> io::Result<()> {
     //     })
     //     .collect::<Vec<_>>();
 
-    if !Path::new(UMODEL).exists() {
-        panic!("Couldn't find umodel.exe! Make sure it's in the same folder as the executable.");
-    }
+    assert!(
+        Path::new(UMODEL).exists(),
+        "Couldn't find umodel.exe! Make sure it's in the same folder as the executable."
+    );
 
     for (i, file) in UPK_FILES.into_iter().enumerate() {
         print!("Processing file {i}/{} ({file})...                       \r", UPK_FILES.len());
@@ -637,8 +640,8 @@ pub fn uncook() -> io::Result<()> {
         // call umodel to uncook all the map files
         let mut child = Command::new(UMODEL)
             .args([
-                format!("-path={}", input_dir),
-                format!("-out={}", OUT_DIR),
+                format!("-path={input_dir}"),
+                format!("-out={OUT_DIR}"),
                 "-game=rocketleague".to_string(),
                 "-export".to_string(),
                 "-nooverwrite".to_string(),
