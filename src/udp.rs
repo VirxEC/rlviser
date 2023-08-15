@@ -371,7 +371,8 @@ fn step_arena(
             while socket.0.peek_from(unsafe { &mut INITIAL_BUFFER }).is_err() {}
         }
 
-        if game_state.tick_count > GameState::read_tick_count(unsafe { &INITIAL_BUFFER }) {
+        let new_tick_count = GameState::read_tick_count(unsafe { &INITIAL_BUFFER });
+        if new_tick_count > 1 && game_state.tick_count > new_tick_count {
             drop(socket.0.recv_from(&mut [0]));
             return;
         }
