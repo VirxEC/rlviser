@@ -11,7 +11,9 @@ use bevy_egui::{egui, EguiContexts, EguiPlugin};
 use bevy_framepace::{FramepaceSettings, Limiter};
 use bevy_mod_picking::picking_core::PickingPluginsSettings;
 
-use crate::camera::{DaylightOffset, EntityName, HighlightedEntity, PrimaryCamera};
+use crate::camera::{DaylightOffset, PrimaryCamera};
+#[cfg(debug_assertions)]
+use crate::camera::{EntityName, HighlightedEntity};
 
 pub struct DebugOverlayPlugin;
 
@@ -96,11 +98,11 @@ impl Options {
 
     #[inline]
     fn default_read_file() -> Self {
-        Options::read_from_file().unwrap_or_else(|_| Options::create_file_from_defualt())
+        Self::read_from_file().unwrap_or_else(|_| Self::create_file_from_defualt())
     }
 
     fn read_from_file() -> io::Result<Self> {
-        let mut options = Options::default();
+        let mut options = Self::default();
 
         let file = fs::read_to_string(Self::FILE_NAME)?;
 
@@ -132,7 +134,7 @@ impl Options {
     }
 
     fn create_file_from_defualt() -> Self {
-        let options = Options::default();
+        let options = Self::default();
 
         if let Err(e) = options.write_options_to_file() {
             println!("Failed to create {} due to: {e}", Self::FILE_NAME);
@@ -157,7 +159,7 @@ impl Options {
     }
 
     #[inline]
-    fn is_not_similar(&self, other: &Options) -> bool {
+    fn is_not_similar(&self, other: &Self) -> bool {
         self.vsync != other.vsync
             || self.uncap_fps != other.uncap_fps
             || self.fps_limit != other.fps_limit
@@ -205,15 +207,14 @@ fn ui_system(
         options.focus = !options.focus;
 
         let mut window = windows.single_mut();
-        window.cursor.grab_mode = match options.focus {
-            true => {
-                if cfg!(windows) {
-                    CursorGrabMode::Confined
-                } else {
-                    CursorGrabMode::Locked
-                }
+        window.cursor.grab_mode = if options.focus {
+            if cfg!(windows) {
+                CursorGrabMode::Confined
+            } else {
+                CursorGrabMode::Locked
             }
-            false => CursorGrabMode::None,
+        } else {
+            CursorGrabMode::None
         };
         window.cursor.visible = !options.focus;
         picking_state.enable = !options.focus;

@@ -42,7 +42,7 @@ pub struct ChangeBallPos;
 
 impl From<ListenerInput<Pointer<Drag>>> for ChangeBallPos {
     fn from(_: ListenerInput<Pointer<Drag>>) -> Self {
-        ChangeBallPos
+        Self
     }
 }
 
@@ -67,7 +67,7 @@ pub struct ChangeCarPos(Entity);
 
 impl From<ListenerInput<Pointer<Drag>>> for ChangeCarPos {
     fn from(event: ListenerInput<Pointer<Drag>>) -> Self {
-        ChangeCarPos(event.target)
+        Self(event.target)
     }
 }
 
@@ -148,7 +148,7 @@ fn load_extra_field(
                 transform: Transform::from_xyz(0., 92., 0.),
                 ..default()
             },
-            EntityName::new("ball"),
+            EntityName::from("ball"),
             RaycastPickTarget::default(),
             On::<Pointer<Over>>::target_insert(HighlightedEntity),
             On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
@@ -196,7 +196,7 @@ impl InfoNode {
                 let [a, b, c] = self.rotation.unwrap_or_default();
                 Quat::from_euler(EulerRot::ZYX, c.to_radians(), b.to_radians(), a.to_radians())
             },
-            scale: self.scale.map(ToBevyVec::to_bevy).unwrap_or(Vec3::ONE),
+            scale: self.scale.map_or(Vec3::ONE, ToBevyVec::to_bevy),
         }
     }
 }
@@ -283,11 +283,11 @@ fn load_field(
     let prefab_nodes = standard_common_prefab.sub_nodes[0]
         .sub_nodes
         .iter()
-        .flat_map(|node| node.get_info_node());
-    let world_nodes = persistent_level.sub_nodes.iter().flat_map(|node| match node.get_info_node() {
-        Some(node) => vec![node],
-        None => node.sub_nodes.clone(),
-    });
+        .filter_map(ObjectNode::get_info_node);
+    let world_nodes = persistent_level
+        .sub_nodes
+        .iter()
+        .flat_map(|node| node.get_info_node().map_or_else(|| node.sub_nodes.clone(), |node| vec![node]));
 
     let default_mats = vec![String::new()];
 
@@ -300,12 +300,11 @@ fn load_field(
             continue;
         };
 
-        let mats = match node.materials.as_ref() {
-            Some(mats) => mats,
-            None => {
-                warn!("No materials found for {}", node.static_mesh);
-                &default_mats
-            }
+        let mats = if let Some(mats) = node.materials.as_ref() {
+            mats
+        } else {
+            warn!("No materials found for {}", node.static_mesh);
+            &default_mats
         };
 
         debug!("Spawning {}", node.static_mesh);
@@ -323,7 +322,7 @@ fn load_field(
             } else if node.static_mesh.contains("BoostPad_Large") {
                 large_boost_pad_loc_rots
                     .locs
-                    .push(node.translation.map(|t| t.to_bevy_flat()).unwrap_or_default());
+                    .push(node.translation.map(ToBevyVecFlat::to_bevy_flat).unwrap_or_default());
                 large_boost_pad_loc_rots
                     .rots
                     .push(node.rotation.map(|r| r[1]).unwrap_or_default());
@@ -547,23 +546,16 @@ impl MeshBuilder {
             // with no performance impact in release mode
             match chunk_id {
                 "PNTS0000" => {
-                    verts = read_vertices(&chunk_data, chunk_data_count);
+                    read_vertices(&chunk_data, chunk_data_count, &mut verts);
                     debug_assert_eq!(verts.len() / 3, chunk_data_count);
                     debug_assert_eq!(verts.len() % 3, 0);
                 }
                 "VTXW0000" => {
-                    wedges = read_wedges(&chunk_data, chunk_data_count);
+                    read_wedges(&chunk_data, chunk_data_count, &mut wedges);
                     debug_assert_eq!(wedges.len(), chunk_data_count);
                 }
                 "FACE0000" => {
-                    read_faces(&chunk_data, chunk_data_count, &wedges)
-                        .into_iter()
-                        .flatten()
-                        .for_each(|(id, uv, mat_id)| {
-                            ids.push(id as usize);
-                            uvs.push(uv);
-                            mat_ids.push(mat_id);
-                        });
+                    read_faces(&chunk_data, chunk_data_count, &wedges, &mut ids, &mut uvs, &mut mat_ids);
                     debug_assert_eq!(ids.len() / 3, chunk_data_count);
                 }
                 "MATT0000" => {

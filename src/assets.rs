@@ -415,8 +415,8 @@ pub fn get_material(
         .clone()
 }
 
-pub fn read_vertices(chunk_data: &[u8], data_count: usize) -> Vec<f32> {
-    let mut vertices = Vec::with_capacity(data_count);
+pub fn read_vertices(chunk_data: &[u8], data_count: usize, vertices: &mut Vec<f32>) {
+    vertices.reserve(data_count * 3);
 
     let mut reader = io::Cursor::new(chunk_data);
     for _ in 0..data_count {
@@ -425,23 +425,21 @@ pub fn read_vertices(chunk_data: &[u8], data_count: usize) -> Vec<f32> {
         vertices.push(reader.read_f32::<LittleEndian>().unwrap());
         vertices.push(-y);
     }
-
-    vertices
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct Wedge {
-    pub vertex_id: u32,
+    pub vertex_id: usize,
     pub uv: [f32; 2],
     pub material_index: usize,
 }
 
-pub fn read_wedges(chunk_data: &[u8], data_count: usize) -> Vec<Wedge> {
-    let mut wedges = Vec::with_capacity(data_count);
+pub fn read_wedges(chunk_data: &[u8], data_count: usize, wedges: &mut Vec<Wedge>) {
+    wedges.reserve(data_count);
 
     let mut reader = io::Cursor::new(chunk_data);
     for _ in 0..data_count {
-        let vertex_id = reader.read_u32::<LittleEndian>().unwrap();
+        let vertex_id = reader.read_u32::<LittleEndian>().unwrap() as usize;
         let u = reader.read_f32::<LittleEndian>().unwrap();
         let v = reader.read_f32::<LittleEndian>().unwrap();
         let material_index = reader.read_u8().unwrap() as usize;
@@ -456,32 +454,37 @@ pub fn read_wedges(chunk_data: &[u8], data_count: usize) -> Vec<Wedge> {
         reader.read_u8().unwrap();
         reader.read_u8().unwrap();
     }
-
-    wedges
 }
 
-pub fn read_faces(chunk_data: &[u8], data_count: usize, wedges: &[Wedge]) -> Vec<[(u32, [f32; 2], usize); 3]> {
-    let mut faces = Vec::with_capacity(data_count * 3);
+pub fn read_faces(
+    chunk_data: &[u8],
+    data_count: usize,
+    wedges: &[Wedge],
+    ids: &mut Vec<usize>,
+    uvs: &mut Vec<[f32; 2]>,
+    mat_ids: &mut Vec<usize>,
+) {
+    ids.reserve(data_count * 3);
+    uvs.reserve(data_count * 3);
+    mat_ids.reserve(data_count * 3);
 
     let mut reader = io::Cursor::new(chunk_data);
     for _ in 0..data_count {
-        let wdg_idx_1 = reader.read_u16::<LittleEndian>().unwrap() as usize;
-        let wdg_idx_2 = reader.read_u16::<LittleEndian>().unwrap() as usize;
-        let wdg_idx_3 = reader.read_u16::<LittleEndian>().unwrap() as usize;
+        let wdg_idxs = [
+            reader.read_u16::<LittleEndian>().unwrap() as usize,
+            reader.read_u16::<LittleEndian>().unwrap() as usize,
+            reader.read_u16::<LittleEndian>().unwrap() as usize,
+        ];
         let _mat_index = reader.read_u8().unwrap();
         let _aux_mat_index = reader.read_u8().unwrap();
         let _smoothing_group = reader.read_u32::<LittleEndian>().unwrap();
 
-        let verts = [wedges[wdg_idx_1], wedges[wdg_idx_2], wedges[wdg_idx_3]];
+        let verts = [&wedges[wdg_idxs[0]], &wedges[wdg_idxs[1]], &wedges[wdg_idxs[2]]];
 
-        faces.push([
-            (verts[1].vertex_id, verts[1].uv, verts[1].material_index),
-            (verts[0].vertex_id, verts[0].uv, verts[0].material_index),
-            (verts[2].vertex_id, verts[2].uv, verts[2].material_index),
-        ]);
+        ids.extend([verts[1].vertex_id, verts[0].vertex_id, verts[2].vertex_id]);
+        uvs.extend([verts[1].uv, verts[0].uv, verts[2].uv]);
+        mat_ids.extend([verts[1].material_index, verts[0].material_index, verts[2].material_index]);
     }
-
-    faces
 }
 
 pub fn read_vertex_colors(chunk_data: &[u8], data_count: usize) -> Vec<[f32; 4]> {

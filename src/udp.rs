@@ -30,7 +30,7 @@ pub struct Car(u32);
 
 impl Car {
     #[inline]
-    pub fn id(&self) -> u32 {
+    pub const fn id(&self) -> u32 {
         self.0
     }
 }
@@ -87,11 +87,11 @@ impl ToBevyMat for Mat3A {
     fn to_bevy(self) -> Quat {
         // In RocketSim, the Z axis is up, but in Bevy, the Z and Y axis are swapped
         // We also need to rotate 90 degrees around the X axis and 180 degrees around the Y axis
-        let mat = Mat3A::from_axis_angle(Vec3::Y, PI)
-            * Mat3A::from_axis_angle(Vec3::X, PI / 2.)
+        let mat = Self::from_axis_angle(Vec3::Y, PI)
+            * Self::from_axis_angle(Vec3::X, PI / 2.)
             * self
-            * Mat3A::from_cols(Vec3A::X, -Vec3A::Z, Vec3A::Y)
-            * Mat3A::from_axis_angle(Vec3::Y, PI);
+            * Self::from_cols(Vec3A::X, -Vec3A::Z, Vec3A::Y)
+            * Self::from_axis_angle(Vec3::Y, PI);
         Quat::from_mat3a(&mat)
     }
 }
@@ -105,10 +105,10 @@ impl ToBevyQuat for Quat {
     fn to_bevy(self) -> Quat {
         // In RocketSim, the Z axis is up, but in Bevy, the Z and Y axis are swapped
         // We also need to rotate 90 degrees around the X axis and 180 degrees around the Y axis
-        Quat::from_axis_angle(Vec3::Y, PI)
-            * Quat::from_axis_angle(Vec3::X, PI / 2.)
+        Self::from_axis_angle(Vec3::Y, PI)
+            * Self::from_axis_angle(Vec3::X, PI / 2.)
             * self
-            * Quat::from_mat3a(&Mat3A::from_cols(Vec3A::X, -Vec3A::Z, Vec3A::Y))
+            * Self::from_mat3a(&Mat3A::from_cols(Vec3A::X, -Vec3A::Z, Vec3A::Y))
     }
 }
 
@@ -136,7 +136,7 @@ fn spawn_default_car(
             material: materials.add(base_color.into()),
             ..Default::default()
         },
-        EntityName::new("generic_body"),
+        EntityName::from("generic_body"),
         RaycastPickTarget::default(),
         On::<Pointer<Over>>::target_insert(HighlightedEntity),
         On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
@@ -145,7 +145,7 @@ fn spawn_default_car(
 
 #[inline]
 /// Use colors that are a bit darker if we don't have the full_load feature
-fn get_color_from_team(team: Team) -> Color {
+const fn get_color_from_team(team: Team) -> Color {
     match team {
         Team::Blue => {
             if cfg!(feature = "full_load") {
@@ -220,7 +220,7 @@ fn spawn_car(
                 material: materials.add(Color::NONE.into()),
                 ..Default::default()
             },
-            EntityName::new(name),
+            EntityName::from(name),
             RaycastPickTarget::default(),
             On::<Pointer<Over>>::target_insert(HighlightedEntity),
             On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
@@ -314,7 +314,7 @@ enum UdpPacketTypes {
 }
 
 impl UdpPacketTypes {
-    fn new(byte: u8) -> Option<Self> {
+    const fn new(byte: u8) -> Option<Self> {
         if byte == 0 {
             Some(Self::Quit)
         } else if byte == 1 {
@@ -606,7 +606,7 @@ fn update_pads(
                     }),
                     ..default()
                 },
-                EntityName::new("generic_boost_pad"),
+                EntityName::from("generic_boost_pad"),
                 RaycastPickTarget::default(),
                 On::<Pointer<Over>>::target_insert(HighlightedEntity),
                 On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
@@ -634,7 +634,7 @@ fn update_boost_meter(
 ) {
     let id = match camera.single() {
         PrimaryCamera::Director(id) | PrimaryCamera::TrackCar(id) => *id,
-        _ => {
+        PrimaryCamera::Spectator => {
             if *was_last_director {
                 *was_last_director = false;
                 boost_amount.single_mut().sections[0].value.clear();
@@ -659,7 +659,7 @@ fn update_boost_meter(
 
     let start_angle = 7. * PI / 6.;
     let full_angle = 11. * PI / 6.;
-    let end_angle = start_angle + (full_angle - start_angle) * scale;
+    let end_angle = (full_angle - start_angle).mul_add(scale, start_angle);
 
     painter.color = Color::rgb(1., 0.84 * scale, 0.);
     painter.hollow = true;
@@ -692,39 +692,39 @@ fn update_time(state: Res<GameState>, mut text_display: Query<&mut Text, With<Ti
 
     let years = seconds / YEAR;
     if years > 0 {
-        time_segments.push(format!("{}y", years));
+        time_segments.push(format!("{years}y"));
     }
     seconds -= years * YEAR;
 
     let months = seconds / MONTH;
     if months > 0 {
-        time_segments.push(format!("{:02}m", months));
+        time_segments.push(format!("{months:02}m"));
     }
     seconds -= months * MONTH;
 
     let weeks = seconds / WEEK;
     if weeks > 0 {
-        time_segments.push(format!("{:02}w", weeks));
+        time_segments.push(format!("{weeks:02}w"));
     }
     seconds -= weeks * WEEK;
 
     let days = seconds / DAY;
     if days > 0 {
-        time_segments.push(format!("{}d", days));
+        time_segments.push(format!("{days}d"));
     }
     seconds -= days * DAY;
 
     let hours = seconds / HOUR;
     if hours > 0 {
-        time_segments.push(format!("{:02}h", hours));
+        time_segments.push(format!("{hours:02}h"));
     }
     seconds -= hours * HOUR;
 
     let minutes = seconds / MINUTE;
-    time_segments.push(format!("{:02}m", minutes));
+    time_segments.push(format!("{minutes:02}m"));
     seconds -= minutes * MINUTE;
 
-    time_segments.push(format!("{:02}s", seconds));
+    time_segments.push(format!("{seconds:02}s"));
 
     text_display.single_mut().sections[0].value = time_segments.join(":");
 }

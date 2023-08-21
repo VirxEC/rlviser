@@ -73,7 +73,7 @@ impl ToBytesExact<{ Self::NUM_BYTES }> for CarConfig {
 impl ToBytesExact<{ Self::NUM_BYTES }> for BallHitInfo {
     fn to_bytes(&self) -> [u8; Self::NUM_BYTES] {
         let mut bytes = [0; Self::NUM_BYTES];
-        bytes[..1].copy_from_slice(&(self.is_valid as u8).to_le_bytes());
+        bytes[..1].copy_from_slice(&u8::from(self.is_valid).to_le_bytes());
         bytes[1..1 + Vec3::NUM_BYTES].copy_from_slice(&self.relative_pos_on_ball.to_bytes());
         bytes[1 + Vec3::NUM_BYTES..1 + Vec3::NUM_BYTES * 2].copy_from_slice(&self.ball_pos.to_bytes());
         bytes[1 + Vec3::NUM_BYTES * 2..1 + Vec3::NUM_BYTES * 3].copy_from_slice(&self.extra_hit_vel.to_bytes());
@@ -93,9 +93,9 @@ impl ToBytesExact<{ Self::NUM_BYTES }> for CarControls {
         bytes[f32::NUM_BYTES * 2..f32::NUM_BYTES * 3].copy_from_slice(&self.pitch.to_le_bytes());
         bytes[f32::NUM_BYTES * 3..f32::NUM_BYTES * 4].copy_from_slice(&self.yaw.to_le_bytes());
         bytes[f32::NUM_BYTES * 4..f32::NUM_BYTES * 5].copy_from_slice(&self.roll.to_le_bytes());
-        bytes[f32::NUM_BYTES * 5..f32::NUM_BYTES * 5 + 1].copy_from_slice(&(self.boost as u8).to_le_bytes());
-        bytes[f32::NUM_BYTES * 5 + 1..f32::NUM_BYTES * 5 + 2].copy_from_slice(&(self.jump as u8).to_le_bytes());
-        bytes[f32::NUM_BYTES * 5 + 2..].copy_from_slice(&(self.handbrake as u8).to_le_bytes());
+        bytes[f32::NUM_BYTES * 5..f32::NUM_BYTES * 5 + 1].copy_from_slice(&u8::from(self.boost).to_le_bytes());
+        bytes[f32::NUM_BYTES * 5 + 1..f32::NUM_BYTES * 5 + 2].copy_from_slice(&u8::from(self.jump).to_le_bytes());
+        bytes[f32::NUM_BYTES * 5 + 2..].copy_from_slice(&u8::from(self.handbrake).to_le_bytes());
         bytes
     }
 }
@@ -115,16 +115,16 @@ impl ToBytesExact<{ Self::NUM_BYTES }> for CarState {
             .copy_from_slice(&self.ang_vel.to_bytes());
         // is_on_ground: bool,
         bytes[Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES..Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES + 1]
-            .copy_from_slice(&(self.is_on_ground as u8).to_le_bytes());
+            .copy_from_slice(&u8::from(self.is_on_ground).to_le_bytes());
         // has_jumped: bool,
         bytes[Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES + 1..Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES + 2]
-            .copy_from_slice(&(self.has_jumped as u8).to_le_bytes());
+            .copy_from_slice(&u8::from(self.has_jumped).to_le_bytes());
         // has_double_jumped: bool,
         bytes[Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES + 2..Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES + 3]
-            .copy_from_slice(&(self.has_double_jumped as u8).to_le_bytes());
+            .copy_from_slice(&u8::from(self.has_double_jumped).to_le_bytes());
         // has_flipped: bool,
         bytes[Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES + 3..Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES + 4]
-            .copy_from_slice(&(self.has_flipped as u8).to_le_bytes());
+            .copy_from_slice(&u8::from(self.has_flipped).to_le_bytes());
         // last_rel_dodge_torque: Vec3,
         bytes[Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES + 4..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 4]
             .copy_from_slice(&self.last_rel_dodge_torque.to_bytes());
@@ -138,11 +138,11 @@ impl ToBytesExact<{ Self::NUM_BYTES }> for CarState {
         // is_flipping: bool,
         bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 4 + f32::NUM_BYTES * 2
             ..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 5 + f32::NUM_BYTES * 2]
-            .copy_from_slice(&(self.is_flipping as u8).to_le_bytes());
+            .copy_from_slice(&u8::from(self.is_flipping).to_le_bytes());
         // is_jumping: bool,
         bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 5 + f32::NUM_BYTES * 2
             ..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 6 + f32::NUM_BYTES * 2]
-            .copy_from_slice(&(self.is_jumping as u8).to_le_bytes());
+            .copy_from_slice(&u8::from(self.is_jumping).to_le_bytes());
         // air_time_since_jump: f32,
         bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 6 + f32::NUM_BYTES * 2
             ..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 6 + f32::NUM_BYTES * 3]
@@ -158,7 +158,7 @@ impl ToBytesExact<{ Self::NUM_BYTES }> for CarState {
         // is_supersonic: bool,
         bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 6 + f32::NUM_BYTES * 5
             ..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 7 + f32::NUM_BYTES * 5]
-            .copy_from_slice(&(self.is_supersonic as u8).to_le_bytes());
+            .copy_from_slice(&u8::from(self.is_supersonic).to_le_bytes());
         // supersonic_time: f32,
         bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 7 + f32::NUM_BYTES * 5
             ..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 7 + f32::NUM_BYTES * 6]
@@ -170,7 +170,7 @@ impl ToBytesExact<{ Self::NUM_BYTES }> for CarState {
         // is_auto_flipping: bool,
         bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 7 + f32::NUM_BYTES * 7
             ..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 8 + f32::NUM_BYTES * 7]
-            .copy_from_slice(&(self.is_auto_flipping as u8).to_le_bytes());
+            .copy_from_slice(&u8::from(self.is_auto_flipping).to_le_bytes());
         // auto_flip_timer: f32,
         bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 8 + f32::NUM_BYTES * 7
             ..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 8 + f32::NUM_BYTES * 8]
@@ -182,7 +182,7 @@ impl ToBytesExact<{ Self::NUM_BYTES }> for CarState {
         // has_contact: bool,
         bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 8 + f32::NUM_BYTES * 9
             ..Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 9 + f32::NUM_BYTES * 9]
-            .copy_from_slice(&(self.has_contact as u8).to_le_bytes());
+            .copy_from_slice(&u8::from(self.has_contact).to_le_bytes());
         // contact_normal: Vec3,
         bytes[Vec3::NUM_BYTES * 4 + RotMat::NUM_BYTES + 9 + f32::NUM_BYTES * 9
             ..Vec3::NUM_BYTES * 5 + RotMat::NUM_BYTES + 9 + f32::NUM_BYTES * 9]
@@ -198,7 +198,7 @@ impl ToBytesExact<{ Self::NUM_BYTES }> for CarState {
         // is_demoed: bool,
         bytes[Vec3::NUM_BYTES * 5 + RotMat::NUM_BYTES + 9 + f32::NUM_BYTES * 10 + u32::NUM_BYTES
             ..Vec3::NUM_BYTES * 5 + RotMat::NUM_BYTES + 10 + f32::NUM_BYTES * 10 + u32::NUM_BYTES]
-            .copy_from_slice(&(self.is_demoed as u8).to_le_bytes());
+            .copy_from_slice(&u8::from(self.is_demoed).to_le_bytes());
         // demo_respawn_timer: f32,
         bytes[Vec3::NUM_BYTES * 5 + RotMat::NUM_BYTES + 10 + f32::NUM_BYTES * 10 + u32::NUM_BYTES
             ..Vec3::NUM_BYTES * 5 + RotMat::NUM_BYTES + 10 + f32::NUM_BYTES * 11 + u32::NUM_BYTES]
@@ -229,7 +229,7 @@ impl ToBytesExact<{ Self::NUM_BYTES }> for CarInfo {
 impl ToBytesExact<{ Self::NUM_BYTES }> for BoostPadState {
     fn to_bytes(&self) -> [u8; Self::NUM_BYTES] {
         let mut bytes = [0; Self::NUM_BYTES];
-        bytes[..1].copy_from_slice(&(self.is_active as u8).to_le_bytes());
+        bytes[..1].copy_from_slice(&u8::from(self.is_active).to_le_bytes());
         bytes[1..5].copy_from_slice(&self.cooldown.to_le_bytes());
         bytes[5..9].copy_from_slice(&self.cur_locked_car_id.to_le_bytes());
         bytes[9..].copy_from_slice(&self.prev_locked_car_id.to_le_bytes());
@@ -240,7 +240,7 @@ impl ToBytesExact<{ Self::NUM_BYTES }> for BoostPadState {
 impl ToBytesExact<{ Self::NUM_BYTES }> for BoostPad {
     fn to_bytes(&self) -> [u8; Self::NUM_BYTES] {
         let mut bytes = [0; Self::NUM_BYTES];
-        bytes[..1].copy_from_slice(&(self.is_big as u8).to_le_bytes());
+        bytes[..1].copy_from_slice(&u8::from(self.is_big).to_le_bytes());
         bytes[1..1 + Vec3::NUM_BYTES].copy_from_slice(&self.position.to_bytes());
         bytes[1 + Vec3::NUM_BYTES..].copy_from_slice(&self.state.to_bytes());
         bytes
@@ -282,7 +282,7 @@ impl FromBytesExact for f32 {
 
     #[inline]
     fn from_bytes(bytes: &[u8]) -> Self {
-        f32::from_ne_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
+        Self::from_ne_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
     }
 }
 
@@ -291,7 +291,7 @@ impl FromBytesExact for u32 {
 
     #[inline]
     fn from_bytes(bytes: &[u8]) -> Self {
-        u32::from_ne_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
+        Self::from_ne_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
     }
 }
 
@@ -300,7 +300,7 @@ impl FromBytesExact for u64 {
 
     #[inline]
     fn from_bytes(bytes: &[u8]) -> Self {
-        u64::from_ne_bytes([bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7]])
+        Self::from_ne_bytes([bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7]])
     }
 }
 
@@ -309,7 +309,7 @@ impl FromBytesExact for Vec3 {
 
     #[inline]
     fn from_bytes(bytes: &[u8]) -> Self {
-        Vec3::new(
+        Self::new(
             f32::from_bytes(&bytes[..f32::NUM_BYTES]),
             f32::from_bytes(&bytes[f32::NUM_BYTES..f32::NUM_BYTES * 2]),
             f32::from_bytes(&bytes[f32::NUM_BYTES * 2..]),
@@ -322,7 +322,7 @@ impl FromBytesExact for RotMat {
 
     #[inline]
     fn from_bytes(bytes: &[u8]) -> Self {
-        RotMat {
+        Self {
             x_axis: Vec3::from_bytes(&bytes[..Vec3::NUM_BYTES]),
             y_axis: Vec3::from_bytes(&bytes[Vec3::NUM_BYTES..Vec3::NUM_BYTES * 2]),
             z_axis: Vec3::from_bytes(&bytes[Vec3::NUM_BYTES * 2..]),
@@ -376,8 +376,8 @@ impl FromBytesExact for Team {
     #[inline]
     fn from_bytes(bytes: &[u8]) -> Self {
         match bytes[0] {
-            0 => Team::Blue,
-            1 => Team::Orange,
+            0 => Self::Blue,
+            1 => Self::Orange,
             _ => unreachable!(),
         }
     }

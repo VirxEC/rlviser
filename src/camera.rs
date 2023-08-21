@@ -46,7 +46,7 @@ fn setup(mut commands: Commands) {
         point_light: PointLight {
             range: 10000.,
             radius: 100.,
-            intensity: 100000.,
+            intensity: 100_000.,
             ..default()
         },
         transform: Transform::from_xyz(0., 300., 5500.),
@@ -57,7 +57,7 @@ fn setup(mut commands: Commands) {
         point_light: PointLight {
             range: 10000.,
             radius: 100.,
-            intensity: 100000.,
+            intensity: 100_000.,
             ..default()
         },
         transform: Transform::from_xyz(0., 300., -5500.),
@@ -86,7 +86,7 @@ fn setup(mut commands: Commands) {
         Camera3dBundle {
             projection: PerspectiveProjection {
                 near: 5.,
-                far: 500000.,
+                far: 500_000.,
                 fov: PI / 3.,
                 ..default()
             }
@@ -193,9 +193,9 @@ fn daylight_cycle(
         atmosphere.sun_position = sun_position;
 
         if let Some((mut light_trans, mut directional)) = query.single_mut().into() {
-            light_trans.translation = sun_position * 10000000.;
+            light_trans.translation = sun_position * 10_000_000.;
             light_trans.look_at(Vec3::ZERO, Vec3::Y);
-            directional.illuminance = t.sin().max(0.0).powf(2.0) * 50000.;
+            directional.illuminance = t.sin().max(0.0).powi(2) * 50000.;
         }
     }
 }
@@ -207,8 +207,15 @@ pub struct EntityName {
 
 impl EntityName {
     #[inline]
-    pub fn new<T: ToString>(name: T) -> Self {
-        Self { name: name.to_string() }
+    pub const fn new(name: String) -> Self {
+        Self { name }
+    }
+}
+
+impl<T: ToString> From<T> for EntityName {
+    #[inline]
+    fn from(name: T) -> Self {
+        Self::new(name.to_string())
     }
 }
 
