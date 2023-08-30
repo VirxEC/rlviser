@@ -564,7 +564,9 @@ impl MeshBuilder {
                 }
                 "VERTEXCO" => {
                     if !INCLUDE_VERTEXCO.iter().any(|&part| name.contains(part)) {
-                        warn!("{name} has unused colored vertices");
+                        if cfg!(debug_assertions) {
+                            warn!("{name} has unused colored vertices");
+                        }
                         continue;
                     }
 
@@ -576,7 +578,9 @@ impl MeshBuilder {
                     extra_uvs.push(read_extra_uvs(&chunk_data, chunk_data_count));
                 }
                 _ => {
-                    error!("Unknown chunk: {chunk_id}");
+                    if cfg!(debug_assertions) {
+                        error!("Unknown chunk: {chunk_id}");
+                    }
                 }
             }
         }
