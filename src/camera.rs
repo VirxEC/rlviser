@@ -11,6 +11,7 @@ use bevy_atmosphere::prelude::*;
 use bevy_framepace::{FramepacePlugin, FramepaceSettings};
 use bevy_mod_picking::prelude::*;
 use bevy_vector_shapes::prelude::*;
+use serde::{Deserialize, Serialize};
 
 use crate::spectator::*;
 
@@ -29,7 +30,7 @@ pub struct BoostAmount;
 #[derive(Component)]
 pub struct TimeDisplay;
 
-#[derive(Component, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Component, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PrimaryCamera {
     #[default]
     Spectator,

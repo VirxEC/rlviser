@@ -39,22 +39,21 @@ impl Plugin for DebugOverlayPlugin {
                 Update,
                 (
                     listen,
-                    #[cfg(debug_assertions)]
-                    debug_ui,
                     (
+                        #[cfg(debug_assertions)]
+                        debug_ui,
                         ui_system,
-                        (
-                            toggle_vsync,
-                            toggle_ballcam,
-                            update_daytime,
-                            #[cfg(not(feature = "ssao"))]
-                            update_msaa,
-                            write_settings_to_file,
-                            // update_draw_distance,
-                        ),
-                    )
-                        .chain(),
-                ),
+                        toggle_vsync,
+                        toggle_ballcam,
+                        update_daytime,
+                        #[cfg(not(feature = "ssao"))]
+                        update_msaa,
+                        write_settings_to_file,
+                        update_camera_state,
+                        // update_draw_distance,
+                    ),
+                )
+                    .chain(),
             );
     }
 }
@@ -71,6 +70,7 @@ struct Options {
     daytime: f32,
     day_speed: f32,
     msaa: u8,
+    camera_state: PrimaryCamera,
     // draw_distance: u8,
 }
 
@@ -88,6 +88,7 @@ impl Default for Options {
             daytime: 0.,
             day_speed: 1.,
             msaa: 2,
+            camera_state: PrimaryCamera::Spectator,
             // draw_distance: 3,
         }
     }
@@ -126,6 +127,7 @@ impl Options {
                 "daytime" => options.daytime = value.parse().unwrap(),
                 "day_speed" => options.day_speed = value.parse().unwrap(),
                 "msaa" => options.msaa = value.parse().unwrap(),
+                "camera_state" => options.camera_state = serde_json::from_str(value).unwrap(),
                 _ => println!("Unknown key {key} with value {value}"),
             }
         }
@@ -154,6 +156,7 @@ impl Options {
         file.write_fmt(format_args!("daytime={}\n", self.daytime))?;
         file.write_fmt(format_args!("day_speed={}\n", self.day_speed))?;
         file.write_fmt(format_args!("msaa={}\n", self.msaa))?;
+        file.write_fmt(format_args!("camera_state={}\n", serde_json::to_string(&self.camera_state)?))?;
 
         Ok(())
     }
@@ -168,6 +171,7 @@ impl Options {
             || self.daytime != other.daytime
             || self.day_speed != other.day_speed
             || self.msaa != other.msaa
+            || self.camera_state != other.camera_state
     }
 }
 
@@ -195,31 +199,7 @@ fn debug_ui(
     });
 }
 
-fn ui_system(
-    mut windows: Query<&mut Window, With<PrimaryWindow>>,
-    mut picking_state: ResMut<PickingPluginsSettings>,
-    mut options: ResMut<Options>,
-    mut contexts: EguiContexts,
-    keys: Res<Input<KeyCode>>,
-    time: Res<Time>,
-) {
-    if keys.just_pressed(KeyCode::Escape) {
-        options.focus = !options.focus;
-
-        let mut window = windows.single_mut();
-        window.cursor.grab_mode = if options.focus {
-            if cfg!(windows) {
-                CursorGrabMode::Confined
-            } else {
-                CursorGrabMode::Locked
-            }
-        } else {
-            CursorGrabMode::None
-        };
-        window.cursor.visible = !options.focus;
-        picking_state.enable = !options.focus;
-    }
-
+fn ui_system(mut options: ResMut<Options>, mut contexts: EguiContexts, time: Res<Time>) {
     if options.focus {
         return;
     }
@@ -368,28 +348,52 @@ fn write_settings_to_file(
     }
 }
 
-fn listen(key: Res<Input<KeyCode>>, mut primary_camera: Query<&mut PrimaryCamera>, options: Res<Options>) {
+fn update_camera_state(mut primary_camera: Query<&mut PrimaryCamera>, options: Res<Options>) {
+    *primary_camera.single_mut() = options.camera_state;
+}
+
+fn listen(
+    mut windows: Query<&mut Window, With<PrimaryWindow>>,
+    mut picking_state: ResMut<PickingPluginsSettings>,
+    key: Res<Input<KeyCode>>,
+    mut options: ResMut<Options>,
+) {
+    if key.just_pressed(KeyCode::Escape) {
+        options.focus = !options.focus;
+
+        let mut window = windows.single_mut();
+        window.cursor.grab_mode = if options.focus {
+            if cfg!(windows) {
+                CursorGrabMode::Confined
+            } else {
+                CursorGrabMode::Locked
+            }
+        } else {
+            CursorGrabMode::None
+        };
+        window.cursor.visible = !options.focus;
+        picking_state.enable = !options.focus;
+    }
+
     if !options.focus {
         return;
     }
 
-    let mut state = primary_camera.single_mut();
-
     if key.just_pressed(KeyCode::Key1) || key.just_pressed(KeyCode::Numpad1) {
-        *state = PrimaryCamera::TrackCar(1);
+        options.camera_state = PrimaryCamera::TrackCar(1);
     } else if key.just_pressed(KeyCode::Key2) || key.just_pressed(KeyCode::Numpad2) {
-        *state = PrimaryCamera::TrackCar(2);
+        options.camera_state = PrimaryCamera::TrackCar(2);
     } else if key.just_pressed(KeyCode::Key3) || key.just_pressed(KeyCode::Numpad3) {
-        *state = PrimaryCamera::TrackCar(3);
+        options.camera_state = PrimaryCamera::TrackCar(3);
     } else if key.just_pressed(KeyCode::Key4) || key.just_pressed(KeyCode::Numpad4) {
-        *state = PrimaryCamera::TrackCar(4);
+        options.camera_state = PrimaryCamera::TrackCar(4);
     } else if key.just_pressed(KeyCode::Key5) || key.just_pressed(KeyCode::Numpad5) {
-        *state = PrimaryCamera::TrackCar(5);
+        options.camera_state = PrimaryCamera::TrackCar(5);
     } else if key.just_pressed(KeyCode::Key6) || key.just_pressed(KeyCode::Numpad2) {
-        *state = PrimaryCamera::TrackCar(6);
+        options.camera_state = PrimaryCamera::TrackCar(6);
     } else if key.just_pressed(KeyCode::Key9) || key.just_pressed(KeyCode::Numpad9) {
-        *state = PrimaryCamera::Director(0);
+        options.camera_state = PrimaryCamera::Director(0);
     } else if key.just_pressed(KeyCode::Key0) || key.just_pressed(KeyCode::Numpad0) {
-        *state = PrimaryCamera::Spectator;
+        options.camera_state = PrimaryCamera::Spectator;
     }
 }
