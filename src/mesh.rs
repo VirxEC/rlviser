@@ -7,7 +7,10 @@ use bevy::{
 use bevy_eventlistener::callbacks::ListenerInput;
 use bevy_mod_picking::prelude::*;
 use serde::Deserialize;
-use std::io::{self, Read};
+use std::{
+    io::{self, Read},
+    rc::Rc,
+};
 
 use crate::{
     assets::*,
@@ -170,7 +173,11 @@ fn load_extra_field(
     state.set(LoadState::Connect);
 }
 
-#[derive(Clone, Debug, Deserialize)]
+fn rc_string_default() -> Rc<str> {
+    Rc::from("")
+}
+
+#[derive(Debug, Deserialize)]
 struct InfoNode {
     // name: String,
     #[serde(rename = "Translation")]
@@ -179,12 +186,12 @@ struct InfoNode {
     rotation: Option<[f32; 3]>,
     #[serde(rename = "Scale")]
     scale: Option<[f32; 3]>,
-    #[serde(rename = "StaticMesh", default)]
-    static_mesh: String,
+    #[serde(rename = "StaticMesh", default = "rc_string_default")]
+    static_mesh: Rc<str>,
     #[serde(rename = "Materials")]
-    materials: Option<Vec<String>>,
+    materials: Option<Rc<[Box<str>]>>,
     #[serde(rename = "InvisiTekMaterials")]
-    invisitek_materials: Option<Vec<String>>,
+    invisitek_materials: Option<Rc<[Box<str>]>>,
 }
 
 impl InfoNode {
@@ -211,7 +218,7 @@ struct ObjectNode {
     #[serde(rename = "Scale")]
     scale: Option<[f32; 3]>,
     #[serde(rename = "subNodes")]
-    sub_nodes: Vec<InfoNode>,
+    sub_nodes: Rc<[InfoNode]>,
 }
 
 impl ObjectNode {
@@ -237,16 +244,18 @@ impl ObjectNode {
 
 #[derive(Debug, Deserialize)]
 struct Section {
-    name: String,
+    #[cfg(debug_assertions)]
+    name: Box<str>,
     #[serde(rename = "subNodes")]
-    sub_nodes: Vec<ObjectNode>,
+    sub_nodes: Box<[ObjectNode]>,
 }
 
 #[derive(Debug, Deserialize)]
 struct Node {
-    name: String,
+    #[cfg(debug_assertions)]
+    name: Box<str>,
     #[serde(rename = "subNodes")]
-    sub_nodes: Vec<Section>,
+    sub_nodes: Box<[Section]>,
 }
 
 const BLACKLIST_MESH_MATS: [&str; 6] = [
@@ -272,78 +281,110 @@ fn load_field(
     mut large_boost_pad_loc_rots: ResMut<LargeBoostPadLocRots>,
     asset_server: Res<AssetServer>,
 ) {
-    let (pickup_boost, standard_common_prefab, the_world): (Section, Node, Node) =
+    let (_pickup_boost, standard_common_prefab, the_world): (Section, Node, Node) =
         serde_json::from_str(include_str!("../stadiums/Stadium_P_MeshObjects.json")).unwrap();
-    debug_assert!(pickup_boost.name == "Pickup_Boost");
-    debug_assert!(standard_common_prefab.name == "Standard_Common_Prefab");
-    debug_assert!(the_world.name == "TheWorld");
+    #[cfg(debug_assertions)]
+    {
+        // this double-layer of debug_assertion checks is because 'name' won't be present in release mode
+        debug_assert!(_pickup_boost.name.as_ref() == "Pickup_Boost");
+        debug_assert!(standard_common_prefab.name.as_ref() == "Standard_Common_Prefab");
+        debug_assert!(the_world.name.as_ref() == "TheWorld");
+    }
     let persistent_level = &the_world.sub_nodes[0];
-    debug_assert!(persistent_level.name == "PersistentLevel");
+    #[cfg(debug_assertions)]
+    debug_assert!(persistent_level.name.as_ref() == "PersistentLevel");
 
-    let prefab_nodes = standard_common_prefab.sub_nodes[0]
+    let all_nodes = standard_common_prefab.sub_nodes[0]
         .sub_nodes
         .iter()
-        .filter_map(ObjectNode::get_info_node);
-    let world_nodes = persistent_level
-        .sub_nodes
-        .iter()
-        .flat_map(|node| node.get_info_node().map_or_else(|| node.sub_nodes.clone(), |node| vec![node]));
+        .chain(persistent_level.sub_nodes.iter());
 
-    let default_mats = vec![String::new()];
-
-    for node in world_nodes.chain(prefab_nodes) {
-        if node.static_mesh.trim().is_empty() {
+    for obj in all_nodes {
+        if let Some(node) = obj.get_info_node() {
+            process_info_node(
+                &node,
+                &asset_server,
+                &mut meshes,
+                &mut materials,
+                &mut large_boost_pad_loc_rots,
+                &mut commands,
+            );
             continue;
         }
 
-        let Some(mesh) = get_mesh_info(&node.static_mesh, meshes.as_mut()) else {
-            continue;
-        };
-
-        let mats = if let Some(mats) = node.materials.as_ref() {
-            mats
-        } else {
-            warn!("No materials found for {}", node.static_mesh);
-            &default_mats
-        };
-
-        debug!("Spawning {}", node.static_mesh);
-        for (mesh, mat) in mesh.into_iter().zip(mats) {
-            if BLACKLIST_MESH_MATS.contains(&mat.as_str()) {
-                continue;
-            }
-
-            let material = get_material(mat, materials.as_mut(), asset_server.as_ref(), None);
-
-            let mut transform = node.get_transform();
-
-            if node.static_mesh.contains("Grass.Grass") || node.static_mesh.contains("Grass_1x1") {
-                transform.translation.y += 10.;
-            } else if node.static_mesh.contains("BoostPad_Large") {
-                large_boost_pad_loc_rots
-                    .locs
-                    .push(node.translation.map(ToBevyVecFlat::to_bevy_flat).unwrap_or_default());
-                large_boost_pad_loc_rots
-                    .rots
-                    .push(node.rotation.map(|r| r[1]).unwrap_or_default());
-            }
-
-            commands.spawn((
-                PbrBundle {
-                    mesh,
-                    material,
-                    transform,
-                    ..default()
-                },
-                EntityName::new(format!("{} | {mat}", node.static_mesh.clone())),
-                RaycastPickTarget::default(),
-                On::<Pointer<Over>>::target_insert(HighlightedEntity),
-                On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
-            ));
+        for node in obj.sub_nodes.iter() {
+            process_info_node(
+                node,
+                &asset_server,
+                &mut meshes,
+                &mut materials,
+                &mut large_boost_pad_loc_rots,
+                &mut commands,
+            );
         }
     }
 
     state.set(LoadState::FieldExtra);
+}
+
+fn process_info_node(
+    node: &InfoNode,
+    asset_server: &AssetServer,
+    meshes: &mut ResMut<'_, Assets<Mesh>>,
+    materials: &mut Assets<StandardMaterial>,
+    large_boost_pad_loc_rots: &mut LargeBoostPadLocRots,
+    commands: &mut Commands,
+) {
+    if node.static_mesh.trim().is_empty() {
+        return;
+    }
+
+    let Some(mesh) = get_mesh_info(&node.static_mesh, meshes.as_mut()) else {
+        return;
+    };
+
+    let mats = if let Some(mats) = node.materials.as_ref() {
+        mats.clone()
+    } else {
+        warn!("No materials found for {}", node.static_mesh);
+        Rc::from([Box::from("")])
+    };
+
+    debug!("Spawning {}", node.static_mesh);
+
+    for (mesh, mat) in mesh.into_iter().zip(mats.iter()) {
+        if BLACKLIST_MESH_MATS.contains(&mat.as_ref()) {
+            continue;
+        }
+
+        let material = get_material(mat, materials, asset_server, None);
+
+        let mut transform = node.get_transform();
+
+        if node.static_mesh.contains("Grass.Grass") || node.static_mesh.contains("Grass_1x1") {
+            transform.translation.y += 10.;
+        } else if node.static_mesh.contains("BoostPad_Large") {
+            large_boost_pad_loc_rots
+                .locs
+                .push(node.translation.map(ToBevyVecFlat::to_bevy_flat).unwrap_or_default());
+            large_boost_pad_loc_rots
+                .rots
+                .push(node.rotation.map(|r| r[1]).unwrap_or_default());
+        }
+
+        commands.spawn((
+            PbrBundle {
+                mesh,
+                material,
+                transform,
+                ..default()
+            },
+            EntityName::from(format!("{} | {mat}", node.static_mesh)),
+            RaycastPickTarget::default(),
+            On::<Pointer<Over>>::target_insert(HighlightedEntity),
+            On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
+        ));
+    }
 }
 
 // Add name of mesh here if you want to view the colored vertices

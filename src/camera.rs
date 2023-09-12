@@ -203,20 +203,27 @@ fn daylight_cycle(
 
 #[derive(Component)]
 pub struct EntityName {
-    pub name: String,
+    pub name: Box<str>,
 }
 
 impl EntityName {
     #[inline]
-    pub const fn new(name: String) -> Self {
+    pub const fn new(name: Box<str>) -> Self {
         Self { name }
     }
 }
 
-impl<T: ToString> From<T> for EntityName {
+impl From<&str> for EntityName {
     #[inline]
-    fn from(name: T) -> Self {
-        Self::new(name.to_string())
+    fn from(name: &str) -> Self {
+        Self::new(name.into())
+    }
+}
+
+impl From<String> for EntityName {
+    #[inline]
+    fn from(name: String) -> Self {
+        Self::new(name.into())
     }
 }
 

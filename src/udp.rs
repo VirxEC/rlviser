@@ -468,7 +468,7 @@ fn update_car(
             if *id == 0 || timer.0.finished() {
                 // get the car closest to the ball
                 let mut min_dist = f32::MAX;
-                for car in &state.cars {
+                for car in state.cars.iter() {
                     let dist = car.state.pos.distance_squared(state.ball.pos);
                     if dist < min_dist {
                         *id = car.id;
@@ -553,7 +553,7 @@ fn update_pads(
             commands.entity(entity).despawn_recursive();
         }
 
-        for pad in &state.pads {
+        for pad in state.pads.iter() {
             let mut transform = Transform::from_translation(pad.position.to_bevy() - Vec3::Y * 70.);
 
             let mesh = if pad.is_big {

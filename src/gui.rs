@@ -187,7 +187,7 @@ fn debug_ui(
     let (he_pos, highlighted_entity_name) = heq
         .get_single()
         .map(|(transform, he)| (transform.translation, he.name.clone()))
-        .unwrap_or((Vec3::default(), String::from("None")));
+        .unwrap_or((Vec3::default(), Box::from("None")));
 
     egui::Window::new("Debug").show(ctx, |ui| {
         ui.label(format!(

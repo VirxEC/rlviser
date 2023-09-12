@@ -237,7 +237,7 @@ fn retreive_material(name: &str, asset_server: &AssetServer, base_color: Color) 
         return None;
     };
 
-    let props: String = format!("./assets/{pre_path}.props.txt");
+    let props = format!("./assets/{pre_path}.props.txt");
     let Ok(props_file) = fs::read_to_string(&props) else {
         error!("Failed to read {path} ({name})");
         return None;
@@ -385,7 +385,7 @@ fn get_default_material(name: &str) -> Option<StandardMaterial> {
     Some(material)
 }
 
-static MATERIALS: Mutex<Lazy<HashMap<String, Handle<StandardMaterial>>>> = Mutex::new(Lazy::new(HashMap::new));
+static MATERIALS: Mutex<Lazy<HashMap<Box<str>, Handle<StandardMaterial>>>> = Mutex::new(Lazy::new(HashMap::new));
 
 pub fn get_material(
     name: &str,
@@ -402,7 +402,7 @@ pub fn get_material(
     let base_color = base_color.unwrap_or(Color::rgb(0.3, 0.3, 0.3));
 
     material_names
-        .entry(name.to_string())
+        .entry(Box::from(name))
         .or_insert_with(|| {
             materials.add(retreive_material(name, asset_server, base_color).unwrap_or(StandardMaterial {
                 base_color,

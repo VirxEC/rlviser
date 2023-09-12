@@ -130,6 +130,6 @@ pub struct GameState {
     pub tick_rate: f32,
     pub ball: BallState,
     pub ball_rot: Quat,
-    pub pads: Vec<BoostPad>,
-    pub cars: Vec<CarInfo>,
+    pub pads: Box<[BoostPad]>,
+    pub cars: Box<[CarInfo]>,
 }
