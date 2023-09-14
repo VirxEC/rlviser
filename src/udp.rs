@@ -12,8 +12,11 @@ use bevy_vector_shapes::prelude::*;
 use crate::{
     assets::{get_material, get_mesh_info, BoostPickupGlows},
     bytes::{FromBytes, ToBytes},
-    camera::{BoostAmount, EntityName, HighlightedEntity, PrimaryCamera, TimeDisplay, BOOST_INDICATOR_POS},
-    gui::BallCam,
+    camera::{
+        BoostAmount, EntityName, HighlightedEntity, PrimaryCamera, TimeDisplay, BOOST_INDICATOR_FONT_SIZE,
+        BOOST_INDICATOR_POS,
+    },
+    gui::{BallCam, ShowTime, UiScale},
     mesh::{ChangeCarPos, LargeBoostPadLocRots},
     rocketsim::{CarInfo, GameState, Team},
     LoadState, ServerPort,
@@ -468,13 +471,16 @@ fn update_car(
             if *id == 0 || timer.0.finished() {
                 // get the car closest to the ball
                 let mut min_dist = f32::MAX;
+                let mut new_id = *id;
                 for car in state.cars.iter() {
                     let dist = car.state.pos.distance_squared(state.ball.pos);
                     if dist < min_dist {
-                        *id = car.id;
+                        new_id = car.id;
                         min_dist = dist;
                     }
                 }
+
+                *id = new_id;
             }
 
             *id
@@ -626,10 +632,11 @@ fn update_pads(
 
 fn update_boost_meter(
     state: Res<GameState>,
+    ui_scale: Res<UiScale>,
     camera: Query<&PrimaryCamera>,
     windows: Query<&Window, With<PrimaryWindow>>,
     mut painter: ShapePainter,
-    mut boost_amount: Query<&mut Text, With<BoostAmount>>,
+    mut boost_amount: Query<(&mut Text, &mut Style), With<BoostAmount>>,
     mut was_last_director: Local<bool>,
 ) {
     let id = match camera.single() {
@@ -640,8 +647,9 @@ fn update_boost_meter(
     if id == 0 {
         if *was_last_director {
             *was_last_director = false;
-            boost_amount.single_mut().sections[0].value.clear();
+            boost_amount.single_mut().0.sections[0].value.clear();
         }
+
         return;
     }
 
@@ -651,11 +659,11 @@ fn update_boost_meter(
 
     let primary_window = windows.single();
     let window_res = Vec2::new(primary_window.width(), primary_window.height());
-    let painter_pos = (window_res / 2. - (BOOST_INDICATOR_POS + 25.)) * Vec2::new(1., -1.);
+    let painter_pos = (window_res / 2. - (BOOST_INDICATOR_POS + 25.) * ui_scale.scale) * Vec2::new(1., -1.);
 
     painter.set_translation(painter_pos.extend(0.));
     painter.color = Color::rgb(0.075, 0.075, 0.15);
-    painter.circle(100.0);
+    painter.circle(100.0 * ui_scale.scale);
 
     let scale = car_state.boost / 100.;
 
@@ -666,22 +674,32 @@ fn update_boost_meter(
     painter.color = Color::rgb(1., 0.84 * scale, 0.);
     painter.hollow = true;
     painter.thickness = 4.;
-    painter.arc(80., start_angle, end_angle);
+    painter.arc(80. * ui_scale.scale, start_angle, end_angle);
 
     painter.reset();
 
-    boost_amount.single_mut().sections[0].value = car_state.boost.round().to_string();
+    let (mut text_display, mut style) = boost_amount.single_mut();
+    style.right = Val::Px((BOOST_INDICATOR_POS.x - 25.) * ui_scale.scale);
+    style.bottom = Val::Px(BOOST_INDICATOR_POS.y * ui_scale.scale);
+
+    text_display.sections[0].value = car_state.boost.round().to_string();
+    text_display.sections[0].style.font_size = BOOST_INDICATOR_FONT_SIZE * ui_scale.scale;
 
     *was_last_director = true;
 }
 
-fn update_time(state: Res<GameState>, mut text_display: Query<&mut Text, With<TimeDisplay>>) {
+fn update_time(state: Res<GameState>, show_time: Res<ShowTime>, mut text_display: Query<&mut Text, With<TimeDisplay>>) {
     const MINUTE: u64 = 60;
     const HOUR: u64 = 60 * MINUTE;
     const DAY: u64 = 24 * HOUR;
     const WEEK: u64 = 7 * DAY;
     const MONTH: u64 = 30 * DAY;
     const YEAR: u64 = 365 * DAY;
+
+    if !show_time.enabled {
+        text_display.single_mut().sections[0].value = String::from("");
+        return;
+    }
 
     let tick_rate = state.tick_rate.round() as u64;
     if tick_rate == 0 {
@@ -764,11 +782,10 @@ impl Plugin for RocketSimPlugin {
                             step_arena,
                             (
                                 (update_ball, update_car, update_pads).run_if(|updated: Res<PacketUpdated>| updated.0),
-                                listen,
+                                (listen, update_boost_meter),
                             ),
                         )
                             .chain(),
-                        update_boost_meter,
                         update_time,
                     )
                         .run_if(in_state(LoadState::None)),

@@ -39,6 +39,7 @@ pub enum PrimaryCamera {
 }
 
 pub const BOOST_INDICATOR_POS: Vec2 = Vec2::new(150., 150.);
+pub const BOOST_INDICATOR_FONT_SIZE: f32 = 60.0;
 pub const TIME_DISPLAY_POS: Vec2 = Vec2::new(0., 60.);
 
 fn setup(mut commands: Commands) {
@@ -125,7 +126,7 @@ fn setup(mut commands: Commands) {
         TextBundle::from_section(
             "",
             TextStyle {
-                font_size: 60.0,
+                font_size: BOOST_INDICATOR_FONT_SIZE,
                 color: Color::SILVER,
                 ..default()
             },

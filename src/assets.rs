@@ -569,23 +569,20 @@ const UMODEL: &str = if cfg!(windows) { ".\\umodel.exe" } else { "./umodel" };
 const OUT_DIR: &str = "./assets/";
 const OUT_DIR_VER: &str = "./assets/files.txt";
 
-fn get_input_dir() -> Option<String> {
+fn get_input_dir() -> String {
     let Ok(input_file) = fs::read_to_string("assets.path") else {
-        error!("Couldn't find 'assets.path' file in your base folder! Create the file with the path to your 'rocketleague/TAGame/CookedPCConsole' folder.");
-        return None;
+        panic!("Couldn't find 'assets.path' file in your base folder! Create the file with the path to your 'rocketleague/TAGame/CookedPCConsole' folder.");
     };
 
     let Some(assets_dir) = input_file.lines().next() else {
-        error!("Your 'assets.path' file is empty! Create the file with the path to your 'rocketleague/TAGame/CookedPCConsole' folder.");
-        return None;
+        panic!("Your 'assets.path' file is empty! Create the file with the path to your 'rocketleague/TAGame/CookedPCConsole' folder.");
     };
 
     let assets_path = Path::new(assets_dir);
     if assets_path.is_dir() && assets_path.exists() {
-        Some(assets_dir.to_string())
+        assets_dir.to_string()
     } else {
-        error!("Couldn't find the directory specified in your 'assets.path'!");
-        None
+        panic!("Couldn't find the directory specified in your 'assets.path'!");
     }
 }
 
@@ -615,7 +612,7 @@ pub fn uncook() -> io::Result<()> {
         return Ok(());
     }
 
-    let input_dir = get_input_dir().unwrap();
+    let input_dir = get_input_dir();
 
     info!("Uncooking assets from Rocket League...");
 

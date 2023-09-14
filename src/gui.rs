@@ -29,11 +29,37 @@ impl Default for BallCam {
     }
 }
 
+#[derive(Resource)]
+pub struct ShowTime {
+    pub enabled: bool,
+}
+
+impl Default for ShowTime {
+    #[inline]
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
+#[derive(Resource)]
+pub struct UiScale {
+    pub scale: f32,
+}
+
+impl Default for UiScale {
+    #[inline]
+    fn default() -> Self {
+        Self { scale: 1. }
+    }
+}
+
 impl Plugin for DebugOverlayPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(EguiPlugin)
             .insert_resource(if cfg!(feature = "ssao") { Msaa::Off } else { Msaa::default() })
             .insert_resource(BallCam::default())
+            .insert_resource(UiScale::default())
+            .insert_resource(ShowTime::default())
             .insert_resource(Options::default_read_file())
             .add_systems(
                 Update,
@@ -45,11 +71,13 @@ impl Plugin for DebugOverlayPlugin {
                         ui_system,
                         toggle_vsync,
                         toggle_ballcam,
+                        toggle_show_time,
                         update_daytime,
                         #[cfg(not(feature = "ssao"))]
                         update_msaa,
                         write_settings_to_file,
                         update_camera_state,
+                        update_ui_scale,
                         // update_draw_distance,
                     ),
                 )
@@ -71,6 +99,8 @@ struct Options {
     day_speed: f32,
     msaa: u8,
     camera_state: PrimaryCamera,
+    show_time: bool,
+    ui_scale: f32,
     // draw_distance: u8,
 }
 
@@ -89,6 +119,8 @@ impl Default for Options {
             day_speed: 1.,
             msaa: 2,
             camera_state: PrimaryCamera::Spectator,
+            show_time: true,
+            ui_scale: 1.,
             // draw_distance: 3,
         }
     }
@@ -128,6 +160,8 @@ impl Options {
                 "day_speed" => options.day_speed = value.parse().unwrap(),
                 "msaa" => options.msaa = value.parse().unwrap(),
                 "camera_state" => options.camera_state = serde_json::from_str(value).unwrap(),
+                "show_time" => options.show_time = value.parse().unwrap(),
+                "ui_scale" => options.ui_scale = value.parse().unwrap(),
                 _ => println!("Unknown key {key} with value {value}"),
             }
         }
@@ -157,6 +191,8 @@ impl Options {
         file.write_fmt(format_args!("day_speed={}\n", self.day_speed))?;
         file.write_fmt(format_args!("msaa={}\n", self.msaa))?;
         file.write_fmt(format_args!("camera_state={}\n", serde_json::to_string(&self.camera_state)?))?;
+        file.write_fmt(format_args!("show_time={}\n", self.show_time))?;
+        file.write_fmt(format_args!("ui_scale={}\n", self.ui_scale))?;
 
         Ok(())
     }
@@ -172,6 +208,8 @@ impl Options {
             || self.day_speed != other.day_speed
             || self.msaa != other.msaa
             || self.camera_state != other.camera_state
+            || self.show_time != other.show_time
+            || self.ui_scale != other.ui_scale
     }
 }
 
@@ -225,10 +263,12 @@ fn ui_system(mut options: ResMut<Options>, mut contexts: EguiContexts, time: Res
         ui.checkbox(&mut options.vsync, "vsync");
         ui.checkbox(&mut options.uncap_fps, "Uncap FPS");
         ui.add(egui::DragValue::new(&mut options.fps_limit).speed(5.).clamp_range(30..=600));
+        ui.checkbox(&mut options.show_time, "In-game time");
         ui.checkbox(&mut options.ball_cam, "Ball cam");
         ui.checkbox(&mut options.stop_day, "Stop day cycle");
         ui.add(egui::Slider::new(&mut options.daytime, 0.0..=150.0).text("Daytime"));
         ui.add(egui::Slider::new(&mut options.day_speed, 0.0..=10.0).text("Day speed"));
+        ui.add(egui::Slider::new(&mut options.ui_scale, 0.4..=4.0).text("UI scale"));
         #[cfg(not(feature = "ssao"))]
         ui.add(egui::Slider::new(&mut options.msaa, 0..=3).text("MSAA"));
         // ui.add(egui::Slider::new(&mut options.draw_distance, 0..=4).text("Draw distance"));
@@ -315,6 +355,26 @@ fn update_msaa(options: Res<Options>, mut msaa: ResMut<Msaa>) {
     };
 }
 
+fn toggle_show_time(options: Res<Options>, mut show_time: ResMut<ShowTime>) {
+    if options.focus {
+        return;
+    }
+
+    show_time.enabled = options.show_time;
+}
+
+fn update_ui_scale(options: Res<Options>, mut ui_scale: ResMut<UiScale>) {
+    if options.focus {
+        return;
+    }
+
+    if options.ui_scale == ui_scale.scale {
+        return;
+    }
+
+    ui_scale.scale = options.ui_scale;
+}
+
 fn update_daytime(options: Res<Options>, mut daytime: ResMut<DaylightOffset>) {
     if options.focus {
         return;
@@ -349,6 +409,12 @@ fn write_settings_to_file(
 }
 
 fn update_camera_state(mut primary_camera: Query<&mut PrimaryCamera>, options: Res<Options>) {
+    if PrimaryCamera::Director(0) == options.camera_state {
+        if let PrimaryCamera::Director(_) = primary_camera.single() {
+            return;
+        }
+    }
+
     *primary_camera.single_mut() = options.camera_state;
 }
 
