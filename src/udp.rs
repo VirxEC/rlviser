@@ -634,14 +634,16 @@ fn update_boost_meter(
 ) {
     let id = match camera.single() {
         PrimaryCamera::Director(id) | PrimaryCamera::TrackCar(id) => *id,
-        PrimaryCamera::Spectator => {
-            if *was_last_director {
-                *was_last_director = false;
-                boost_amount.single_mut().sections[0].value.clear();
-            }
-            return;
-        }
+        PrimaryCamera::Spectator => 0,
     };
+
+    if id == 0 {
+        if *was_last_director {
+            *was_last_director = false;
+            boost_amount.single_mut().sections[0].value.clear();
+        }
+        return;
+    }
 
     let Some(car_state) = &state.cars.iter().find(|info| id == info.id).map(|info| info.state) else {
         return;
