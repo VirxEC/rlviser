@@ -202,11 +202,13 @@ fn daylight_cycle(
     }
 }
 
+#[cfg(debug_assertions)]
 #[derive(Component)]
 pub struct EntityName {
     pub name: Box<str>,
 }
 
+#[cfg(debug_assertions)]
 impl EntityName {
     #[inline]
     pub const fn new(name: Box<str>) -> Self {
@@ -214,6 +216,7 @@ impl EntityName {
     }
 }
 
+#[cfg(debug_assertions)]
 impl From<&str> for EntityName {
     #[inline]
     fn from(name: &str) -> Self {
@@ -221,6 +224,7 @@ impl From<&str> for EntityName {
     }
 }
 
+#[cfg(debug_assertions)]
 impl From<String> for EntityName {
     #[inline]
     fn from(name: String) -> Self {

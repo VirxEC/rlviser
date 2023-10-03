@@ -9,13 +9,12 @@ use bevy::{
 use bevy_mod_picking::prelude::*;
 use bevy_vector_shapes::prelude::*;
 
+#[cfg(debug_assertions)]
+use crate::camera::EntityName;
 use crate::{
     assets::{get_material, get_mesh_info, BoostPickupGlows},
     bytes::{FromBytes, ToBytes},
-    camera::{
-        BoostAmount, EntityName, HighlightedEntity, PrimaryCamera, TimeDisplay, BOOST_INDICATOR_FONT_SIZE,
-        BOOST_INDICATOR_POS,
-    },
+    camera::{BoostAmount, HighlightedEntity, PrimaryCamera, TimeDisplay, BOOST_INDICATOR_FONT_SIZE, BOOST_INDICATOR_POS},
     gui::{BallCam, ShowTime, UiScale},
     mesh::{ChangeCarPos, LargeBoostPadLocRots},
     rocketsim::{CarInfo, GameState, Team},
@@ -41,14 +40,14 @@ impl Car {
 struct DirectorTimer(Timer);
 
 #[derive(Resource)]
-pub struct UdpConnection(pub UdpSocket);
+pub struct Connection(pub UdpSocket);
 
 fn establish_connection(port: Res<ServerPort>, mut commands: Commands, mut state: ResMut<NextState<LoadState>>) {
     let socket = UdpSocket::bind(("127.0.0.1", port.secondary_port)).unwrap();
     socket.connect(("127.0.0.1", port.primary_port)).unwrap();
     socket.send(&[1]).unwrap();
     socket.set_nonblocking(true).unwrap();
-    commands.insert_resource(UdpConnection(socket));
+    commands.insert_resource(Connection(socket));
     state.set(LoadState::None);
 }
 
@@ -115,39 +114,29 @@ impl ToBevyQuat for Quat {
     }
 }
 
-const CAR_BODIES: [(&str, &str); 6] = [
-    ("octane_body", "Body_Octane.SkeletalMesh3.Body_Octane_SK"),
-    ("dominus_body", "Body_MuscleCar.SkeletalMesh3.Body_MuscleCar_SK"),
-    ("plank_body", "Body_Darkcar.SkeletalMesh3.Body_Darkcar_SK"),
-    ("breakout_body", "Body_Force.SkeletalMesh3.Body_Force_PremiumSkin_SK"),
-    ("hybrid_body", "Body_Venom.SkeletalMesh3.Body_Venom_PremiumSkin_SK"),
-    ("merc_body", "Body_Vanquish.SkeletalMesh3.Body_Merc_PremiumSkin_SK"),
+const NUM_CAR_BODIES: usize = 6;
+
+const CAR_BODIES: [&str; NUM_CAR_BODIES] = [
+    "Body_Octane.SkeletalMesh3.Body_Octane_SK",
+    "Body_MuscleCar.SkeletalMesh3.Body_MuscleCar_SK",
+    "Body_Darkcar.SkeletalMesh3.Body_Darkcar_SK",
+    "Body_Force.SkeletalMesh3.Body_Force_PremiumSkin_SK",
+    "Body_Venom.SkeletalMesh3.Body_Venom_PremiumSkin_SK",
+    "Body_Vanquish.SkeletalMesh3.Body_Merc_PremiumSkin_SK",
 ];
 
-fn spawn_default_car(
-    id: u32,
-    base_color: Color,
-    hitbox: Vec3,
-    commands: &mut Commands,
-    meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<StandardMaterial>,
-) {
-    commands.spawn((
-        Car(id),
-        PbrBundle {
-            mesh: meshes.add(Mesh::from(shape::Box::new(hitbox.x, hitbox.y, hitbox.z))),
-            material: materials.add(base_color.into()),
-            ..Default::default()
-        },
-        EntityName::from("generic_body"),
-        RaycastPickTarget::default(),
-        On::<Pointer<Over>>::target_insert(HighlightedEntity),
-        On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
-    ));
-}
+#[cfg(debug_assertions)]
+const CAR_BODY_NAMES: [&str; NUM_CAR_BODIES] = [
+    "octane_body",
+    "dominus_body",
+    "plank_body",
+    "breakout_body",
+    "hybrid_body",
+    "merc_body",
+];
 
 #[inline]
-/// Use colors that are a bit darker if we don't have the full_load feature
+/// Use colors that are a bit darker if we don't have the `full_load` feature
 const fn get_color_from_team(team: Team) -> Color {
     match team {
         Team::Blue => {
@@ -181,7 +170,7 @@ fn spawn_car(
     let hitbox_offset = car_info.config.hitbox_pos_offset.to_bevy();
     let base_color = get_color_from_team(car_info.team);
 
-    let (name, mesh_id) = CAR_BODIES[if (120f32..121.).contains(&hitbox.x) {
+    let car_index = if (120f32..121.).contains(&hitbox.x) {
         // octane
         0
     } else if (130f32..131.).contains(&hitbox.x) {
@@ -200,10 +189,13 @@ fn spawn_car(
         // merc
         5
     } else {
-        spawn_default_car(car_info.id, base_color, hitbox, commands, meshes, materials);
+        // spawn octane by default
+        0
+    };
 
-        return;
-    }];
+    #[cfg(debug_assertions)]
+    let name = CAR_BODY_NAMES[car_index];
+    let mesh_id = CAR_BODIES[car_index];
 
     let Some(mesh_info) = get_mesh_info(mesh_id, meshes) else {
         return;
@@ -223,6 +215,7 @@ fn spawn_car(
                 material: materials.add(Color::NONE.into()),
                 ..Default::default()
             },
+            #[cfg(debug_assertions)]
             EntityName::from(name),
             RaycastPickTarget::default(),
             On::<Pointer<Over>>::target_insert(HighlightedEntity),
@@ -328,17 +321,19 @@ impl UdpPacketTypes {
     }
 }
 
+const PACKET_TYPE_BUFFER: [u8; 1] = [0];
+static mut INITIAL_BUFFER: [u8; GameState::MIN_NUM_BYTES] = [0; GameState::MIN_NUM_BYTES];
+
 fn step_arena(
-    socket: Res<UdpConnection>,
+    socket: Res<Connection>,
     mut game_state: ResMut<GameState>,
     mut exit: EventWriter<AppExit>,
     mut packet_updated: ResMut<PacketUpdated>,
 ) {
+    let mut packet_type = PACKET_TYPE_BUFFER;
+
     packet_updated.0 = false;
     let mut buf = Vec::new();
-
-    const PACKET_TYPE_BUFFER: [u8; 1] = [0];
-    let mut packet_type = PACKET_TYPE_BUFFER;
 
     while socket.0.recv_from(&mut packet_type).is_ok() {
         let Some(packet_type) = UdpPacketTypes::new(packet_type[0]) else {
@@ -351,7 +346,6 @@ fn step_arena(
             return;
         }
 
-        static mut INITIAL_BUFFER: [u8; GameState::MIN_NUM_BYTES] = [0; GameState::MIN_NUM_BYTES];
         // wait until we receive the packet
         // it should arrive VERY quickly, so a loop with no delay is fine
         // if it doesn't, then there are other problems lol
@@ -458,7 +452,7 @@ fn update_car(
                 spawn_car(car_info, &mut commands, &mut meshes, &mut materials, &asset_server);
             }
         }
-        _ => {}
+        Ordering::Equal => {}
     }
 
     timer.0.tick(time.delta());
@@ -472,7 +466,7 @@ fn update_car(
                 // get the car closest to the ball
                 let mut min_dist = f32::MAX;
                 let mut new_id = *id;
-                for car in state.cars.iter() {
+                for car in &*state.cars {
                     let dist = car.state.pos.distance_squared(state.ball.pos);
                     if dist < min_dist {
                         new_id = car.id;
@@ -485,10 +479,10 @@ fn update_car(
 
             *id
         }
-        _ => 0,
+        PrimaryCamera::Spectator => 0,
     };
 
-    for (mut car_transform, car, children) in cars.iter_mut() {
+    for (mut car_transform, car, children) in &mut cars {
         let car_state = &state.cars.iter().find(|car_info| car.0 == car_info.id).unwrap().state;
         car_transform.translation = car_state.pos.to_bevy();
         car_transform.rotation = car_state.rot_mat.to_bevy();
@@ -497,7 +491,7 @@ fn update_car(
         let last_boosted = last_boost_states.iter().any(|&id| id == car.id());
 
         if is_boosting != last_boosted {
-            for child in children.iter() {
+            for child in children {
                 let Ok(material_handle) = car_boosts.get_mut(*child) else {
                     continue;
                 };
@@ -559,7 +553,7 @@ fn update_pads(
             commands.entity(entity).despawn_recursive();
         }
 
-        for pad in state.pads.iter() {
+        for pad in &*state.pads {
             let mut transform = Transform::from_translation(pad.position.to_bevy() - Vec3::Y * 70.);
 
             let mesh = if pad.is_big {
@@ -612,6 +606,7 @@ fn update_pads(
                     }),
                     ..default()
                 },
+                #[cfg(debug_assertions)]
                 EntityName::from("generic_boost_pad"),
                 RaycastPickTarget::default(),
                 On::<Pointer<Over>>::target_insert(HighlightedEntity),
@@ -697,7 +692,7 @@ fn update_time(state: Res<GameState>, show_time: Res<ShowTime>, mut text_display
     const YEAR: u64 = 365 * DAY;
 
     if !show_time.enabled {
-        text_display.single_mut().sections[0].value = String::from("");
+        text_display.single_mut().sections[0].value = String::new();
         return;
     }
 
@@ -749,7 +744,7 @@ fn update_time(state: Res<GameState>, show_time: Res<ShowTime>, mut text_display
     text_display.single_mut().sections[0].value = time_segments.join(":");
 }
 
-fn listen(socket: Res<UdpConnection>, key: Res<Input<KeyCode>>, mut game_state: ResMut<GameState>) {
+fn listen(socket: Res<Connection>, key: Res<Input<KeyCode>>, mut game_state: ResMut<GameState>) {
     let mut changed = false;
     if key.just_pressed(KeyCode::R) {
         changed = true;

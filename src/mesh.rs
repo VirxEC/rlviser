@@ -12,12 +12,14 @@ use std::{
     rc::Rc,
 };
 
+#[cfg(debug_assertions)]
+use crate::camera::EntityName;
 use crate::{
     assets::*,
     bytes::ToBytes,
-    camera::{EntityName, HighlightedEntity, PrimaryCamera},
+    camera::{HighlightedEntity, PrimaryCamera},
     rocketsim::GameState,
-    udp::{Ball, Car, ToBevyVec, ToBevyVecFlat, UdpConnection},
+    udp::{Ball, Car, Connection, ToBevyVec, ToBevyVecFlat},
     LoadState,
 };
 
@@ -51,7 +53,7 @@ impl From<ListenerInput<Pointer<Drag>>> for ChangeBallPos {
 
 fn change_ball_pos(
     windows: Query<&Window, With<PrimaryWindow>>,
-    socket: Res<UdpConnection>,
+    socket: Res<Connection>,
     mut game_state: ResMut<GameState>,
     mut events: EventReader<ChangeBallPos>,
     camera: Query<(&Camera, &GlobalTransform), With<PrimaryCamera>>,
@@ -77,7 +79,7 @@ impl From<ListenerInput<Pointer<Drag>>> for ChangeCarPos {
 fn change_car_pos(
     cars: Query<&Car>,
     windows: Query<&Window, With<PrimaryWindow>>,
-    socket: Res<UdpConnection>,
+    socket: Res<Connection>,
     mut game_state: ResMut<GameState>,
     mut events: EventReader<ChangeCarPos>,
     camera: Query<(&Camera, &GlobalTransform), With<PrimaryCamera>>,
@@ -151,6 +153,7 @@ fn load_extra_field(
                 transform: Transform::from_xyz(0., 92., 0.),
                 ..default()
             },
+            #[cfg(debug_assertions)]
             EntityName::from("ball"),
             RaycastPickTarget::default(),
             On::<Pointer<Over>>::target_insert(HighlightedEntity),
@@ -312,7 +315,7 @@ fn load_field(
             continue;
         }
 
-        for node in obj.sub_nodes.iter() {
+        for node in &*obj.sub_nodes {
             process_info_node(
                 node,
                 &asset_server,
@@ -343,12 +346,13 @@ fn process_info_node(
         return;
     };
 
-    let mats = if let Some(mats) = node.materials.as_ref() {
-        mats.clone()
-    } else {
-        warn!("No materials found for {}", node.static_mesh);
-        Rc::from([Box::from("")])
-    };
+    let mats = node.materials.as_ref().map_or_else::<Rc<[Box<str>]>, _, _>(
+        || {
+            warn!("No materials found for {}", node.static_mesh);
+            Rc::from([Box::default()])
+        },
+        Clone::clone,
+    );
 
     debug!("Spawning {}", node.static_mesh);
 
@@ -379,6 +383,7 @@ fn process_info_node(
                 transform,
                 ..default()
             },
+            #[cfg(debug_assertions)]
             EntityName::from(format!("{} | {mat}", node.static_mesh)),
             RaycastPickTarget::default(),
             On::<Pointer<Over>>::target_insert(HighlightedEntity),
@@ -627,22 +632,7 @@ impl MeshBuilder {
         }
 
         if !extra_uvs.is_empty() {
-            if uvs.is_empty() {
-                debug_assert_eq!(ids.len(), extra_uvs.iter().flatten().count());
-                uvs = vec![[0.0, 0.0]; ids.len()];
-            }
-
-            let mut last_euv = vec![0; num_materials];
-            for (uv, mat_id) in uvs
-                .iter_mut()
-                .zip(mat_ids.iter().copied())
-                .filter(|(_, mat_id)| *mat_id < extra_uvs.len())
-            {
-                if last_euv[mat_id] < extra_uvs[mat_id].len() {
-                    *uv = extra_uvs[mat_id][last_euv[mat_id]];
-                    last_euv[mat_id] += 1;
-                }
-            }
+            process_materials(&mut uvs, &ids, &extra_uvs, num_materials, &mat_ids);
         }
 
         Ok(Self {
@@ -653,5 +643,30 @@ impl MeshBuilder {
             num_materials,
             mat_ids,
         })
+    }
+}
+
+fn process_materials(
+    uvs: &mut Vec<[f32; 2]>,
+    ids: &Vec<usize>,
+    extra_uvs: &[Vec<[f32; 2]>],
+    num_materials: usize,
+    mat_ids: &[usize],
+) {
+    if uvs.is_empty() {
+        debug_assert_eq!(ids.len(), extra_uvs.iter().flatten().count());
+        *uvs = vec![[0.0, 0.0]; ids.len()];
+    }
+
+    let mut last_euv = vec![0; num_materials];
+    for (uv, mat_id) in uvs
+        .iter_mut()
+        .zip(mat_ids.iter().copied())
+        .filter(|(_, mat_id)| *mat_id < extra_uvs.len())
+    {
+        if last_euv[mat_id] < extra_uvs[mat_id].len() {
+            *uv = extra_uvs[mat_id][last_euv[mat_id]];
+            last_euv[mat_id] += 1;
+        }
     }
 }

@@ -633,8 +633,11 @@ pub fn uncook() -> io::Result<()> {
         "Couldn't find umodel.exe! Make sure it's in the same folder as the executable."
     );
 
+    let num_files = UPK_FILES.len();
+    // let num_files = upk_files.len();
+
     for (i, file) in UPK_FILES.into_iter().enumerate() {
-        print!("Processing file {i}/{} ({file})...                       \r", UPK_FILES.len());
+        print!("Processing file {i}/{num_files} ({file})...                       \r");
         io::stdout().flush()?;
 
         // call umodel to uncook all the map files
