@@ -98,22 +98,6 @@ impl ToBevyMat for Mat3A {
     }
 }
 
-trait ToBevyQuat {
-    fn to_bevy(self) -> Quat;
-}
-
-impl ToBevyQuat for Quat {
-    #[inline]
-    fn to_bevy(self) -> Quat {
-        // In RocketSim, the Z axis is up, but in Bevy, the Z and Y axis are swapped
-        // We also need to rotate 90 degrees around the X axis and 180 degrees around the Y axis
-        Self::from_axis_angle(Vec3::Y, PI)
-            * Self::from_axis_angle(Vec3::X, PI / 2.)
-            * self
-            * Self::from_mat3a(&Mat3A::from_cols(Vec3A::X, -Vec3A::Z, Vec3A::Y))
-    }
-}
-
 const NUM_CAR_BODIES: usize = 6;
 
 const CAR_BODIES: [&str; NUM_CAR_BODIES] = [
@@ -409,7 +393,7 @@ fn update_ball(
         Color::rgb(0.5, 0.5, amount.max(0.5))
     };
 
-    transform.rotation = state.ball_rot.to_bevy();
+    transform.rotation = state.ball.rot_mat.to_bevy();
 }
 
 const MIN_DIST_FROM_BALL: f32 = 200.;

@@ -238,7 +238,7 @@ fn retreive_material(name: &str, asset_server: &AssetServer, base_color: Color) 
     };
 
     let props = format!("./assets/{pre_path}.props.txt");
-    let Ok(props_file) = fs::read_to_string(&props) else {
+    let Ok(props_file) = fs::read_to_string(props) else {
         error!("Failed to read {path} ({name})");
         return None;
     };

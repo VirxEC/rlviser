@@ -127,7 +127,7 @@ impl Default for Options {
 }
 
 impl Options {
-    const FILE_NAME: &str = "settings.txt";
+    const FILE_NAME: &'static str = "settings.txt";
 
     #[inline]
     fn default_read_file() -> Self {

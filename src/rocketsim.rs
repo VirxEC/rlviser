@@ -14,19 +14,43 @@ pub struct BallHitInfo {
 }
 
 #[derive(Clone, Copy, Debug)]
+pub struct HeatseekerInfo {
+    /// Which net the ball should seek towards;
+    /// When 0, no net
+    pub y_target_dir: f32,
+    pub cur_target_speed: f32,
+    pub time_since_hit: f32,
+}
+
+impl Default for HeatseekerInfo {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            y_target_dir: 0.,
+            cur_target_speed: 2900.,
+            time_since_hit: 0.,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 pub struct BallState {
     pub pos: Vec3,
+    pub rot_mat: RotMat,
     pub vel: Vec3,
     pub ang_vel: Vec3,
+    pub hs_info: HeatseekerInfo,
 }
 
 impl Default for BallState {
     #[inline]
     fn default() -> Self {
         Self {
-            pos: Vec3::new(0., 0., 92.),
+            pos: Vec3::new(0., 0., 93.15),
+            rot_mat: RotMat::IDENTITY,
             vel: Vec3::ZERO,
             ang_vel: Vec3::ZERO,
+            hs_info: HeatseekerInfo::default(),
         }
     }
 }
@@ -129,7 +153,6 @@ pub struct GameState {
     pub tick_count: u64,
     pub tick_rate: f32,
     pub ball: BallState,
-    pub ball_rot: Quat,
     pub pads: Box<[BoostPad]>,
     pub cars: Box<[CarInfo]>,
 }

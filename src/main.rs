@@ -1,3 +1,5 @@
+#![warn(clippy::all)]
+
 mod assets;
 mod bytes;
 mod camera;

@@ -1,11 +1,8 @@
-use bevy::{
-    math::{Mat3A as RotMat, Vec3A as Vec3},
-    prelude::Quat,
-};
+use bevy::math::{Mat3A as RotMat, Vec3A as Vec3};
 
 use crate::rocketsim::{
-    BallHitInfo, BallState, BoostPad, BoostPadState, CarConfig, CarControls, CarInfo, CarState, GameState, Team,
-    WheelPairConfig,
+    BallHitInfo, BallState, BoostPad, BoostPadState, CarConfig, CarControls, CarInfo, CarState, GameState, HeatseekerInfo,
+    Team, WheelPairConfig,
 };
 
 trait ToBytesExact<const N: usize>: FromBytesExact {
@@ -36,12 +33,25 @@ impl ToBytesExact<{ Self::NUM_BYTES }> for RotMat {
     }
 }
 
+impl ToBytesExact<{ Self::NUM_BYTES }> for HeatseekerInfo {
+    fn to_bytes(&self) -> [u8; Self::NUM_BYTES] {
+        let mut bytes = [0; Self::NUM_BYTES];
+        bytes[..f32::NUM_BYTES].copy_from_slice(&self.y_target_dir.to_le_bytes());
+        bytes[f32::NUM_BYTES..f32::NUM_BYTES * 2].copy_from_slice(&self.cur_target_speed.to_le_bytes());
+        bytes[f32::NUM_BYTES * 2..].copy_from_slice(&self.time_since_hit.to_le_bytes());
+        bytes
+    }
+}
+
 impl ToBytesExact<{ Self::NUM_BYTES }> for BallState {
     fn to_bytes(&self) -> [u8; Self::NUM_BYTES] {
         let mut bytes = [0; Self::NUM_BYTES];
         bytes[..Vec3::NUM_BYTES].copy_from_slice(&self.pos.to_bytes());
-        bytes[Vec3::NUM_BYTES..Vec3::NUM_BYTES * 2].copy_from_slice(&self.vel.to_bytes());
-        bytes[Vec3::NUM_BYTES * 2..].copy_from_slice(&self.ang_vel.to_bytes());
+        bytes[Vec3::NUM_BYTES + RotMat::NUM_BYTES..Vec3::NUM_BYTES * 2 + RotMat::NUM_BYTES]
+            .copy_from_slice(&self.vel.to_bytes());
+        bytes[Vec3::NUM_BYTES * 2 + RotMat::NUM_BYTES..Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES]
+            .copy_from_slice(&self.ang_vel.to_bytes());
+        bytes[Vec3::NUM_BYTES * 2 + RotMat::NUM_BYTES..].copy_from_slice(&self.hs_info.to_bytes());
         bytes
     }
 }
@@ -261,10 +271,6 @@ impl ToBytes for GameState {
         bytes.extend(&(self.pads.len() as u32).to_le_bytes());
         bytes.extend(&(self.cars.len() as u32).to_le_bytes());
         bytes.extend(self.ball.to_bytes());
-        bytes.extend(self.ball_rot.x.to_le_bytes());
-        bytes.extend(self.ball_rot.y.to_le_bytes());
-        bytes.extend(self.ball_rot.z.to_le_bytes());
-        bytes.extend(self.ball_rot.w.to_le_bytes());
         bytes.extend(self.pads.iter().flat_map(ToBytesExact::<{ BoostPad::NUM_BYTES }>::to_bytes));
         bytes.extend(self.cars.iter().flat_map(ToBytesExact::<{ CarInfo::NUM_BYTES }>::to_bytes));
 
@@ -330,15 +336,32 @@ impl FromBytesExact for RotMat {
     }
 }
 
+impl FromBytesExact for HeatseekerInfo {
+    const NUM_BYTES: usize = f32::NUM_BYTES * 3;
+
+    #[inline]
+    fn from_bytes(bytes: &[u8]) -> Self {
+        Self {
+            y_target_dir: f32::from_bytes(&bytes[..f32::NUM_BYTES]),
+            cur_target_speed: f32::from_bytes(&bytes[f32::NUM_BYTES..f32::NUM_BYTES * 2]),
+            time_since_hit: f32::from_bytes(&bytes[f32::NUM_BYTES * 2..]),
+        }
+    }
+}
+
 impl FromBytesExact for BallState {
-    const NUM_BYTES: usize = Vec3::NUM_BYTES * 3;
+    const NUM_BYTES: usize = Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES + HeatseekerInfo::NUM_BYTES;
 
     #[inline]
     fn from_bytes(bytes: &[u8]) -> Self {
         Self {
             pos: Vec3::from_bytes(&bytes[..Vec3::NUM_BYTES]),
-            vel: Vec3::from_bytes(&bytes[Vec3::NUM_BYTES..Vec3::NUM_BYTES * 2]),
-            ang_vel: Vec3::from_bytes(&bytes[Vec3::NUM_BYTES * 2..]),
+            rot_mat: RotMat::from_bytes(&bytes[Vec3::NUM_BYTES..Vec3::NUM_BYTES + RotMat::NUM_BYTES]),
+            vel: Vec3::from_bytes(&bytes[Vec3::NUM_BYTES + RotMat::NUM_BYTES..Vec3::NUM_BYTES * 2 + RotMat::NUM_BYTES]),
+            ang_vel: Vec3::from_bytes(
+                &bytes[Vec3::NUM_BYTES * 2 + RotMat::NUM_BYTES..Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES],
+            ),
+            hs_info: HeatseekerInfo::from_bytes(&bytes[Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES..]),
         }
     }
 }
@@ -587,7 +610,6 @@ impl FromBytes for GameState {
     fn get_num_bytes(bytes: &[u8]) -> usize {
         Self::MIN_NUM_BYTES
             + BallState::NUM_BYTES
-            + f32::NUM_BYTES * 4
             + Self::read_num_pads(bytes) * BoostPad::NUM_BYTES
             + Self::read_num_cars(bytes) * CarInfo::NUM_BYTES
     }
@@ -618,36 +640,12 @@ impl FromBytes for GameState {
             tick_count: Self::read_tick_count(bytes),
             tick_rate: Self::read_tick_rate(bytes),
             ball: BallState::from_bytes(&bytes[Self::MIN_NUM_BYTES..Self::MIN_NUM_BYTES + BallState::NUM_BYTES]),
-            ball_rot: Quat::from_xyzw(
-                f32::from_bytes(
-                    &bytes[Self::MIN_NUM_BYTES + BallState::NUM_BYTES
-                        ..Self::MIN_NUM_BYTES + BallState::NUM_BYTES + f32::NUM_BYTES],
-                ),
-                f32::from_bytes(
-                    &bytes[Self::MIN_NUM_BYTES + BallState::NUM_BYTES + f32::NUM_BYTES
-                        ..Self::MIN_NUM_BYTES + BallState::NUM_BYTES + f32::NUM_BYTES * 2],
-                ),
-                f32::from_bytes(
-                    &bytes[Self::MIN_NUM_BYTES + BallState::NUM_BYTES + f32::NUM_BYTES * 2
-                        ..Self::MIN_NUM_BYTES + BallState::NUM_BYTES + f32::NUM_BYTES * 3],
-                ),
-                f32::from_bytes(
-                    &bytes[Self::MIN_NUM_BYTES + BallState::NUM_BYTES + f32::NUM_BYTES * 3
-                        ..Self::MIN_NUM_BYTES + BallState::NUM_BYTES + f32::NUM_BYTES * 4],
-                ),
-            ),
-            pads: bytes[Self::MIN_NUM_BYTES + BallState::NUM_BYTES + f32::NUM_BYTES * 4
-                ..Self::MIN_NUM_BYTES
-                    + BallState::NUM_BYTES
-                    + f32::NUM_BYTES * 4
-                    + Self::read_num_pads(bytes) * BoostPad::NUM_BYTES]
+            pads: bytes[Self::MIN_NUM_BYTES + BallState::NUM_BYTES
+                ..Self::MIN_NUM_BYTES + BallState::NUM_BYTES + Self::read_num_pads(bytes) * BoostPad::NUM_BYTES]
                 .chunks_exact(BoostPad::NUM_BYTES)
                 .map(BoostPad::from_bytes)
                 .collect(),
-            cars: bytes[Self::MIN_NUM_BYTES
-                + BallState::NUM_BYTES
-                + f32::NUM_BYTES * 4
-                + Self::read_num_pads(bytes) * BoostPad::NUM_BYTES..]
+            cars: bytes[Self::MIN_NUM_BYTES + BallState::NUM_BYTES + Self::read_num_pads(bytes) * BoostPad::NUM_BYTES..]
                 .chunks_exact(CarInfo::NUM_BYTES)
                 .map(CarInfo::from_bytes)
                 .collect(),
