@@ -51,7 +51,7 @@ impl ToBytesExact<{ Self::NUM_BYTES }> for BallState {
             .copy_from_slice(&self.vel.to_bytes());
         bytes[Vec3::NUM_BYTES * 2 + RotMat::NUM_BYTES..Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES]
             .copy_from_slice(&self.ang_vel.to_bytes());
-        bytes[Vec3::NUM_BYTES * 2 + RotMat::NUM_BYTES..].copy_from_slice(&self.hs_info.to_bytes());
+        bytes[Vec3::NUM_BYTES * 3 + RotMat::NUM_BYTES..].copy_from_slice(&self.hs_info.to_bytes());
         bytes
     }
 }
