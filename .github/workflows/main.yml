@@ -18,6 +18,7 @@ jobs:
         uses: rust-build/rust-build.action@v1.4.3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUSTFLAGS: "-C target-feature=-crt-static"
         with:
           TOOLCHAIN_VERSION: stable
           RUSTTARGET: ${{ matrix.target }}
