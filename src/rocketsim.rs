@@ -35,6 +35,7 @@ impl Default for HeatseekerInfo {
 
 #[derive(Clone, Copy, Debug)]
 pub struct BallState {
+    pub update_counter: u64,
     pub pos: Vec3,
     pub rot_mat: RotMat,
     pub vel: Vec3,
@@ -46,6 +47,7 @@ impl Default for BallState {
     #[inline]
     fn default() -> Self {
         Self {
+            update_counter: 0,
             pos: Vec3::new(0., 0., 93.15),
             rot_mat: RotMat::IDENTITY,
             vel: Vec3::ZERO,
@@ -93,6 +95,7 @@ pub struct CarControls {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct CarState {
+    pub update_counter: u64,
     pub pos: Vec3,
     pub rot_mat: RotMat,
     pub vel: Vec3,
