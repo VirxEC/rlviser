@@ -15,12 +15,12 @@ jobs:
     steps:
       - uses: actions/checkout@master
       - name: Compile and release
-        uses: rust-build/rust-build.action@v1.4.3
+        uses: rust-build/rust-build.action@v1.4.4
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RUSTFLAGS: "-C target-feature=-crt-static"
         with:
           TOOLCHAIN_VERSION: stable
           RUSTTARGET: ${{ matrix.target }}
+          STATIC_LINKING: false
           EXTRA_FILES: "README.md LICENSE"
           PRE_BUILD: "prebuild.sh"
