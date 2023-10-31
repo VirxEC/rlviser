@@ -6,7 +6,7 @@ A light-weight visualizer for [rocketsim-rs](https://github.com/VirxEC/rocketsim
 
 Any language can communicate with the visualizer by sending UDP packets in the correct format, but rocketsim-rs has a `GameState.to_bytes()` function that does this automatically.
 
-![image](https://raw.githubusercontent.com/VirxEC/rlviser/master/rlviser.png)
+![rlviser standard](https://github.com/VirxEC/rlviser/assets/35614515/5dbae568-2ecb-4c5d-a645-81c8f171f146)
 
 ### First-time Launch Setup
 
@@ -17,6 +17,8 @@ Precompiled versions of umodel for Windows and Linux are available on the websit
 ### Usage
 
 To see an example of how to communicate with the visualizer, see the [example](https://github.com/VirxEC/rocketsim-rs/blob/master/examples/rlviser_socket.rs) in the [rocketsim-rs](https://github.com/VirxEC/rocketsim-rs) repository.
+
+You can also choose to use the integrated support in RLGym 2.0 or to use the [RLViser-Py](https://pypi.org/project/rlviser-py/) library to interface directly from Python via RocketSim.
 
 ### Controls
 
@@ -35,3 +37,9 @@ To see an example of how to communicate with the visualizer, see the [example](h
 | `R` | State set ball towards goal |
 
 With the menu toggled on, you can drag cars and the ball with your cursor to move them in the world.
+
+## Modes
+
+Currently, both standard soccer and hoops are supported.
+
+![rlviser hoops](https://github.com/VirxEC/rlviser/assets/35614515/20086dfa-e4c9-47c3-8900-91b172371e0a)
