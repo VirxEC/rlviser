@@ -21,8 +21,9 @@ enum LoadState {
     #[default]
     Assets,
     Connect,
-    Field,
     FieldExtra,
+    Despawn,
+    Field,
     None,
 }
 

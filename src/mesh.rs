@@ -32,6 +32,7 @@ impl Plugin for FieldLoaderPlugin {
             .add_systems(
                 Update,
                 (
+                    despawn_old_field.run_if(in_state(LoadState::Despawn)),
                     load_field.run_if(in_state(LoadState::Field)),
                     load_extra_field.run_if(in_state(LoadState::FieldExtra)),
                     change_ball_pos.run_if(on_event::<ChangeBallPos>()),
@@ -174,7 +175,7 @@ fn load_extra_field(
             });
         });
 
-    state.set(LoadState::None);
+    state.set(LoadState::Field);
 }
 
 fn rc_string_default() -> Rc<str> {
@@ -279,13 +280,21 @@ pub struct LargeBoostPadLocRots {
 }
 
 #[derive(Component)]
-pub struct StandardField;
-
-#[derive(Component)]
-pub struct HoopsField;
+pub struct StaticFieldEntity;
 
 flate!(pub static STADIUM_P_LAYOUT: str from "stadiums/Stadium_P_MeshObjects.json");
 flate!(pub static HOOPS_STADIUM_P_LAYOUT: str from "stadiums/HoopsStadium_P_MeshObjects.json");
+
+fn despawn_old_field(
+    mut commands: Commands,
+    mut state: ResMut<NextState<LoadState>>,
+    static_field_entities: Query<Entity, With<StaticFieldEntity>>,
+) {
+    static_field_entities.for_each(|entity| {
+        commands.entity(entity).despawn();
+    });
+    state.set(LoadState::Field);
+}
 
 fn load_field(
     mut commands: Commands,
@@ -297,7 +306,10 @@ fn load_field(
     asset_server: Res<AssetServer>,
 ) {
     let layout: &str = match *game_mode {
-        GameMode::TheVoid => return,
+        GameMode::TheVoid => {
+            state.set(LoadState::None);
+            return;
+        }
         GameMode::Hoops => &HOOPS_STADIUM_P_LAYOUT,
         _ => &STADIUM_P_LAYOUT,
     };
@@ -334,7 +346,6 @@ fn load_field(
                 &mut materials,
                 &mut large_boost_pad_loc_rots,
                 &mut commands,
-                *game_mode,
             );
             continue;
         }
@@ -347,12 +358,11 @@ fn load_field(
                 &mut materials,
                 &mut large_boost_pad_loc_rots,
                 &mut commands,
-                *game_mode,
             );
         }
     }
 
-    state.set(LoadState::FieldExtra);
+    state.set(LoadState::None);
 }
 
 #[derive(Component)]
@@ -365,7 +375,6 @@ fn process_info_node(
     materials: &mut Assets<StandardMaterial>,
     large_boost_pad_loc_rots: &mut LargeBoostPadLocRots,
     commands: &mut Commands,
-    game_mode: GameMode,
 ) {
     if node.static_mesh.trim().is_empty() {
         return;
@@ -405,7 +414,7 @@ fn process_info_node(
                 .push(node.rotation.map(|r| r[1]).unwrap_or_default());
         }
 
-        let mut entity = commands.spawn((
+        commands.spawn((
             PbrBundle {
                 mesh,
                 material,
@@ -417,12 +426,8 @@ fn process_info_node(
             RaycastPickable,
             On::<Pointer<Over>>::target_insert(HighlightedEntity),
             On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
+            StaticFieldEntity,
         ));
-
-        match game_mode {
-            GameMode::Hoops => entity.insert(HoopsField),
-            _ => entity.insert(StandardField),
-        };
     }
 }
 

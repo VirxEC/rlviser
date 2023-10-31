@@ -1,6 +1,6 @@
 use crate::rocketsim::{
-    BallHitInfo, BallState, BoostPad, BoostPadState, CarConfig, CarControls, CarInfo, CarState, GameState, HeatseekerInfo,
-    Team, WheelPairConfig,
+    BallHitInfo, BallState, BoostPad, BoostPadState, CarConfig, CarControls, CarInfo, CarState, GameMode, GameState,
+    HeatseekerInfo, Team, WheelPairConfig,
 };
 use bevy::math::{Mat3A as RotMat, Vec3A as Vec3};
 
@@ -94,6 +94,24 @@ impl FromBytes for Team {
     }
 }
 
+impl FromBytesExact for GameMode {
+    const NUM_BYTES: usize = 1;
+}
+
+impl FromBytes for GameMode {
+    #[inline]
+    fn from_bytes(bytes: &[u8]) -> Self {
+        match bytes[0] {
+            0 => GameMode::Soccer,
+            1 => GameMode::Hoops,
+            2 => GameMode::HeatSeeker,
+            3 => GameMode::Snowday,
+            4 => GameMode::TheVoid,
+            _ => unreachable!(),
+        }
+    }
+}
+
 impl FromBytesExact for Vec3 {
     const NUM_BYTES: usize = f32::NUM_BYTES * 3;
 }
@@ -176,6 +194,12 @@ impl ToBytesExact<{ Self::NUM_BYTES }> for f32 {
 }
 
 impl ToBytesExact<{ Self::NUM_BYTES }> for Team {
+    fn to_bytes(&self) -> [u8; Self::NUM_BYTES] {
+        [*self as u8]
+    }
+}
+
+impl ToBytesExact<{ Self::NUM_BYTES }> for GameMode {
     fn to_bytes(&self) -> [u8; Self::NUM_BYTES] {
         [*self as u8]
     }
@@ -330,6 +354,7 @@ impl FromBytes for GameState {
         Self {
             tick_count: Self::read_tick_count(bytes),
             tick_rate: Self::read_tick_rate(bytes),
+            game_mode: Self::read_game_mode(bytes),
             ball: BallState::from_bytes(&bytes[Self::MIN_NUM_BYTES..Self::MIN_NUM_BYTES + BallState::NUM_BYTES]),
             pads: bytes[Self::MIN_NUM_BYTES + BallState::NUM_BYTES
                 ..Self::MIN_NUM_BYTES + BallState::NUM_BYTES + Self::read_num_pads(bytes) * BoostPad::NUM_BYTES]
@@ -345,7 +370,7 @@ impl FromBytes for GameState {
 }
 
 impl GameState {
-    pub const MIN_NUM_BYTES: usize = u64::NUM_BYTES + f32::NUM_BYTES + u32::NUM_BYTES * 2;
+    pub const MIN_NUM_BYTES: usize = u64::NUM_BYTES + f32::NUM_BYTES + 1 + u32::NUM_BYTES * 2;
 
     #[inline]
     pub fn get_num_bytes(bytes: &[u8]) -> usize {
@@ -366,13 +391,19 @@ impl GameState {
     }
 
     #[inline]
+    pub fn read_game_mode(bytes: &[u8]) -> GameMode {
+        GameMode::from_bytes(&bytes[u64::NUM_BYTES + f32::NUM_BYTES..u64::NUM_BYTES + f32::NUM_BYTES + 1])
+    }
+
+    #[inline]
     pub fn read_num_pads(bytes: &[u8]) -> usize {
-        u32::from_bytes(&bytes[u64::NUM_BYTES + f32::NUM_BYTES..u64::NUM_BYTES + f32::NUM_BYTES + u32::NUM_BYTES]) as usize
+        u32::from_bytes(&bytes[u64::NUM_BYTES + f32::NUM_BYTES + 1..u64::NUM_BYTES + f32::NUM_BYTES + 1 + u32::NUM_BYTES])
+            as usize
     }
 
     #[inline]
     pub fn read_num_cars(bytes: &[u8]) -> usize {
-        u32::from_bytes(&bytes[u64::NUM_BYTES + f32::NUM_BYTES + u32::NUM_BYTES..Self::MIN_NUM_BYTES]) as usize
+        u32::from_bytes(&bytes[u64::NUM_BYTES + f32::NUM_BYTES + 1 + u32::NUM_BYTES..Self::MIN_NUM_BYTES]) as usize
     }
 }
 
@@ -389,10 +420,11 @@ impl ToBytes for GameState {
                 + self.cars.len() * CarInfo::NUM_BYTES,
         );
 
-        bytes.extend(self.tick_count.to_le_bytes());
-        bytes.extend(self.tick_rate.to_le_bytes());
-        bytes.extend(&(self.pads.len() as u32).to_le_bytes());
-        bytes.extend(&(self.cars.len() as u32).to_le_bytes());
+        bytes.extend(self.tick_count.to_bytes());
+        bytes.extend(self.tick_rate.to_bytes());
+        bytes.extend(self.game_mode.to_bytes());
+        bytes.extend(&(self.pads.len() as u32).to_bytes());
+        bytes.extend(&(self.cars.len() as u32).to_bytes());
         bytes.extend(self.ball.to_bytes());
         bytes.extend(self.pads.iter().flat_map(ToBytesExact::<{ BoostPad::NUM_BYTES }>::to_bytes));
         bytes.extend(self.cars.iter().flat_map(ToBytesExact::<{ CarInfo::NUM_BYTES }>::to_bytes));

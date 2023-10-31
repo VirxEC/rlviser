@@ -47,7 +47,7 @@ fn establish_connection(port: Res<ServerPort>, mut commands: Commands, mut state
     socket.send(&[1]).unwrap();
     socket.set_nonblocking(true).unwrap();
     commands.insert_resource(Connection(socket));
-    state.set(LoadState::Field);
+    state.set(LoadState::FieldExtra);
 }
 
 pub trait ToBevyVec {
@@ -289,8 +289,6 @@ fn get_car_mesh_materials(
 enum UdpPacketTypes {
     Quit,
     GameState,
-    Soccer,
-    Hoops,
 }
 
 impl UdpPacketTypes {
@@ -299,10 +297,6 @@ impl UdpPacketTypes {
             Some(Self::Quit)
         } else if byte == 1 {
             Some(Self::GameState)
-        } else if byte == 2 {
-            Some(Self::Soccer)
-        } else if byte == 3 {
-            Some(Self::Hoops)
         } else {
             None
         }
@@ -314,7 +308,6 @@ static mut INITIAL_BUFFER: [u8; GameState::MIN_NUM_BYTES] = [0; GameState::MIN_N
 
 fn step_arena(
     socket: Res<Connection>,
-    mut game_mode: ResMut<GameMode>,
     mut game_state: ResMut<GameState>,
     mut exit: EventWriter<AppExit>,
     mut packet_updated: ResMut<PacketUpdated>,
@@ -367,14 +360,6 @@ fn step_arena(
                 if socket.0.recv_from(&mut buf).is_err() {
                     return;
                 }
-            }
-            UdpPacketTypes::Soccer => {
-                *game_mode = GameMode::Soccer;
-                return;
-            }
-            UdpPacketTypes::Hoops => {
-                *game_mode = GameMode::Hoops;
-                return;
             }
         }
     }
@@ -743,6 +728,13 @@ fn update_time(state: Res<GameState>, show_time: Res<ShowTime>, mut text_display
     text_display.single_mut().sections[0].value = time_segments.join(":");
 }
 
+fn update_field(state: Res<GameState>, mut game_mode: ResMut<GameMode>, mut load_state: ResMut<NextState<LoadState>>) {
+    if state.game_mode != *game_mode {
+        *game_mode = state.game_mode;
+        load_state.set(LoadState::Despawn);
+    }
+}
+
 fn listen(socket: Res<Connection>, key: Res<Input<KeyCode>>, mut game_state: ResMut<GameState>) {
     let mut changed = false;
     if key.just_pressed(KeyCode::R) {
@@ -772,12 +764,12 @@ impl Plugin for RocketSimPlugin {
                 Update,
                 (
                     establish_connection.run_if(in_state(LoadState::Connect)),
-                    step_arena.run_if(in_state(LoadState::Field)),
                     (
                         (
                             step_arena,
                             (
-                                (update_ball, update_car, update_pads).run_if(|updated: Res<PacketUpdated>| updated.0),
+                                (update_ball, update_car, update_pads, update_field)
+                                    .run_if(|updated: Res<PacketUpdated>| updated.0),
                                 (listen, update_boost_meter),
                             ),
                         )

@@ -4,11 +4,11 @@ use bevy::{
 };
 
 #[repr(u8)]
-#[derive(Resource, Clone, Copy, Default)]
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum GameMode {
     Soccer = 0,
     Hoops = 1,
-    HeatSeaker = 2,
+    HeatSeeker = 2,
     Snowday = 3,
     #[default]
     TheVoid = 4,
@@ -166,6 +166,7 @@ pub struct BoostPad {
 pub struct GameState {
     pub tick_count: u64,
     pub tick_rate: f32,
+    pub game_mode: GameMode,
     pub ball: BallState,
     pub pads: Box<[BoostPad]>,
     pub cars: Box<[CarInfo]>,
