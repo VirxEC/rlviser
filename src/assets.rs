@@ -52,10 +52,11 @@ const BLOCK_MESHES: [&str; 8] = [
 const EXTRA_BLACKLIST: [&str; 1] = ["Side_Trim"];
 
 #[cfg(not(feature = "full_load"))]
-const WHITELIST_MESHES: [&str; 20] = [
+const WHITELIST_MESHES: [&str; 21] = [
     "Field_STD",
     "FF",
     "BoostPads",
+    "BoostPad_Small",
     "BoostPad_Large",
     "Goal",
     "AdvertStrip",
@@ -143,7 +144,7 @@ fn load_texture(name: &str, asset_server: &AssetServer) -> Handle<Image> {
     asset_server.load(path)
 }
 
-const DOUBLE_SIDED_MATS: [&str; 26] = [
+const DOUBLE_SIDED_MATS: [&str; 27] = [
     "Trees.Materials.LombardyPoplar_B_NoWind_MIC",
     "Trees.Materials.LombardyPoplar_B_Mat",
     "FutureTech.Materials.ForceField_HexGage_MIC",
@@ -170,6 +171,7 @@ const DOUBLE_SIDED_MATS: [&str; 26] = [
     "Proto_BBall.Materials.MIC_DarkGlass",
     "Proto_BBall.SM.BackBoard_Teams_MIC",
     "Proto_BBall.Materials.BBall_Rim_MAT_INST",
+    "Pickup_Boost.Materials.BoostPad_Large_MIC",
 ];
 
 const TRANSPARENT_MATS: [&str; 2] = [

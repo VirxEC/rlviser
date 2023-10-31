@@ -551,26 +551,28 @@ fn update_pads(
 
                 pad_glows.large.clone()
             } else {
-                if transform.translation.z > 10. {
-                    transform.rotate_y(PI);
-                }
-
-                if (1023f32..1025.).contains(&transform.translation.x.abs()) {
-                    transform.rotate_y(PI / 6.);
-
-                    if transform.translation.x > 1. {
+                if state.game_mode == GameMode::Soccer {
+                    if transform.translation.z > 10. {
                         transform.rotate_y(PI);
                     }
-                }
 
-                if (1023f32..1025.).contains(&transform.translation.z.abs()) {
-                    transform.rotate_y(PI / 3.);
-                }
+                    if (1023f32..1025.).contains(&transform.translation.x.abs()) {
+                        transform.rotate_y(PI / 6.);
 
-                if (1787f32..1789.).contains(&transform.translation.x.abs())
-                    && (2299f32..2301.).contains(&transform.translation.z.abs())
-                {
-                    transform.rotate_y(PI.copysign(transform.translation.x * transform.translation.z) / 4.);
+                        if transform.translation.x > 1. {
+                            transform.rotate_y(PI);
+                        }
+                    }
+
+                    if (1023f32..1025.).contains(&transform.translation.z.abs()) {
+                        transform.rotate_y(PI / 3.);
+                    }
+
+                    if (1787f32..1789.).contains(&transform.translation.x.abs())
+                        && (2299f32..2301.).contains(&transform.translation.z.abs())
+                    {
+                        transform.rotate_y(PI.copysign(transform.translation.x * transform.translation.z) / 4.);
+                    }
                 }
 
                 pad_glows.small.clone()
