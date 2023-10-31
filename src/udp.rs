@@ -548,6 +548,11 @@ fn update_pads(
                     .find(|(_, loc)| loc.distance_squared(pad.position.xy()) < 25.)
                     .map(|(i, _)| large_boost_pad_loc_rots.rots[i]);
                 transform.rotate_y(rotation.unwrap_or_default().to_radians());
+                if state.game_mode == GameMode::Soccer {
+                    transform.translation.y += 2.6;
+                } else if state.game_mode == GameMode::Hoops {
+                    transform.translation.y += 5.2;
+                }
 
                 pad_glows.large.clone()
             } else {
@@ -573,6 +578,24 @@ fn update_pads(
                     {
                         transform.rotate_y(PI.copysign(transform.translation.x * transform.translation.z) / 4.);
                     }
+                } else if state.game_mode == GameMode::Hoops {
+                    if transform.translation.z > 2810. {
+                        transform.rotate_y(PI / 3.);
+                    }
+
+                    if (500f32..1537.).contains(&transform.translation.x.abs())
+                        && (0f32..1025.).contains(&transform.translation.z)
+                    {
+                        transform.rotate_y(PI / 3.);
+                    }
+
+                    if (511f32..513.).contains(&transform.translation.x.abs())
+                        && (511f32..513.).contains(&transform.translation.z.abs())
+                    {
+                        transform.rotate_y(PI.copysign(transform.translation.x * transform.translation.z) / 12.);
+                    }
+
+                    transform.translation.y += 5.7;
                 }
 
                 pad_glows.small.clone()

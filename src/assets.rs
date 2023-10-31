@@ -144,7 +144,7 @@ fn load_texture(name: &str, asset_server: &AssetServer) -> Handle<Image> {
     asset_server.load(path)
 }
 
-const DOUBLE_SIDED_MATS: [&str; 27] = [
+const DOUBLE_SIDED_MATS: [&str; 28] = [
     "Trees.Materials.LombardyPoplar_B_NoWind_MIC",
     "Trees.Materials.LombardyPoplar_B_Mat",
     "FutureTech.Materials.ForceField_HexGage_MIC",
@@ -172,6 +172,7 @@ const DOUBLE_SIDED_MATS: [&str; 27] = [
     "Proto_BBall.SM.BackBoard_Teams_MIC",
     "Proto_BBall.Materials.BBall_Rim_MAT_INST",
     "Pickup_Boost.Materials.BoostPad_Large_MIC",
+    "Pickup_Boost.Materials.BoostPad_Small_MIC",
 ];
 
 const TRANSPARENT_MATS: [&str; 2] = [
