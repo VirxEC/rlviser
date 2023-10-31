@@ -528,7 +528,7 @@ fn update_pads(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut commands: Commands,
 ) {
-    if pads.iter().count() != state.pads.len() {
+    if pads.iter().count() != state.pads.len() && !large_boost_pad_loc_rots.rots.is_empty() {
         // The number of pads shouldn't change often
         // There's also not an easy way to determine
         // if a previous pad a new pad are same pad
