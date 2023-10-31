@@ -3,6 +3,17 @@ use bevy::{
     prelude::*,
 };
 
+#[repr(u8)]
+#[derive(Resource, Clone, Copy, Default)]
+pub enum GameMode {
+    Soccer = 0,
+    Hoops = 1,
+    HeatSeaker = 2,
+    Snowday = 3,
+    #[default]
+    TheVoid = 4,
+}
+
 #[derive(Clone, Copy, Default, Debug)]
 pub struct BallHitInfo {
     pub is_valid: bool,

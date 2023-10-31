@@ -1,3 +1,11 @@
+use crate::{
+    assets::*,
+    bytes::ToBytes,
+    camera::{HighlightedEntity, PrimaryCamera},
+    rocketsim::{GameMode, GameState},
+    udp::{Ball, Car, Connection, ToBevyVec, ToBevyVecFlat},
+    LoadState,
+};
 use bevy::{
     math::{Vec3A, Vec3Swizzles},
     prelude::*,
@@ -5,7 +13,8 @@ use bevy::{
     window::PrimaryWindow,
 };
 use bevy_eventlistener::callbacks::ListenerInput;
-use bevy_mod_picking::prelude::*;
+use bevy_mod_picking::{backends::raycast::RaycastPickable, prelude::*};
+use include_flate::flate;
 use serde::Deserialize;
 use std::{
     io::{self, Read},
@@ -14,14 +23,6 @@ use std::{
 
 #[cfg(debug_assertions)]
 use crate::camera::EntityName;
-use crate::{
-    assets::*,
-    bytes::ToBytes,
-    camera::{HighlightedEntity, PrimaryCamera},
-    rocketsim::GameState,
-    udp::{Ball, Car, Connection, ToBevyVec, ToBevyVecFlat},
-    LoadState,
-};
 
 pub struct FieldLoaderPlugin;
 
@@ -155,7 +156,7 @@ fn load_extra_field(
             },
             #[cfg(debug_assertions)]
             EntityName::from("ball"),
-            RaycastPickTarget::default(),
+            RaycastPickable,
             On::<Pointer<Over>>::target_insert(HighlightedEntity),
             On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
             On::<Pointer<Drag>>::send_event::<ChangeBallPos>(),
@@ -173,7 +174,7 @@ fn load_extra_field(
             });
         });
 
-    state.set(LoadState::Connect);
+    state.set(LoadState::None);
 }
 
 fn rc_string_default() -> Rc<str> {
@@ -261,13 +262,14 @@ struct Node {
     sub_nodes: Box<[Section]>,
 }
 
-const BLACKLIST_MESH_MATS: [&str; 6] = [
+const BLACKLIST_MESH_MATS: [&str; 7] = [
     "CollisionMeshes.Collision_Mat",
     "Stadium_Assets.Materials.Grass_LOD_Team1_MIC",
     "FutureTech.Materials.Glass_Projected_V2_Team2_MIC",
     "FutureTech.Materials.Glass_Projected_V2_Mat",
     "Trees.Materials.TreeBark_Mat",
     "FutureTech.Materials.TrimLight_None_Mat",
+    "City.Materials.Asphalt_Simple_MAT",
 ];
 
 #[derive(Resource, Default)]
@@ -276,28 +278,49 @@ pub struct LargeBoostPadLocRots {
     pub rots: Vec<f32>,
 }
 
+#[derive(Component)]
+pub struct StandardField;
+
+#[derive(Component)]
+pub struct HoopsField;
+
+flate!(pub static STADIUM_P_LAYOUT: str from "stadiums/Stadium_P_MeshObjects.json");
+flate!(pub static HOOPS_STADIUM_P_LAYOUT: str from "stadiums/HoopsStadium_P_MeshObjects.json");
+
 fn load_field(
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut state: ResMut<NextState<LoadState>>,
     mut large_boost_pad_loc_rots: ResMut<LargeBoostPadLocRots>,
+    game_mode: Res<GameMode>,
     asset_server: Res<AssetServer>,
 ) {
-    let (_pickup_boost, standard_common_prefab, the_world): (Section, Node, Node) =
-        serde_json::from_str(include_str!("../stadiums/Stadium_P_MeshObjects.json")).unwrap();
+    let layout: &str = match *game_mode {
+        GameMode::TheVoid => return,
+        GameMode::Hoops => &HOOPS_STADIUM_P_LAYOUT,
+        _ => &STADIUM_P_LAYOUT,
+    };
+
+    let (_pickup_boost, structures, the_world): (Section, Node, Node) = serde_json::from_str(layout).unwrap();
     #[cfg(debug_assertions)]
     {
         // this double-layer of debug_assertion checks is because 'name' won't be present in release mode
-        debug_assert!(_pickup_boost.name.as_ref() == "Pickup_Boost");
-        debug_assert!(standard_common_prefab.name.as_ref() == "Standard_Common_Prefab");
-        debug_assert!(the_world.name.as_ref() == "TheWorld");
+        debug_assert_eq!(_pickup_boost.name.as_ref(), "Pickup_Boost");
+        debug_assert_eq!(
+            structures.name.as_ref(),
+            match *game_mode {
+                GameMode::Hoops => "Archetypes",
+                _ => "Standard_Common_Prefab",
+            }
+        );
+        debug_assert_eq!(the_world.name.as_ref(), "TheWorld");
     }
     let persistent_level = &the_world.sub_nodes[0];
     #[cfg(debug_assertions)]
-    debug_assert!(persistent_level.name.as_ref() == "PersistentLevel");
+    debug_assert_eq!(persistent_level.name.as_ref(), "PersistentLevel");
 
-    let all_nodes = standard_common_prefab.sub_nodes[0]
+    let all_nodes = structures.sub_nodes[0]
         .sub_nodes
         .iter()
         .chain(persistent_level.sub_nodes.iter());
@@ -311,6 +334,7 @@ fn load_field(
                 &mut materials,
                 &mut large_boost_pad_loc_rots,
                 &mut commands,
+                *game_mode,
             );
             continue;
         }
@@ -323,12 +347,16 @@ fn load_field(
                 &mut materials,
                 &mut large_boost_pad_loc_rots,
                 &mut commands,
+                *game_mode,
             );
         }
     }
 
     state.set(LoadState::FieldExtra);
 }
+
+#[derive(Component)]
+pub struct SceneType(GameState);
 
 fn process_info_node(
     node: &InfoNode,
@@ -337,6 +365,7 @@ fn process_info_node(
     materials: &mut Assets<StandardMaterial>,
     large_boost_pad_loc_rots: &mut LargeBoostPadLocRots,
     commands: &mut Commands,
+    game_mode: GameMode,
 ) {
     if node.static_mesh.trim().is_empty() {
         return;
@@ -376,7 +405,7 @@ fn process_info_node(
                 .push(node.rotation.map(|r| r[1]).unwrap_or_default());
         }
 
-        commands.spawn((
+        let mut entity = commands.spawn((
             PbrBundle {
                 mesh,
                 material,
@@ -385,10 +414,15 @@ fn process_info_node(
             },
             #[cfg(debug_assertions)]
             EntityName::from(format!("{} | {mat}", node.static_mesh)),
-            RaycastPickTarget::default(),
+            RaycastPickable,
             On::<Pointer<Over>>::target_insert(HighlightedEntity),
             On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
         ));
+
+        match game_mode {
+            GameMode::Hoops => entity.insert(HoopsField),
+            _ => entity.insert(StandardField),
+        };
     }
 }
 

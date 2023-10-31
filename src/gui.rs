@@ -1,8 +1,4 @@
-use std::{
-    fs,
-    io::{self, Write},
-};
-
+use crate::camera::{DaylightOffset, PrimaryCamera};
 use bevy::{
     prelude::*,
     window::{CursorGrabMode, PrimaryWindow},
@@ -10,8 +6,11 @@ use bevy::{
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
 use bevy_framepace::{FramepaceSettings, Limiter};
 use bevy_mod_picking::picking_core::PickingPluginsSettings;
+use std::{
+    fs,
+    io::{self, Write},
+};
 
-use crate::camera::{DaylightOffset, PrimaryCamera};
 #[cfg(debug_assertions)]
 use crate::camera::{EntityName, HighlightedEntity};
 

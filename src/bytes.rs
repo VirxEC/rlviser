@@ -1,9 +1,8 @@
-use bevy::math::{Mat3A as RotMat, Vec3A as Vec3};
-
 use crate::rocketsim::{
     BallHitInfo, BallState, BoostPad, BoostPadState, CarConfig, CarControls, CarInfo, CarState, GameState, HeatseekerInfo,
     Team, WheelPairConfig,
 };
+use bevy::math::{Mat3A as RotMat, Vec3A as Vec3};
 
 pub trait FromBytes {
     fn from_bytes(bytes: &[u8]) -> Self;

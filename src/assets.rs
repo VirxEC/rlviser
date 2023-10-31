@@ -1,3 +1,9 @@
+use crate::mesh::MeshBuilder;
+use bevy::{
+    asset::{AssetLoader, LoadedAsset},
+    prelude::*,
+};
+use bevy_asset_loader::prelude::*;
 use byteorder::{LittleEndian, ReadBytesExt};
 use once_cell::sync::Lazy;
 use std::{
@@ -10,14 +16,6 @@ use std::{
     sync::Mutex,
 };
 use walkdir::WalkDir;
-
-use bevy::{
-    asset::{AssetLoader, LoadedAsset},
-    prelude::*,
-};
-use bevy_asset_loader::prelude::*;
-
-use crate::mesh::MeshBuilder;
 
 #[derive(AssetCollection, Resource)]
 pub struct BallAssets {
@@ -39,8 +37,9 @@ pub struct BoostPickupGlows {
     pub large: Handle<Mesh>,
 }
 
-const BLOCK_MESHES: [&str; 7] = [
+const BLOCK_MESHES: [&str; 8] = [
     "CollisionMeshes",
+    "DecalBlocker",
     "FieldCollision_Standard",
     "Goal_STD_Outer",
     "SkySphere01",
@@ -53,7 +52,7 @@ const BLOCK_MESHES: [&str; 7] = [
 const EXTRA_BLACKLIST: [&str; 1] = ["Side_Trim"];
 
 #[cfg(not(feature = "full_load"))]
-const WHITELIST_MESHES: [&str; 11] = [
+const WHITELIST_MESHES: [&str; 20] = [
     "Field_STD",
     "FF",
     "BoostPads",
@@ -65,6 +64,15 @@ const WHITELIST_MESHES: [&str; 11] = [
     "Body",
     "Side",
     "Floor",
+    "Lattice",
+    "FoamAd",
+    "Lines_Basketball",
+    "Net_Collision",
+    "BBall_Walls_03",
+    "BBallRim01",
+    "BBall_Edges_01",
+    "BackBoard",
+    "Net_Rim",
 ];
 
 #[cfg(not(feature = "full_load"))]
@@ -90,9 +98,7 @@ pub fn get_mesh_info(name: &str, meshes: &mut Assets<Mesh>) -> Option<Vec<Handle
         .replace(".Meshes", ".StaticMesh3")
         .replace(".SM", ".StaticMesh3")
         .replace(".Materials", ".StaticMesh3")
-        // .replace("Park_Assets.Park_", "Park_Assets.StaticMesh3.Park_")
-        // .replace("Pickup_Boost.BoostPad", "Pickup_Boost.StaticMesh3.BoostPad")
-        // .replace("Grass.Grass", "Grass.StaticMesh3.Grass")
+        .replace(".Collision", ".StaticMesh3")
         .replace('.', "/");
 
     let mut split = local_path.split('/');
@@ -137,7 +143,7 @@ fn load_texture(name: &str, asset_server: &AssetServer) -> Handle<Image> {
     asset_server.load(path)
 }
 
-const DOUBLE_SIDED_MATS: [&str; 20] = [
+const DOUBLE_SIDED_MATS: [&str; 26] = [
     "Trees.Materials.LombardyPoplar_B_NoWind_MIC",
     "Trees.Materials.LombardyPoplar_B_Mat",
     "FutureTech.Materials.ForceField_HexGage_MIC",
@@ -158,6 +164,12 @@ const DOUBLE_SIDED_MATS: [&str; 20] = [
     "Stadium.Materials.HandRail_MIC",
     "Stadium_Assets.Materials.GroomedGrass_FakeLight_Team1_MIC",
     "Stadium_Assets.Materials.GroomedGrass_FakeLight_Team2_MIC",
+    "Proto_BBall.Materials.BBall_Net_MAT_INST",
+    "Graybox_Assets.Materials.NetNonmove_Mat",
+    "Proto_BBall.Materials.BBall_Rubber_MIC",
+    "Proto_BBall.Materials.MIC_DarkGlass",
+    "Proto_BBall.SM.BackBoard_Teams_MIC",
+    "Proto_BBall.Materials.BBall_Rim_MAT_INST",
 ];
 
 const TRANSPARENT_MATS: [&str; 2] = [
@@ -165,7 +177,7 @@ const TRANSPARENT_MATS: [&str; 2] = [
     "Trees.Materials.LombardyPoplar_B_Mat",
 ];
 
-const ADD_MATS: [&str; 13] = [
+const ADD_MATS: [&str; 15] = [
     "FutureTech.Materials.ForceField_HexGage_MIC",
     "FutureTech.Materials.HexGlass_WithArrows_Team2_MIC",
     "FutureTech.Materials.HexGlass_WithArrows_Team1_MIC",
@@ -179,6 +191,8 @@ const ADD_MATS: [&str; 13] = [
     "FX_General.Mat.FogCylinder_Mat",
     "FutureTech.Materials.Glass_Projected_V2_Mat",
     "FutureTech.Materials.Glass_Projected_V2_Team2_MIC",
+    "Graybox_Assets.Materials.NetNonmove_Mat",
+    "Proto_BBall.Materials.BBall_Net_MAT_INST",
 ];
 
 #[cfg(not(feature = "full_load"))]
@@ -351,13 +365,43 @@ fn retreive_material(name: &str, asset_server: &AssetServer, base_color: Color) 
 }
 
 fn get_default_material(name: &str) -> Option<StandardMaterial> {
-    let mut material = if name == "Stadium_Assets.Materials.Grass_Base_Team1_MIC" {
+    let mut material = if [
+        "Stadium_Assets.Materials.Grass_Base_Team1_MIC",
+        "Proto_BBall.Materials.WoodFloor_Corrected_Mat_INST",
+    ]
+    .contains(&name)
+    {
         StandardMaterial::from(Color::rgb(0.1, 0.6, 0.1))
-    } else if name == "FutureTech.Materials.Reflective_Floor_V2_Mat" {
+    } else if [
+        "FutureTech.Materials.Reflective_Floor_V2_Mat",
+        "Proto_BBall.Materials.BBall_Rubber_MIC",
+        "Proto_BBall.SM.BackBoard_Teams_MIC",
+        "Proto_BBall.Materials.MIC_DarkGlass",
+    ]
+    .contains(&name)
+    {
         StandardMaterial::from(Color::rgb(0.1, 0.1, 0.8))
-    } else if name == "FutureTech.Materials.Frame_01_V2_Mat" {
+    } else if [
+        "FutureTech.Materials.Frame_01_MIC",
+        "FutureTech.Materials.Frame_01_V2_Mat",
+        "Proto_BBall.Materials.BBall_Net_MAT_INST",
+        "Proto_BBall.Materials.BBall_Rim_MAT_INST",
+        "Graybox_Assets.Materials.NetNonmove_Mat",
+        "Proto_BBall.Materials.OLDCosmicGlass1_INST",
+        "OldCosmic_Assets.Materials.OLDCosmicGlass1",
+        "Proto_BBall.Materials.BBall_Rim2_MAT_INST",
+        "Proto_BBall.Materials.BBall_RimF_MAT_INST",
+    ]
+    .contains(&name)
+        || name.contains("PaintedLine_MIC")
+    {
         StandardMaterial::from(Color::rgb(0.25, 0.1, 0.25))
-    } else if name == "FutureTech.Materials.Frame_01_White_MIC" {
+    } else if [
+        "FutureTech.Materials.Frame_01_White_MIC",
+        "Graybox_Assets.Materials.ForceFieldCage_Solid_Mat",
+    ]
+    .contains(&name)
+    {
         StandardMaterial::from(Color::SILVER)
     } else if name == "FutureTech.Materials.CrossHatched_Grate_MIC" {
         StandardMaterial::from(Color::TOMATO)
@@ -368,20 +412,24 @@ fn get_default_material(name: &str) -> Option<StandardMaterial> {
     .contains(&name)
     {
         StandardMaterial::from(Color::rgb(0.8, 0.1, 0.1))
-    } else if name.contains("Advert") {
+    } else if name.contains("Advert") || name.contains("DarkMetal") {
         StandardMaterial::from(Color::BISQUE)
     } else {
+        println!("Unknown material {name}");
         return None;
     };
+
     if TRANSPARENT_MATS.contains(&name) {
         material.alpha_mode = AlphaMode::Blend;
     } else if ADD_MATS.contains(&name) {
         material.alpha_mode = AlphaMode::Add;
     }
+
     if DOUBLE_SIDED_MATS.contains(&name) {
         material.cull_mode = None;
         material.double_sided = true;
     }
+
     Some(material)
 }
 
@@ -586,10 +634,11 @@ fn get_input_dir() -> String {
     }
 }
 
-const UPK_FILES: [&str; 9] = [
+const UPK_FILES: [&str; 10] = [
     "Startup.upk",
     "MENU_Main_p.upk",
     "Stadium_P.upk",
+    "HoopsStadium_P.upk",
     "Body_MuscleCar_SF.upk",
     "Body_Darkcar_SF.upk",
     "Body_CarCar_SF.upk",

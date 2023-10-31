@@ -20,9 +20,9 @@ use bevy_asset_loader::prelude::*;
 enum LoadState {
     #[default]
     Assets,
+    Connect,
     Field,
     FieldExtra,
-    Connect,
     None,
 }
 
@@ -53,7 +53,7 @@ fn main() {
                         address_mode_u: AddressMode::Repeat,
                         address_mode_v: AddressMode::Repeat,
                         address_mode_w: AddressMode::Repeat,
-                        ..Default::default()
+                        ..default()
                     },
                 })
                 .set(WindowPlugin {
@@ -73,7 +73,7 @@ fn main() {
             mesh::FieldLoaderPlugin,
             udp::RocketSimPlugin,
         ))
-        .add_loading_state(LoadingState::new(LoadState::Assets).continue_to_state(LoadState::Field))
+        .add_loading_state(LoadingState::new(LoadState::Assets).continue_to_state(LoadState::Connect))
         .add_collection_to_loading_state::<_, assets::BallAssets>(LoadState::Assets)
         .add_collection_to_loading_state::<_, assets::BoostPickupGlows>(LoadState::Assets)
         .run();

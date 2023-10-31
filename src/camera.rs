@@ -1,3 +1,13 @@
+use crate::spectator::*;
+use bevy::{core_pipeline::clear_color::ClearColorConfig, prelude::*};
+use bevy_atmosphere::prelude::*;
+use bevy_framepace::{FramepacePlugin, FramepaceSettings};
+use bevy_mod_picking::{
+    backends::raycast::{RaycastBackendSettings, RaycastPickable},
+    prelude::*,
+};
+use bevy_vector_shapes::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::{f32::consts::PI, time::Duration};
 
 #[cfg(feature = "ssao")]
@@ -5,15 +15,6 @@ use bevy::{
     core_pipeline::experimental::taa::{TemporalAntiAliasBundle, TemporalAntiAliasPlugin},
     pbr::ScreenSpaceAmbientOcclusionBundle,
 };
-
-use bevy::{core_pipeline::clear_color::ClearColorConfig, prelude::*};
-use bevy_atmosphere::prelude::*;
-use bevy_framepace::{FramepacePlugin, FramepaceSettings};
-use bevy_mod_picking::prelude::*;
-use bevy_vector_shapes::prelude::*;
-use serde::{Deserialize, Serialize};
-
-use crate::spectator::*;
 
 #[derive(Component)]
 struct Sun;
@@ -98,7 +99,7 @@ fn setup(mut commands: Commands) {
             ..default()
         },
         AtmosphereCamera::default(),
-        RaycastPickCamera::default(),
+        RaycastPickable,
         Spectator,
     ));
     #[cfg(feature = "ssao")]
@@ -254,6 +255,7 @@ impl Plugin for CameraPlugin {
             TimerMode::Repeating,
         )))
         .insert_resource(DaylightOffset::default())
+        .insert_resource(RaycastBackendSettings { require_markers: true })
         .add_plugins((
             FramepacePlugin,
             SpectatorPlugin,

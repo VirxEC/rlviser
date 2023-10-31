@@ -1,25 +1,24 @@
-use std::{cmp::Ordering, f32::consts::PI, fs, net::UdpSocket, time::Duration};
-
-use bevy::{
-    app::AppExit,
-    math::{Mat3A, Vec3A, Vec3Swizzles},
-    prelude::*,
-    window::PrimaryWindow,
-};
-use bevy_mod_picking::prelude::*;
-use bevy_vector_shapes::prelude::*;
-
-#[cfg(debug_assertions)]
-use crate::camera::EntityName;
 use crate::{
     assets::{get_material, get_mesh_info, BoostPickupGlows},
     bytes::{FromBytes, ToBytes},
     camera::{BoostAmount, HighlightedEntity, PrimaryCamera, TimeDisplay, BOOST_INDICATOR_FONT_SIZE, BOOST_INDICATOR_POS},
     gui::{BallCam, ShowTime, UiScale},
     mesh::{ChangeCarPos, LargeBoostPadLocRots},
-    rocketsim::{CarInfo, GameState, Team},
+    rocketsim::{CarInfo, GameMode, GameState, Team},
     LoadState, ServerPort,
 };
+use bevy::{
+    app::AppExit,
+    math::{Mat3A, Vec3A, Vec3Swizzles},
+    prelude::*,
+    window::PrimaryWindow,
+};
+use bevy_mod_picking::{backends::raycast::RaycastPickable, prelude::*};
+use bevy_vector_shapes::prelude::*;
+use std::{cmp::Ordering, f32::consts::PI, fs, net::UdpSocket, time::Duration};
+
+#[cfg(debug_assertions)]
+use crate::camera::EntityName;
 
 #[derive(Component)]
 struct BoostPadI;
@@ -48,7 +47,7 @@ fn establish_connection(port: Res<ServerPort>, mut commands: Commands, mut state
     socket.send(&[1]).unwrap();
     socket.set_nonblocking(true).unwrap();
     commands.insert_resource(Connection(socket));
-    state.set(LoadState::None);
+    state.set(LoadState::Field);
 }
 
 pub trait ToBevyVec {
@@ -197,11 +196,11 @@ fn spawn_car(
             PbrBundle {
                 mesh: meshes.add(shape::Box::new(hitbox.x * 2., hitbox.y * 2., hitbox.z * 2.).into()),
                 material: materials.add(Color::NONE.into()),
-                ..Default::default()
+                ..default()
             },
             #[cfg(debug_assertions)]
             EntityName::from(name),
-            RaycastPickTarget::default(),
+            RaycastPickable,
             On::<Pointer<Over>>::target_insert(HighlightedEntity),
             On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
             On::<Pointer<Drag>>::send_event::<ChangeCarPos>(),
@@ -287,10 +286,11 @@ fn get_car_mesh_materials(
 }
 
 #[repr(u8)]
-#[derive(PartialEq, Eq)]
 enum UdpPacketTypes {
     Quit,
     GameState,
+    Soccer,
+    Hoops,
 }
 
 impl UdpPacketTypes {
@@ -299,6 +299,10 @@ impl UdpPacketTypes {
             Some(Self::Quit)
         } else if byte == 1 {
             Some(Self::GameState)
+        } else if byte == 2 {
+            Some(Self::Soccer)
+        } else if byte == 3 {
+            Some(Self::Hoops)
         } else {
             None
         }
@@ -310,6 +314,7 @@ static mut INITIAL_BUFFER: [u8; GameState::MIN_NUM_BYTES] = [0; GameState::MIN_N
 
 fn step_arena(
     socket: Res<Connection>,
+    mut game_mode: ResMut<GameMode>,
     mut game_state: ResMut<GameState>,
     mut exit: EventWriter<AppExit>,
     mut packet_updated: ResMut<PacketUpdated>,
@@ -324,43 +329,53 @@ fn step_arena(
             return;
         };
 
-        if packet_type != UdpPacketTypes::GameState {
-            // quit bevy app
-            exit.send(AppExit);
-            return;
-        }
+        match packet_type {
+            UdpPacketTypes::Quit => {
+                exit.send(AppExit);
+                return;
+            }
+            UdpPacketTypes::GameState => {
+                // wait until we receive the packet
+                // it should arrive VERY quickly, so a loop with no delay is fine
+                // if it doesn't, then there are other problems lol
+                // UPDATE: Windows throws a specific error that we need to look for
+                // despite the fact that it actually worked
 
-        // wait until we receive the packet
-        // it should arrive VERY quickly, so a loop with no delay is fine
-        // if it doesn't, then there are other problems lol
-        // UPDATE: Windows throws a specific error that we need to look for
-        // despite the fact that it actually worked
-
-        #[cfg(windows)]
-        {
-            while let Err(e) = socket.0.peek_from(unsafe { &mut INITIAL_BUFFER }) {
-                if let Some(code) = e.raw_os_error() {
-                    if code == 10040 {
-                        break;
+                #[cfg(windows)]
+                {
+                    while let Err(e) = socket.0.peek_from(unsafe { &mut INITIAL_BUFFER }) {
+                        if let Some(code) = e.raw_os_error() {
+                            if code == 10040 {
+                                break;
+                            }
+                        }
                     }
                 }
+
+                #[cfg(not(windows))]
+                {
+                    while socket.0.peek_from(unsafe { &mut INITIAL_BUFFER }).is_err() {}
+                }
+
+                let new_tick_count = GameState::read_tick_count(unsafe { &INITIAL_BUFFER });
+                if new_tick_count > 1 && game_state.tick_count > new_tick_count {
+                    drop(socket.0.recv_from(&mut [0]));
+                    return;
+                }
+
+                buf.resize(GameState::get_num_bytes(unsafe { &INITIAL_BUFFER }), 0);
+                if socket.0.recv_from(&mut buf).is_err() {
+                    return;
+                }
             }
-        }
-
-        #[cfg(not(windows))]
-        {
-            while socket.0.peek_from(unsafe { &mut INITIAL_BUFFER }).is_err() {}
-        }
-
-        let new_tick_count = GameState::read_tick_count(unsafe { &INITIAL_BUFFER });
-        if new_tick_count > 1 && game_state.tick_count > new_tick_count {
-            drop(socket.0.recv_from(&mut [0]));
-            return;
-        }
-
-        buf.resize(GameState::get_num_bytes(unsafe { &INITIAL_BUFFER }), 0);
-        if socket.0.recv_from(&mut buf).is_err() {
-            return;
+            UdpPacketTypes::Soccer => {
+                *game_mode = GameMode::Soccer;
+                return;
+            }
+            UdpPacketTypes::Hoops => {
+                *game_mode = GameMode::Hoops;
+                return;
+            }
         }
     }
 
@@ -592,7 +607,7 @@ fn update_pads(
                 },
                 #[cfg(debug_assertions)]
                 EntityName::from("generic_boost_pad"),
-                RaycastPickTarget::default(),
+                RaycastPickable,
                 On::<Pointer<Over>>::target_insert(HighlightedEntity),
                 On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
             ));
@@ -752,10 +767,12 @@ impl Plugin for RocketSimPlugin {
         app.insert_resource(GameState::default())
             .insert_resource(DirectorTimer(Timer::new(Duration::from_secs(12), TimerMode::Repeating)))
             .insert_resource(PacketUpdated(false))
+            .insert_resource(GameMode::default())
             .add_systems(
                 Update,
                 (
                     establish_connection.run_if(in_state(LoadState::Connect)),
+                    step_arena.run_if(in_state(LoadState::Field)),
                     (
                         (
                             step_arena,
