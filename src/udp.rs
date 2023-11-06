@@ -13,7 +13,7 @@ use bevy::{
     prelude::*,
     window::PrimaryWindow,
 };
-use bevy_mod_picking::{backends::raycast::RaycastPickable, prelude::*};
+// use bevy_mod_picking::{backends::raycast::RaycastPickable, prelude::*};
 use bevy_vector_shapes::prelude::*;
 use std::{cmp::Ordering, f32::consts::PI, fs, net::UdpSocket, time::Duration};
 
@@ -86,14 +86,9 @@ trait ToBevyMat {
 impl ToBevyMat for Mat3A {
     #[inline]
     fn to_bevy(self) -> Quat {
-        // In RocketSim, the Z axis is up, but in Bevy, the Z and Y axis are swapped
-        // We also need to rotate 90 degrees around the X axis and 180 degrees around the Y axis
-        let mat = Self::from_axis_angle(Vec3::Y, PI)
-            * Self::from_axis_angle(Vec3::X, PI / 2.)
-            * self
-            * Self::from_cols(Vec3A::X, -Vec3A::Z, Vec3A::Y)
-            * Self::from_axis_angle(Vec3::Y, PI);
-        Quat::from_mat3a(&mat)
+        let mut quat = Vec4::from(Quat::from_mat3a(&self)).xzyw();
+        quat.w *= -1.;
+        Quat::from_vec4(quat)
     }
 }
 
@@ -200,10 +195,10 @@ fn spawn_car(
             },
             #[cfg(debug_assertions)]
             EntityName::from(name),
-            RaycastPickable,
-            On::<Pointer<Over>>::target_insert(HighlightedEntity),
-            On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
-            On::<Pointer<Drag>>::send_event::<ChangeCarPos>(),
+            // RaycastPickable,
+            // On::<Pointer<Over>>::target_insert(HighlightedEntity),
+            // On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
+            // On::<Pointer<Drag>>::send_event::<ChangeCarPos>(),
         ))
         .with_children(|parent| {
             const CAR_BOOST_LENGTH: f32 = 50.;
@@ -583,6 +578,10 @@ fn update_pads(
                         transform.rotate_y(PI / 3.);
                     }
 
+                    if (-2400f32..-2200.).contains(&transform.translation.z) {
+                        transform.rotate_y(3. * PI.copysign(transform.translation.x) / 12.);
+                    }
+
                     if (500f32..1537.).contains(&transform.translation.x.abs())
                         && (0f32..1025.).contains(&transform.translation.z)
                     {
@@ -617,9 +616,9 @@ fn update_pads(
                 },
                 #[cfg(debug_assertions)]
                 EntityName::from("generic_boost_pad"),
-                RaycastPickable,
-                On::<Pointer<Over>>::target_insert(HighlightedEntity),
-                On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
+                // RaycastPickable,
+                // On::<Pointer<Over>>::target_insert(HighlightedEntity),
+                // On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
             ));
         }
     }

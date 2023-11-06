@@ -51,7 +51,6 @@ fn spectator_init(cameras: Query<Entity, With<Spectator>>, mut settings: ResMut<
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn spectator_update(
     time: Res<Time>,
     keys: Res<Input<KeyCode>>,
@@ -91,14 +90,14 @@ fn spectator_update(
 
     // rotation
     {
-        let mouse_delta = motion.iter().fold(Vec2::ZERO, |acc, d| acc + d.delta) * -settings.sensitivity;
+        let mouse_delta = motion.read().fold(Vec2::ZERO, |acc, d| acc + d.delta) * -settings.sensitivity;
         let (x, y, _) = camera_transform.rotation.to_euler(EulerRot::YXZ);
 
         camera_transform.rotation = Quat::from_euler(
             EulerRot::YXZ,
             x + mouse_delta.x,
             // At 90 degrees, yaw gets misinterpeted as roll. Making 89 the limit fixes that.
-            (y + mouse_delta.y).clamp(-89.9f32.to_radians(), 89.9f32.to_radians()),
+            (y + mouse_delta.y).clamp(-89f32.to_radians(), 89f32.to_radians()),
             0.,
         );
     }
@@ -116,7 +115,7 @@ fn spectator_update(
             settings.alt_speed
         } else {
             settings.base_speed
-        } * time.delta_seconds();
+        };
 
         let delta_axial = (forward - backward) * speed;
         let delta_lateral = (right - left) * speed;
@@ -124,13 +123,14 @@ fn spectator_update(
 
         let mut forward = camera_transform.forward();
         forward.y = 0f32;
-        forward = forward.normalize_or_zero(); // fly fast even when look down/up
+        forward = forward.normalize(); // fly fast even when look down/up
 
-        let mut right = camera_transform.right();
-        right.y = 0f32; // more of a sanity check
+        let right = camera_transform.right();
         let up = Vec3::Y;
 
-        camera_transform.translation += forward * delta_axial + right * delta_lateral + up * delta_vertical;
+        let result = forward * delta_axial + right * delta_lateral + up * delta_vertical;
+
+        camera_transform.translation += result * time.delta_seconds();
     }
 
     motion.clear();

@@ -1,11 +1,11 @@
 use crate::spectator::*;
 use bevy::{core_pipeline::clear_color::ClearColorConfig, prelude::*};
-use bevy_atmosphere::prelude::*;
+// use bevy_atmosphere::prelude::*;
 use bevy_framepace::{FramepacePlugin, FramepaceSettings};
-use bevy_mod_picking::{
-    backends::raycast::{RaycastBackendSettings, RaycastPickable},
-    prelude::*,
-};
+// use bevy_mod_picking::{
+//     backends::raycast::{RaycastBackendSettings, RaycastPickable},
+//     prelude::*,
+// };
 use bevy_vector_shapes::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{f32::consts::PI, time::Duration};
@@ -98,8 +98,8 @@ fn setup(mut commands: Commands) {
             camera: Camera { hdr: true, ..default() },
             ..default()
         },
-        AtmosphereCamera::default(),
-        RaycastPickable,
+        // AtmosphereCamera::default(),
+        // RaycastPickable,
         Spectator,
     ));
     #[cfg(feature = "ssao")]
@@ -180,7 +180,7 @@ pub struct DaylightOffset {
 }
 
 fn daylight_cycle(
-    mut atmosphere: AtmosphereMut<Nishita>,
+    // mut atmosphere: AtmosphereMut<Nishita>,
     mut query: Query<(&mut Transform, &mut DirectionalLight), With<Sun>>,
     mut timer: ResMut<CycleTimer>,
     offset: Res<DaylightOffset>,
@@ -193,7 +193,7 @@ fn daylight_cycle(
         let t = (offset.offset + secs) / (200. / offset.day_speed);
 
         let sun_position = Vec3::new(-t.cos(), t.sin(), 0.);
-        atmosphere.sun_position = sun_position;
+        // atmosphere.sun_position = sun_position;
 
         if let Some((mut light_trans, mut directional)) = query.single_mut().into() {
             light_trans.translation = sun_position * 10_000_000.;
@@ -249,23 +249,23 @@ impl Plugin for CameraPlugin {
         .insert_resource(FramepaceSettings {
             limiter: bevy_framepace::Limiter::from_framerate(60.),
         })
-        .insert_resource(AtmosphereModel::default())
+        // .insert_resource(AtmosphereModel::default())
         .insert_resource(CycleTimer(Timer::new(
             Duration::from_secs_f32(1. / 60.),
             TimerMode::Repeating,
         )))
         .insert_resource(DaylightOffset::default())
-        .insert_resource(RaycastBackendSettings { require_markers: true })
+        // .insert_resource(RaycastBackendSettings { require_markers: true })
         .add_plugins((
             FramepacePlugin,
             SpectatorPlugin,
-            DefaultPickingPlugins,
-            AtmospherePlugin,
+            // DefaultPickingPlugins,
+            // AtmospherePlugin,
             Shape2dPlugin::default(),
             #[cfg(feature = "ssao")]
             TemporalAntiAliasPlugin,
         ))
-        .add_systems(Startup, setup)
-        .add_systems(Update, daylight_cycle);
+        .add_systems(Update, daylight_cycle)
+        .add_systems(Startup, setup);
     }
 }

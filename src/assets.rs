@@ -1,9 +1,8 @@
-use crate::mesh::MeshBuilder;
+use crate::mesh::{MeshBuilder, MeshBuilderError};
 use bevy::{
-    asset::{AssetLoader, LoadedAsset},
+    asset::{io::Reader, AssetLoader, AsyncReadExt},
     prelude::*,
 };
-use bevy_asset_loader::prelude::*;
 use byteorder::{LittleEndian, ReadBytesExt};
 use once_cell::sync::Lazy;
 use std::{
@@ -15,25 +14,44 @@ use std::{
     process::{Command, Stdio},
     sync::Mutex,
 };
+use thiserror::Error;
 use walkdir::WalkDir;
 
-#[derive(AssetCollection, Resource)]
+pub struct AssetsLoaderPlugin;
+
+impl Plugin for AssetsLoaderPlugin {
+    fn build(&self, app: &mut App) {
+        app.register_asset_loader(PskxLoader)
+            .init_asset::<Mesh>()
+            .add_systems(Startup, load_assets);
+    }
+}
+
+fn load_assets(mut commands: Commands, assets: Res<AssetServer>) {
+    commands.insert_resource(BoostPickupGlows {
+        small: assets.load("Pickup_Boost/StaticMesh3/BoostPad_Small_02_SM.pskx"),
+        large: assets.load("Pickup_Boost/StaticMesh3/BoostPad_Large_Glow.pskx"),
+    });
+
+    commands.insert_resource(BallAssets {
+        ball_diffuse: assets.load("Ball_Default_Textures/Texture2D/Ball_Default00_D.tga"),
+        // ball_normal: assets.load("Ball_Default_Textures/Texture2D/Ball_Default00_N.tga"),
+        // ball_occlude: assets.load("Ball_Default_Textures/Texture2D/Ball_Default00_RGB.tga"),
+        ball: assets.load("Ball_Default/StaticMesh3/Ball_DefaultBall00.pskx"),
+    });
+}
+
+#[derive(Resource)]
 pub struct BallAssets {
-    #[asset(path = "Ball_Default_Textures/Texture2D/Ball_Default00_D.tga")]
     pub ball_diffuse: Handle<Image>,
-    // #[asset(path = "Ball_Default_Textures/Texture2D/Ball_Default00_N.tga")]
     // pub ball_normal: Handle<Image>,
-    // #[asset(path = "Ball_Default_Textures/Texture2D/Ball_Default00_RGB.tga")]
     // pub ball_occlude: Handle<Image>,
-    #[asset(path = "Ball_Default/StaticMesh3/Ball_DefaultBall00.pskx")]
     pub ball: Handle<Mesh>,
 }
 
-#[derive(AssetCollection, Resource)]
+#[derive(Resource)]
 pub struct BoostPickupGlows {
-    #[asset(path = "Pickup_Boost/StaticMesh3/BoostPad_Small_02_SM.pskx")]
     pub small: Handle<Mesh>,
-    #[asset(path = "Pickup_Boost/StaticMesh3/BoostPad_Large_Glow.pskx")]
     pub large: Handle<Mesh>,
 }
 
@@ -374,7 +392,8 @@ fn get_default_material(name: &str) -> Option<StandardMaterial> {
     ]
     .contains(&name)
     {
-        StandardMaterial::from(Color::rgb(0.1, 0.6, 0.1))
+        // primary
+        StandardMaterial::from(Color::rgb_u8(45, 49, 66))
     } else if [
         "FutureTech.Materials.Reflective_Floor_V2_Mat",
         "Proto_BBall.Materials.BBall_Rubber_MIC",
@@ -383,7 +402,8 @@ fn get_default_material(name: &str) -> Option<StandardMaterial> {
     ]
     .contains(&name)
     {
-        StandardMaterial::from(Color::rgb(0.1, 0.1, 0.8))
+        // secondary
+        StandardMaterial::from(Color::rgb_u8(79, 93, 117))
     } else if [
         "FutureTech.Materials.Frame_01_MIC",
         "FutureTech.Materials.Frame_01_V2_Mat",
@@ -398,7 +418,8 @@ fn get_default_material(name: &str) -> Option<StandardMaterial> {
     .contains(&name)
         || name.contains("PaintedLine_MIC")
     {
-        StandardMaterial::from(Color::rgb(0.25, 0.1, 0.25))
+        // tertiary
+        StandardMaterial::from(Color::rgb_u8(55, 30, 48))
     } else if [
         "FutureTech.Materials.Frame_01_White_MIC",
         "Graybox_Assets.Materials.ForceFieldCage_Solid_Mat",
@@ -414,9 +435,9 @@ fn get_default_material(name: &str) -> Option<StandardMaterial> {
     ]
     .contains(&name)
     {
-        StandardMaterial::from(Color::rgb(0.8, 0.1, 0.1))
+        StandardMaterial::from(Color::rgb_u8(152, 29, 23))
     } else if name.contains("Advert") || name.contains("DarkMetal") {
-        StandardMaterial::from(Color::BISQUE)
+        StandardMaterial::from(Color::rgb_u8(191, 192, 192))
     } else {
         println!("Unknown material {name}");
         return None;
@@ -432,6 +453,9 @@ fn get_default_material(name: &str) -> Option<StandardMaterial> {
         material.cull_mode = None;
         material.double_sided = true;
     }
+
+    material.perceptual_roughness = 0.6;
+    material.reflectance = 0.2;
 
     Some(material)
 }
@@ -598,16 +622,32 @@ pub struct PskxLoader;
 
 pub const PSK_FILE_HEADER: &[u8] = b"ACTRHEAD\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
 
+#[non_exhaustive]
+#[derive(Debug, Error)]
+pub enum PskxLoaderError {
+    #[error("Couldn't read PSK(X): {0}")]
+    Io(#[from] io::Error),
+    #[error("Couldn't load PSK(X): {0}")]
+    MeshBuilder(#[from] MeshBuilderError),
+}
+
 impl AssetLoader for PskxLoader {
+    type Asset = Mesh;
+    type Settings = ();
+    type Error = PskxLoaderError;
+
     fn load<'a>(
         &'a self,
-        bytes: &'a [u8],
+        reader: &'a mut Reader,
+        _settings: &'a Self::Settings,
         load_context: &'a mut bevy::asset::LoadContext,
-    ) -> bevy::utils::BoxedFuture<'a, Result<(), bevy::asset::Error>> {
+    ) -> bevy::utils::BoxedFuture<'a, Result<Self::Asset, Self::Error>> {
         Box::pin(async move {
+            let mut bytes = Vec::new();
+            reader.read_to_end(&mut bytes).await?;
+
             let asset_name = load_context.path().file_name().and_then(OsStr::to_str).unwrap();
-            load_context.set_default_asset(LoadedAsset::new(MeshBuilder::from_pskx(asset_name, bytes)?.build_mesh(1.)));
-            Ok(())
+            Ok(MeshBuilder::from_pskx(asset_name, &bytes)?.build_mesh(1.))
         })
     }
 

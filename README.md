@@ -22,10 +22,12 @@ You can also choose to use the integrated support in RLGym 2.0 or to use the [RL
 
 ### Controls
 
+**NOTICE:** These controls WON'T WORK until you've toggle the menu off. The menu is open by default upon launch.
+
 | Key | Action |
 | --- | --- |
 | `Esc` | Toggle menu |
-| `1` - `6` | Change car camera focus |
+| `1` - `8` | Change car camera focus |
 | `9` | Director camera |
 | `0` | Free camera |
 | `W` | Move forward |
@@ -35,8 +37,9 @@ You can also choose to use the integrated support in RLGym 2.0 or to use the [RL
 | `Space` | Move up |
 | `Left Shift` | Move down |
 | `R` | State set ball towards goal |
+| `Left click`<sup>1</sup> | Drag cars and ball |
 
-With the menu toggled on, you can drag cars and the ball with your cursor to move them in the world.
+ <sup>1</sup> - Requires the menu toggle ON to free the cursor, you can drag cars and the ball to move them in the world. Requires the agent on the other side to support state setting.
 
 ## Modes
 

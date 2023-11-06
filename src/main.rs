@@ -11,15 +11,13 @@ mod udp;
 
 use bevy::{
     prelude::*,
-    render::render_resource::{AddressMode, SamplerDescriptor},
+    render::texture::{ImageAddressMode, ImageSamplerDescriptor},
     window::PresentMode,
 };
-use bevy_asset_loader::prelude::*;
 
 #[derive(Clone, Eq, PartialEq, Debug, Hash, Default, States)]
 enum LoadState {
     #[default]
-    Assets,
     Connect,
     FieldExtra,
     Despawn,
@@ -50,10 +48,10 @@ fn main() {
         .add_plugins(
             DefaultPlugins
                 .set(ImagePlugin {
-                    default_sampler: SamplerDescriptor {
-                        address_mode_u: AddressMode::Repeat,
-                        address_mode_v: AddressMode::Repeat,
-                        address_mode_w: AddressMode::Repeat,
+                    default_sampler: ImageSamplerDescriptor {
+                        address_mode_u: ImageAddressMode::Repeat,
+                        address_mode_v: ImageAddressMode::Repeat,
+                        address_mode_w: ImageAddressMode::Repeat,
                         ..default()
                     },
                 })
@@ -66,16 +64,14 @@ fn main() {
                     ..default()
                 }),
         )
-        .add_asset_loader(assets::PskxLoader)
+        .add_state::<LoadState>()
         .add_plugins((
             bevy::diagnostic::LogDiagnosticsPlugin::default(),
             camera::CameraPlugin,
             gui::DebugOverlayPlugin,
             mesh::FieldLoaderPlugin,
             udp::RocketSimPlugin,
+            assets::AssetsLoaderPlugin,
         ))
-        .add_loading_state(LoadingState::new(LoadState::Assets).continue_to_state(LoadState::Connect))
-        .add_collection_to_loading_state::<_, assets::BallAssets>(LoadState::Assets)
-        .add_collection_to_loading_state::<_, assets::BoostPickupGlows>(LoadState::Assets)
         .run();
 }

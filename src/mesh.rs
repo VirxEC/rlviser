@@ -13,13 +13,15 @@ use bevy::{
     window::PrimaryWindow,
 };
 use bevy_eventlistener::callbacks::ListenerInput;
-use bevy_mod_picking::{backends::raycast::RaycastPickable, prelude::*};
+// use bevy_mod_picking::{backends::raycast::RaycastPickable, prelude::*};
 use include_flate::flate;
 use serde::Deserialize;
 use std::{
     io::{self, Read},
     rc::Rc,
+    str::Utf8Error,
 };
+use thiserror::Error;
 
 #[cfg(debug_assertions)]
 use crate::camera::EntityName;
@@ -47,11 +49,11 @@ impl Plugin for FieldLoaderPlugin {
 #[derive(Event)]
 pub struct ChangeBallPos;
 
-impl From<ListenerInput<Pointer<Drag>>> for ChangeBallPos {
-    fn from(_: ListenerInput<Pointer<Drag>>) -> Self {
-        Self
-    }
-}
+// impl From<ListenerInput<Pointer<Drag>>> for ChangeBallPos {
+//     fn from(_: ListenerInput<Pointer<Drag>>) -> Self {
+//         Self
+//     }
+// }
 
 fn change_ball_pos(
     windows: Query<&Window, With<PrimaryWindow>>,
@@ -72,11 +74,11 @@ fn change_ball_pos(
 #[derive(Event)]
 pub struct ChangeCarPos(Entity);
 
-impl From<ListenerInput<Pointer<Drag>>> for ChangeCarPos {
-    fn from(event: ListenerInput<Pointer<Drag>>) -> Self {
-        Self(event.target)
-    }
-}
+// impl From<ListenerInput<Pointer<Drag>>> for ChangeCarPos {
+//     fn from(event: ListenerInput<Pointer<Drag>>) -> Self {
+//         Self(event.target)
+//     }
+// }
 
 fn change_car_pos(
     cars: Query<&Car>,
@@ -86,7 +88,7 @@ fn change_car_pos(
     mut events: EventReader<ChangeCarPos>,
     camera: Query<(&Camera, &GlobalTransform), With<PrimaryCamera>>,
 ) {
-    let Ok(car_id) = cars.get(events.iter().last().unwrap().0).map(|car| car.id()) else {
+    let Ok(car_id) = cars.get(events.read().last().unwrap().0).map(|car| car.id()) else {
         return;
     };
 
@@ -157,10 +159,10 @@ fn load_extra_field(
             },
             #[cfg(debug_assertions)]
             EntityName::from("ball"),
-            RaycastPickable,
-            On::<Pointer<Over>>::target_insert(HighlightedEntity),
-            On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
-            On::<Pointer<Drag>>::send_event::<ChangeBallPos>(),
+            // RaycastPickable,
+            // On::<Pointer<Over>>::target_insert(HighlightedEntity),
+            // On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
+            // On::<Pointer<Drag>>::send_event::<ChangeBallPos>(),
         ))
         .with_children(|parent| {
             parent.spawn(PointLightBundle {
@@ -263,7 +265,7 @@ struct Node {
     sub_nodes: Box<[Section]>,
 }
 
-const BLACKLIST_MESH_MATS: [&str; 7] = [
+const BLACKLIST_MESH_MATS: [&str; 8] = [
     "CollisionMeshes.Collision_Mat",
     "Stadium_Assets.Materials.Grass_LOD_Team1_MIC",
     "FutureTech.Materials.Glass_Projected_V2_Team2_MIC",
@@ -271,6 +273,7 @@ const BLACKLIST_MESH_MATS: [&str; 7] = [
     "Trees.Materials.TreeBark_Mat",
     "FutureTech.Materials.TrimLight_None_Mat",
     "City.Materials.Asphalt_Simple_MAT",
+    "Graybox_Assets.Materials.NetNonmove_Mat",
 ];
 
 #[derive(Resource, Default)]
@@ -423,9 +426,9 @@ fn process_info_node(
             },
             #[cfg(debug_assertions)]
             EntityName::from(format!("{} | {mat}", node.static_mesh)),
-            RaycastPickable,
-            On::<Pointer<Over>>::target_insert(HighlightedEntity),
-            On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
+            // RaycastPickable,
+            // On::<Pointer<Over>>::target_insert(HighlightedEntity),
+            // On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
             StaticFieldEntity,
         ));
     }
@@ -433,6 +436,14 @@ fn process_info_node(
 
 // Add name of mesh here if you want to view the colored vertices
 const INCLUDE_VERTEXCO: [&str; 2] = ["Goal_STD_Trim", "CrowdSpawnerMesh"];
+
+#[derive(Debug, Error)]
+pub enum MeshBuilderError {
+    #[error("Invalid file header in pskx file: {0}")]
+    FileHeader(#[from] io::Error),
+    #[error("Invalid chunk id in pskx file: {0}")]
+    ChunkId(#[from] Utf8Error),
+}
 
 /// A collection of inter-connected triangles.
 #[derive(Clone, Debug, Default)]
@@ -588,7 +599,7 @@ impl MeshBuilder {
     }
 
     /// Create a mesh from a Rocket League .pskx file
-    pub fn from_pskx(name: &str, bytes: &[u8]) -> Result<Self, bevy::asset::Error> {
+    pub fn from_pskx(name: &str, bytes: &[u8]) -> Result<Self, MeshBuilderError> {
         let mut cursor = io::Cursor::new(bytes);
 
         // ensure file header matches PSK_FILE_HEADER

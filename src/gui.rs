@@ -5,7 +5,7 @@ use bevy::{
 };
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
 use bevy_framepace::{FramepaceSettings, Limiter};
-use bevy_mod_picking::picking_core::PickingPluginsSettings;
+// use bevy_mod_picking::picking_core::PickingPluginsSettings;
 use std::{
     fs,
     io::{self, Write},
@@ -60,13 +60,12 @@ impl Plugin for DebugOverlayPlugin {
             .insert_resource(UiScale::default())
             .insert_resource(ShowTime::default())
             .insert_resource(Options::default_read_file())
+            .insert_resource(MenuFocused::default())
             .add_systems(
                 Update,
                 (
                     listen,
                     (
-                        #[cfg(debug_assertions)]
-                        debug_ui,
                         ui_system,
                         toggle_vsync,
                         toggle_ballcam,
@@ -74,20 +73,33 @@ impl Plugin for DebugOverlayPlugin {
                         update_daytime,
                         #[cfg(not(feature = "ssao"))]
                         update_msaa,
-                        write_settings_to_file,
-                        update_camera_state,
                         update_ui_scale,
                         // update_draw_distance,
-                    ),
+                    )
+                        .run_if(resource_equals(MenuFocused(true))),
+                    update_camera_state,
+                    write_settings_to_file,
                 )
                     .chain(),
             );
+
+        #[cfg(debug_assertions)]
+        app.add_systems(Update, debug_ui);
+    }
+}
+
+#[derive(Resource, PartialEq, Eq)]
+struct MenuFocused(pub bool);
+
+impl Default for MenuFocused {
+    #[inline]
+    fn default() -> Self {
+        Self(true)
     }
 }
 
 #[derive(Clone, Resource)]
 struct Options {
-    focus: bool,
     vsync: bool,
     uncap_fps: bool,
     fps_limit: f64,
@@ -107,7 +119,6 @@ impl Default for Options {
     #[inline]
     fn default() -> Self {
         Self {
-            focus: false,
             vsync: false,
             uncap_fps: false,
             fps_limit: 120.,
@@ -236,14 +247,15 @@ fn debug_ui(
     });
 }
 
-fn ui_system(mut options: ResMut<Options>, mut contexts: EguiContexts, time: Res<Time>) {
-    if options.focus {
-        return;
-    }
-
+fn ui_system(
+    mut menu_focused: ResMut<MenuFocused>,
+    mut options: ResMut<Options>,
+    mut contexts: EguiContexts,
+    time: Res<Time>,
+) {
     let ctx = contexts.ctx_mut();
 
-    let dt = time.raw_delta_seconds();
+    let dt = time.delta_seconds();
     if dt == 0.0 {
         return;
     }
@@ -257,21 +269,30 @@ fn ui_system(mut options: ResMut<Options>, mut contexts: EguiContexts, time: Res
     let avg_dt = history.iter().sum::<f32>() / history.len() as f32;
     let fps = 1. / avg_dt;
 
-    egui::Window::new("Menu (Esc to close)").show(ctx, |ui| {
-        ui.label(format!("FPS: {fps:.0}"));
-        ui.checkbox(&mut options.vsync, "vsync");
-        ui.checkbox(&mut options.uncap_fps, "Uncap FPS");
-        ui.add(egui::DragValue::new(&mut options.fps_limit).speed(5.).clamp_range(30..=600));
-        ui.checkbox(&mut options.show_time, "In-game time");
-        ui.checkbox(&mut options.ball_cam, "Ball cam");
-        ui.checkbox(&mut options.stop_day, "Stop day cycle");
-        ui.add(egui::Slider::new(&mut options.daytime, 0.0..=150.0).text("Daytime"));
-        ui.add(egui::Slider::new(&mut options.day_speed, 0.0..=10.0).text("Day speed"));
-        ui.add(egui::Slider::new(&mut options.ui_scale, 0.4..=4.0).text("UI scale"));
-        #[cfg(not(feature = "ssao"))]
-        ui.add(egui::Slider::new(&mut options.msaa, 0..=3).text("MSAA"));
-        // ui.add(egui::Slider::new(&mut options.draw_distance, 0..=4).text("Draw distance"));
-    });
+    egui::Window::new("Menu")
+        .auto_sized()
+        .open(&mut menu_focused.0)
+        .show(ctx, |ui| {
+            ui.label(format!("FPS: {fps:.0}"));
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut options.vsync, "vsync");
+                ui.checkbox(&mut options.uncap_fps, "Uncap FPS");
+                ui.add(egui::DragValue::new(&mut options.fps_limit).speed(5.).clamp_range(30..=600));
+            });
+            #[cfg(not(feature = "ssao"))]
+            ui.add(egui::Slider::new(&mut options.msaa, 0..=3).text("MSAA"));
+            ui.add_space(10.);
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut options.show_time, "In-game time");
+                ui.checkbox(&mut options.ball_cam, "Ball cam");
+            });
+            ui.add(egui::Slider::new(&mut options.ui_scale, 0.4..=4.0).text("UI scale"));
+            ui.add_space(10.);
+            ui.checkbox(&mut options.stop_day, "Stop day cycle");
+            ui.add(egui::Slider::new(&mut options.daytime, 0.0..=150.0).text("Daytime"));
+            ui.add(egui::Slider::new(&mut options.day_speed, 0.0..=10.0).text("Day speed"));
+            // ui.add(egui::Slider::new(&mut options.draw_distance, 0..=4).text("Draw distance"));
+        });
 }
 
 // fn update_draw_distance(
@@ -314,18 +335,10 @@ fn ui_system(mut options: ResMut<Options>, mut contexts: EguiContexts, time: Res
 // }
 
 fn toggle_ballcam(options: Res<Options>, mut ballcam: ResMut<BallCam>) {
-    if options.focus {
-        return;
-    }
-
     ballcam.enabled = options.ball_cam;
 }
 
 fn toggle_vsync(options: Res<Options>, mut framepace: ResMut<FramepaceSettings>) {
-    if options.focus {
-        return;
-    }
-
     framepace.limiter = if options.vsync {
         Limiter::Auto
     } else if options.uncap_fps {
@@ -337,10 +350,6 @@ fn toggle_vsync(options: Res<Options>, mut framepace: ResMut<FramepaceSettings>)
 
 #[cfg(not(feature = "ssao"))]
 fn update_msaa(options: Res<Options>, mut msaa: ResMut<Msaa>) {
-    if options.focus {
-        return;
-    }
-
     if options.msaa == msaa.samples() as u8 {
         return;
     }
@@ -355,18 +364,10 @@ fn update_msaa(options: Res<Options>, mut msaa: ResMut<Msaa>) {
 }
 
 fn toggle_show_time(options: Res<Options>, mut show_time: ResMut<ShowTime>) {
-    if options.focus {
-        return;
-    }
-
     show_time.enabled = options.show_time;
 }
 
 fn update_ui_scale(options: Res<Options>, mut ui_scale: ResMut<UiScale>) {
-    if options.focus {
-        return;
-    }
-
     if options.ui_scale == ui_scale.scale {
         return;
     }
@@ -375,10 +376,6 @@ fn update_ui_scale(options: Res<Options>, mut ui_scale: ResMut<UiScale>) {
 }
 
 fn update_daytime(options: Res<Options>, mut daytime: ResMut<DaylightOffset>) {
-    if options.focus {
-        return;
-    }
-
     daytime.offset = options.daytime * 10. / options.day_speed;
     daytime.stop_day = options.stop_day;
     daytime.day_speed = options.day_speed;
@@ -419,28 +416,33 @@ fn update_camera_state(mut primary_camera: Query<&mut PrimaryCamera>, options: R
 
 fn listen(
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
-    mut picking_state: ResMut<PickingPluginsSettings>,
+    // mut picking_state: ResMut<PickingPluginsSettings>,
     key: Res<Input<KeyCode>>,
+    mut menu_focused: ResMut<MenuFocused>,
+    mut last_focus: Local<bool>,
     mut options: ResMut<Options>,
 ) {
     if key.just_pressed(KeyCode::Escape) {
-        options.focus = !options.focus;
-
-        let mut window = windows.single_mut();
-        window.cursor.grab_mode = if options.focus {
-            if cfg!(windows) {
-                CursorGrabMode::Confined
-            } else {
-                CursorGrabMode::Locked
-            }
-        } else {
-            CursorGrabMode::None
-        };
-        window.cursor.visible = !options.focus;
-        picking_state.enable = !options.focus;
+        menu_focused.0 = !menu_focused.0;
     }
 
-    if !options.focus {
+    if *last_focus != menu_focused.0 {
+        let mut window = windows.single_mut();
+        window.cursor.grab_mode = if menu_focused.0 {
+            CursorGrabMode::None
+        } else if cfg!(windows) {
+            CursorGrabMode::Confined
+        } else {
+            CursorGrabMode::Locked
+        };
+
+        window.cursor.visible = menu_focused.0;
+        // picking_state.enable = !game_focused.0;
+    }
+
+    *last_focus = menu_focused.0;
+
+    if menu_focused.0 {
         return;
     }
 
@@ -456,6 +458,10 @@ fn listen(
         options.camera_state = PrimaryCamera::TrackCar(5);
     } else if key.just_pressed(KeyCode::Key6) || key.just_pressed(KeyCode::Numpad2) {
         options.camera_state = PrimaryCamera::TrackCar(6);
+    } else if key.just_pressed(KeyCode::Key7) || key.just_pressed(KeyCode::Numpad7) {
+        options.camera_state = PrimaryCamera::TrackCar(7);
+    } else if key.just_pressed(KeyCode::Key8) || key.just_pressed(KeyCode::Numpad8) {
+        options.camera_state = PrimaryCamera::TrackCar(8);
     } else if key.just_pressed(KeyCode::Key9) || key.just_pressed(KeyCode::Numpad9) {
         options.camera_state = PrimaryCamera::Director(0);
     } else if key.just_pressed(KeyCode::Key0) || key.just_pressed(KeyCode::Numpad0) {
