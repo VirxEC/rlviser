@@ -4,7 +4,7 @@ use bevy::{
     pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap},
     prelude::*,
 };
-// use bevy_atmosphere::prelude::*;
+use bevy_atmosphere::prelude::*;
 use bevy_framepace::{FramepacePlugin, FramepaceSettings};
 use bevy_mod_picking::{
     backends::raycast::{RaycastBackendSettings, RaycastPickable},
@@ -84,7 +84,7 @@ fn setup(mut commands: Commands) {
             camera: Camera { hdr: true, ..default() },
             ..default()
         },
-        // AtmosphereCamera::default(),
+        AtmosphereCamera::default(),
         RaycastPickable,
         Spectator,
     ));
@@ -166,7 +166,7 @@ pub struct DaylightOffset {
 }
 
 fn daylight_cycle(
-    // mut atmosphere: AtmosphereMut<Nishita>,
+    mut atmosphere: AtmosphereMut<Nishita>,
     mut query: Query<(&mut Transform, &mut DirectionalLight), With<Sun>>,
     mut timer: ResMut<CycleTimer>,
     offset: Res<DaylightOffset>,
@@ -179,7 +179,7 @@ fn daylight_cycle(
         let t = (offset.offset + secs) / (200. / offset.day_speed);
 
         let sun_position = Vec3::new(-t.cos(), t.sin(), 0.);
-        // atmosphere.sun_position = sun_position;
+        atmosphere.sun_position = sun_position;
 
         if let Some((mut light_trans, mut directional)) = query.single_mut().into() {
             light_trans.translation = sun_position * 10_000_000.;
@@ -235,7 +235,7 @@ impl Plugin for CameraPlugin {
         .insert_resource(FramepaceSettings {
             limiter: bevy_framepace::Limiter::from_framerate(60.),
         })
-        // .insert_resource(AtmosphereModel::default())
+        .insert_resource(AtmosphereModel::default())
         .insert_resource(CycleTimer(Timer::new(
             Duration::from_secs_f32(1. / 60.),
             TimerMode::Repeating,
@@ -247,7 +247,7 @@ impl Plugin for CameraPlugin {
             FramepacePlugin,
             SpectatorPlugin,
             DefaultPickingPlugins,
-            // AtmospherePlugin,
+            AtmospherePlugin,
             Shape2dPlugin::default(),
             #[cfg(feature = "ssao")]
             TemporalAntiAliasPlugin,
