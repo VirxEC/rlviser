@@ -6,7 +6,7 @@ A light-weight visualizer for [rocketsim-rs](https://github.com/VirxEC/rocketsim
 
 Any language can communicate with the visualizer by sending UDP packets in the correct format, but rocketsim-rs has a `GameState.to_bytes()` function that does this automatically.
 
-![rlviser standard](https://github.com/VirxEC/rlviser/assets/35614515/5dbae568-2ecb-4c5d-a645-81c8f171f146)
+![image](https://github.com/VirxEC/rlviser/assets/35614515/a13175ed-ae3c-47b7-87e9-5bd67014648c)
 
 ### First-time Launch Setup
 
@@ -45,4 +45,5 @@ You can also choose to use the integrated support in RLGym 2.0 or to use the [RL
 
 Currently, both standard soccer and hoops are supported.
 
-![rlviser hoops](https://github.com/VirxEC/rlviser/assets/35614515/20086dfa-e4c9-47c3-8900-91b172371e0a)
+![image](https://github.com/VirxEC/rlviser/assets/35614515/6543f8d8-8cfd-430c-8009-1435e649d9cb)
+
