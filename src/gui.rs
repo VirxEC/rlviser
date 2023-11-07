@@ -76,7 +76,6 @@ impl Plugin for DebugOverlayPlugin {
                         update_msaa,
                         update_ui_scale,
                         update_shadows,
-                        // update_draw_distance,
                     )
                         .run_if(resource_equals(MenuFocused(true))),
                     update_camera_state,
@@ -115,7 +114,6 @@ struct Options {
     show_time: bool,
     ui_scale: f32,
     shadows: usize,
-    // draw_distance: u8,
 }
 
 impl Default for Options {
@@ -135,7 +133,6 @@ impl Default for Options {
             show_time: true,
             ui_scale: 1.,
             shadows: 0,
-            // draw_distance: 3,
         }
     }
 }
@@ -261,7 +258,7 @@ fn ui_system(
     time: Res<Time>,
 ) {
     const MSAA_NAMES: [&str; 4] = ["Off", "2x", "4x", "8x"];
-    const SHADOW_NAMES: [&str; 4] = ["Off", "0.5x", "1x", "2x"];
+    const SHADOW_NAMES: [&str; 4] = ["Off", "0.5x", "1x", "1.5x"];
     let ctx = contexts.ctx_mut();
 
     let dt = time.delta_seconds();
@@ -301,7 +298,6 @@ fn ui_system(
                     .width(40.)
                     .show_index(ui, &mut options.msaa, MSAA_NAMES.len(), |i| MSAA_NAMES[i]);
             });
-            // ui.add(egui::Slider::new(&mut options.draw_distance, 0..=4).text("Draw distance"));
 
             ui.add_space(10.);
 
@@ -319,45 +315,6 @@ fn ui_system(
         });
 }
 
-// fn update_draw_distance(
-//     options: Res<Options>,
-//     mut commands: Commands,
-//     query: Query<(&PrimaryCamera, &Projection, &Transform, Entity)>,
-// ) {
-//     let draw_distance = match options.draw_distance {
-//         0 => 15000.,
-//         1 => 50000.,
-//         2 => 200000.,
-//         3 => 500000.,
-//         4 => 2000000.,
-//         _ => unreachable!(),
-//     };
-
-//     let (primary_camera, projection, transform, entity) = query.single();
-
-//     if projection.far() == draw_distance {
-//         return;
-//     }
-
-//     info!("Setting draw distance to {draw_distance}");
-//     commands.entity(entity).despawn_recursive();
-
-//     commands
-//         .spawn((
-//             *primary_camera,
-//             Camera3dBundle {
-//                 projection: PerspectiveProjection {
-//                     far: draw_distance,
-//                     ..default()
-//                 }
-//                 .into(),
-//                 transform: *transform,
-//                 ..default()
-//             },
-//         ))
-//         .insert((AtmosphereCamera::default(), Spectator, RaycastPickCamera::default()));
-// }
-
 fn update_shadows(
     options: Res<Options>,
     mut query: Query<&mut DirectionalLight, With<Sun>>,
@@ -367,7 +324,7 @@ fn update_shadows(
     shadow_map.size = 2048
         * match options.shadows {
             2 => 2,
-            3 => 4,
+            3 => 3,
             _ => 1,
         };
 }

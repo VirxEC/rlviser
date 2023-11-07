@@ -60,7 +60,7 @@ fn setup(mut commands: Commands) {
                 num_cascades: 4,
                 minimum_distance: 1.,
                 maximum_distance: 10000.0,
-                first_cascade_far_bound: 4000.0,
+                first_cascade_far_bound: 3000.0,
                 ..default()
             }
             .into(),
