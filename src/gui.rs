@@ -1,11 +1,12 @@
-use crate::camera::{DaylightOffset, PrimaryCamera};
+use crate::camera::{DaylightOffset, PrimaryCamera, Sun};
 use bevy::{
+    pbr::DirectionalLightShadowMap,
     prelude::*,
     window::{CursorGrabMode, PrimaryWindow},
 };
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
 use bevy_framepace::{FramepaceSettings, Limiter};
-// use bevy_mod_picking::picking_core::PickingPluginsSettings;
+use bevy_mod_picking::picking_core::PickingPluginsSettings;
 use std::{
     fs,
     io::{self, Write},
@@ -74,6 +75,7 @@ impl Plugin for DebugOverlayPlugin {
                         #[cfg(not(feature = "ssao"))]
                         update_msaa,
                         update_ui_scale,
+                        update_shadows,
                         // update_draw_distance,
                     )
                         .run_if(resource_equals(MenuFocused(true))),
@@ -108,10 +110,11 @@ struct Options {
     stop_day: bool,
     daytime: f32,
     day_speed: f32,
-    msaa: u8,
+    msaa: usize,
     camera_state: PrimaryCamera,
     show_time: bool,
     ui_scale: f32,
+    shadows: usize,
     // draw_distance: u8,
 }
 
@@ -131,6 +134,7 @@ impl Default for Options {
             camera_state: PrimaryCamera::Spectator,
             show_time: true,
             ui_scale: 1.,
+            shadows: 0,
             // draw_distance: 3,
         }
     }
@@ -172,6 +176,7 @@ impl Options {
                 "camera_state" => options.camera_state = serde_json::from_str(value).unwrap(),
                 "show_time" => options.show_time = value.parse().unwrap(),
                 "ui_scale" => options.ui_scale = value.parse().unwrap(),
+                "shadows" => options.shadows = value.parse().unwrap(),
                 _ => println!("Unknown key {key} with value {value}"),
             }
         }
@@ -203,6 +208,7 @@ impl Options {
         file.write_fmt(format_args!("camera_state={}\n", serde_json::to_string(&self.camera_state)?))?;
         file.write_fmt(format_args!("show_time={}\n", self.show_time))?;
         file.write_fmt(format_args!("ui_scale={}\n", self.ui_scale))?;
+        file.write_fmt(format_args!("shadows={}\n", self.shadows))?;
 
         Ok(())
     }
@@ -220,6 +226,7 @@ impl Options {
             || self.camera_state != other.camera_state
             || self.show_time != other.show_time
             || self.ui_scale != other.ui_scale
+            || self.shadows != other.shadows
     }
 }
 
@@ -253,6 +260,8 @@ fn ui_system(
     mut contexts: EguiContexts,
     time: Res<Time>,
 ) {
+    const MSAA_NAMES: [&str; 4] = ["Off", "2x", "4x", "8x"];
+    const SHADOW_NAMES: [&str; 4] = ["Off", "0.5x", "1x", "2x"];
     let ctx = contexts.ctx_mut();
 
     let dt = time.delta_seconds();
@@ -279,19 +288,34 @@ fn ui_system(
                 ui.checkbox(&mut options.uncap_fps, "Uncap FPS");
                 ui.add(egui::DragValue::new(&mut options.fps_limit).speed(5.).clamp_range(30..=600));
             });
-            #[cfg(not(feature = "ssao"))]
-            ui.add(egui::Slider::new(&mut options.msaa, 0..=3).text("MSAA"));
+
+            ui.horizontal(|ui| {
+                egui::ComboBox::from_label("Shadows").width(50.).show_index(
+                    ui,
+                    &mut options.shadows,
+                    SHADOW_NAMES.len(),
+                    |i| SHADOW_NAMES[i],
+                );
+                #[cfg(not(feature = "ssao"))]
+                egui::ComboBox::from_label("MSAA")
+                    .width(40.)
+                    .show_index(ui, &mut options.msaa, MSAA_NAMES.len(), |i| MSAA_NAMES[i]);
+            });
+            // ui.add(egui::Slider::new(&mut options.draw_distance, 0..=4).text("Draw distance"));
+
             ui.add_space(10.);
+
             ui.horizontal(|ui| {
                 ui.checkbox(&mut options.show_time, "In-game time");
                 ui.checkbox(&mut options.ball_cam, "Ball cam");
             });
             ui.add(egui::Slider::new(&mut options.ui_scale, 0.4..=4.0).text("UI scale"));
+
             ui.add_space(10.);
+
             ui.checkbox(&mut options.stop_day, "Stop day cycle");
             ui.add(egui::Slider::new(&mut options.daytime, 0.0..=150.0).text("Daytime"));
             ui.add(egui::Slider::new(&mut options.day_speed, 0.0..=10.0).text("Day speed"));
-            // ui.add(egui::Slider::new(&mut options.draw_distance, 0..=4).text("Draw distance"));
         });
 }
 
@@ -334,6 +358,20 @@ fn ui_system(
 //         .insert((AtmosphereCamera::default(), Spectator, RaycastPickCamera::default()));
 // }
 
+fn update_shadows(
+    options: Res<Options>,
+    mut query: Query<&mut DirectionalLight, With<Sun>>,
+    mut shadow_map: ResMut<DirectionalLightShadowMap>,
+) {
+    query.single_mut().shadows_enabled = options.shadows != 0;
+    shadow_map.size = 2048
+        * match options.shadows {
+            2 => 2,
+            3 => 4,
+            _ => 1,
+        };
+}
+
 fn toggle_ballcam(options: Res<Options>, mut ballcam: ResMut<BallCam>) {
     ballcam.enabled = options.ball_cam;
 }
@@ -350,7 +388,8 @@ fn toggle_vsync(options: Res<Options>, mut framepace: ResMut<FramepaceSettings>)
 
 #[cfg(not(feature = "ssao"))]
 fn update_msaa(options: Res<Options>, mut msaa: ResMut<Msaa>) {
-    if options.msaa == msaa.samples() as u8 {
+    const MSAA_SAMPLES: [u32; 4] = [1, 2, 4, 8];
+    if MSAA_SAMPLES[options.msaa] == msaa.samples() {
         return;
     }
 
@@ -416,7 +455,7 @@ fn update_camera_state(mut primary_camera: Query<&mut PrimaryCamera>, options: R
 
 fn listen(
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
-    // mut picking_state: ResMut<PickingPluginsSettings>,
+    mut picking_state: ResMut<PickingPluginsSettings>,
     key: Res<Input<KeyCode>>,
     mut menu_focused: ResMut<MenuFocused>,
     mut last_focus: Local<bool>,
@@ -437,7 +476,7 @@ fn listen(
         };
 
         window.cursor.visible = menu_focused.0;
-        // picking_state.enable = !game_focused.0;
+        picking_state.enable = menu_focused.0;
     }
 
     *last_focus = menu_focused.0;

@@ -8,12 +8,13 @@ use crate::{
 };
 use bevy::{
     math::{Vec3A, Vec3Swizzles},
+    pbr::{NotShadowCaster, NotShadowReceiver},
     prelude::*,
     render::mesh::{self, VertexAttributeValues},
     window::PrimaryWindow,
 };
 use bevy_eventlistener::callbacks::ListenerInput;
-// use bevy_mod_picking::{backends::raycast::RaycastPickable, prelude::*};
+use bevy_mod_picking::{backends::raycast::RaycastPickable, prelude::*};
 use include_flate::flate;
 use serde::Deserialize;
 use std::{
@@ -49,11 +50,11 @@ impl Plugin for FieldLoaderPlugin {
 #[derive(Event)]
 pub struct ChangeBallPos;
 
-// impl From<ListenerInput<Pointer<Drag>>> for ChangeBallPos {
-//     fn from(_: ListenerInput<Pointer<Drag>>) -> Self {
-//         Self
-//     }
-// }
+impl From<ListenerInput<Pointer<Drag>>> for ChangeBallPos {
+    fn from(_: ListenerInput<Pointer<Drag>>) -> Self {
+        Self
+    }
+}
 
 fn change_ball_pos(
     windows: Query<&Window, With<PrimaryWindow>>,
@@ -74,11 +75,11 @@ fn change_ball_pos(
 #[derive(Event)]
 pub struct ChangeCarPos(Entity);
 
-// impl From<ListenerInput<Pointer<Drag>>> for ChangeCarPos {
-//     fn from(event: ListenerInput<Pointer<Drag>>) -> Self {
-//         Self(event.target)
-//     }
-// }
+impl From<ListenerInput<Pointer<Drag>>> for ChangeCarPos {
+    fn from(event: ListenerInput<Pointer<Drag>>) -> Self {
+        Self(event.target)
+    }
+}
 
 fn change_car_pos(
     cars: Query<&Car>,
@@ -159,10 +160,10 @@ fn load_extra_field(
             },
             #[cfg(debug_assertions)]
             EntityName::from("ball"),
-            // RaycastPickable,
-            // On::<Pointer<Over>>::target_insert(HighlightedEntity),
-            // On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
-            // On::<Pointer<Drag>>::send_event::<ChangeBallPos>(),
+            RaycastPickable,
+            On::<Pointer<Over>>::target_insert(HighlightedEntity),
+            On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
+            On::<Pointer<Drag>>::send_event::<ChangeBallPos>(),
         ))
         .with_children(|parent| {
             parent.spawn(PointLightBundle {
@@ -275,6 +276,8 @@ const BLACKLIST_MESH_MATS: [&str; 8] = [
     "City.Materials.Asphalt_Simple_MAT",
     "Graybox_Assets.Materials.NetNonmove_Mat",
 ];
+
+const NO_SHADOWS: [&str; 1] = ["Proto_BBall.SM.Net_Collision"];
 
 #[derive(Resource, Default)]
 pub struct LargeBoostPadLocRots {
@@ -417,7 +420,7 @@ fn process_info_node(
                 .push(node.rotation.map(|r| r[1]).unwrap_or_default());
         }
 
-        commands.spawn((
+        let mut obj = commands.spawn((
             PbrBundle {
                 mesh,
                 material,
@@ -426,11 +429,15 @@ fn process_info_node(
             },
             #[cfg(debug_assertions)]
             EntityName::from(format!("{} | {mat}", node.static_mesh)),
-            // RaycastPickable,
-            // On::<Pointer<Over>>::target_insert(HighlightedEntity),
-            // On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
+            RaycastPickable,
+            On::<Pointer<Over>>::target_insert(HighlightedEntity),
+            On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
             StaticFieldEntity,
         ));
+
+        if NO_SHADOWS.contains(&node.static_mesh.as_ref()) {
+            obj.insert(NotShadowCaster).insert(NotShadowReceiver);
+        }
     }
 }
 

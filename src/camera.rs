@@ -1,11 +1,15 @@
 use crate::spectator::*;
-use bevy::{core_pipeline::clear_color::ClearColorConfig, prelude::*};
+use bevy::{
+    core_pipeline::clear_color::ClearColorConfig,
+    pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap},
+    prelude::*,
+};
 // use bevy_atmosphere::prelude::*;
 use bevy_framepace::{FramepacePlugin, FramepaceSettings};
-// use bevy_mod_picking::{
-//     backends::raycast::{RaycastBackendSettings, RaycastPickable},
-//     prelude::*,
-// };
+use bevy_mod_picking::{
+    backends::raycast::{RaycastBackendSettings, RaycastPickable},
+    prelude::*,
+};
 use bevy_vector_shapes::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{f32::consts::PI, time::Duration};
@@ -17,7 +21,7 @@ use bevy::{
 };
 
 #[derive(Component)]
-struct Sun;
+pub struct Sun;
 
 #[derive(Resource)]
 struct CycleTimer(Timer);
@@ -44,29 +48,6 @@ pub const BOOST_INDICATOR_FONT_SIZE: f32 = 60.0;
 pub const TIME_DISPLAY_POS: Vec2 = Vec2::new(0., 60.);
 
 fn setup(mut commands: Commands) {
-    // lights in the goals
-    commands.spawn(PointLightBundle {
-        point_light: PointLight {
-            range: 10000.,
-            radius: 100.,
-            intensity: 100_000.,
-            ..default()
-        },
-        transform: Transform::from_xyz(0., 300., 5500.),
-        ..default()
-    });
-
-    commands.spawn(PointLightBundle {
-        point_light: PointLight {
-            range: 10000.,
-            radius: 100.,
-            intensity: 100_000.,
-            ..default()
-        },
-        transform: Transform::from_xyz(0., 300., -5500.),
-        ..default()
-    });
-
     commands.insert_resource(AmbientLight {
         brightness: 0.3,
         ..default()
@@ -74,10 +55,15 @@ fn setup(mut commands: Commands) {
 
     commands.spawn((
         DirectionalLightBundle {
-            directional_light: DirectionalLight {
-                shadows_enabled: cfg!(feature = "ssao"),
+            directional_light: DirectionalLight::default(),
+            cascade_shadow_config: CascadeShadowConfigBuilder {
+                num_cascades: 4,
+                minimum_distance: 1.,
+                maximum_distance: 10000.0,
+                first_cascade_far_bound: 4000.0,
                 ..default()
-            },
+            }
+            .into(),
             ..default()
         },
         Sun,
@@ -99,7 +85,7 @@ fn setup(mut commands: Commands) {
             ..default()
         },
         // AtmosphereCamera::default(),
-        // RaycastPickable,
+        RaycastPickable,
         Spectator,
     ));
     #[cfg(feature = "ssao")]
@@ -255,11 +241,12 @@ impl Plugin for CameraPlugin {
             TimerMode::Repeating,
         )))
         .insert_resource(DaylightOffset::default())
-        // .insert_resource(RaycastBackendSettings { require_markers: true })
+        .insert_resource(RaycastBackendSettings { require_markers: true })
+        .insert_resource(DirectionalLightShadowMap::default())
         .add_plugins((
             FramepacePlugin,
             SpectatorPlugin,
-            // DefaultPickingPlugins,
+            DefaultPickingPlugins,
             // AtmospherePlugin,
             Shape2dPlugin::default(),
             #[cfg(feature = "ssao")]

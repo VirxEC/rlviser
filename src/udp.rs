@@ -10,10 +10,11 @@ use crate::{
 use bevy::{
     app::AppExit,
     math::{Mat3A, Vec3A, Vec3Swizzles},
+    pbr::{NotShadowCaster, NotShadowReceiver},
     prelude::*,
     window::PrimaryWindow,
 };
-// use bevy_mod_picking::{backends::raycast::RaycastPickable, prelude::*};
+use bevy_mod_picking::{backends::raycast::RaycastPickable, prelude::*};
 use bevy_vector_shapes::prelude::*;
 use std::{cmp::Ordering, f32::consts::PI, fs, net::UdpSocket, time::Duration};
 
@@ -195,10 +196,10 @@ fn spawn_car(
             },
             #[cfg(debug_assertions)]
             EntityName::from(name),
-            // RaycastPickable,
-            // On::<Pointer<Over>>::target_insert(HighlightedEntity),
-            // On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
-            // On::<Pointer<Drag>>::send_event::<ChangeCarPos>(),
+            RaycastPickable,
+            On::<Pointer<Over>>::target_insert(HighlightedEntity),
+            On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
+            On::<Pointer<Drag>>::send_event::<ChangeCarPos>(),
         ))
         .with_children(|parent| {
             const CAR_BOOST_LENGTH: f32 = 50.;
@@ -616,9 +617,11 @@ fn update_pads(
                 },
                 #[cfg(debug_assertions)]
                 EntityName::from("generic_boost_pad"),
-                // RaycastPickable,
-                // On::<Pointer<Over>>::target_insert(HighlightedEntity),
-                // On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
+                RaycastPickable,
+                On::<Pointer<Over>>::target_insert(HighlightedEntity),
+                On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
+                NotShadowCaster,
+                NotShadowReceiver,
             ));
         }
     }
