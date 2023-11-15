@@ -1,4 +1,4 @@
-use crate::spectator::*;
+use crate::spectator::{Spectator, SpectatorPlugin, SpectatorSettings};
 use bevy::{
     core_pipeline::clear_color::ClearColorConfig,
     pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap},

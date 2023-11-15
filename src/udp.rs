@@ -544,7 +544,7 @@ fn update_pads(
                     .find(|(_, loc)| loc.distance_squared(pad.position.xy()) < 25.)
                     .map(|(i, _)| large_boost_pad_loc_rots.rots[i]);
                 transform.rotate_y(rotation.unwrap_or_default().to_radians());
-                if state.game_mode == GameMode::Soccer {
+                if state.game_mode == GameMode::Soccar {
                     transform.translation.y += 2.6;
                 } else if state.game_mode == GameMode::Hoops {
                     transform.translation.y += 5.2;
@@ -552,7 +552,7 @@ fn update_pads(
 
                 pad_glows.large.clone()
             } else {
-                if state.game_mode == GameMode::Soccer {
+                if state.game_mode == GameMode::Soccar {
                     if transform.translation.z > 10. {
                         transform.rotate_y(PI);
                     }

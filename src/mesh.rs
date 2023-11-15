@@ -89,7 +89,7 @@ fn change_car_pos(
     mut events: EventReader<ChangeCarPos>,
     camera: Query<(&Camera, &GlobalTransform), With<PrimaryCamera>>,
 ) {
-    let Ok(car_id) = cars.get(events.read().last().unwrap().0).map(|car| car.id()) else {
+    let Ok(car_id) = cars.get(events.read().last().unwrap().0).map(Car::id) else {
         return;
     };
 

@@ -6,7 +6,7 @@ use bevy::{
 #[repr(u8)]
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum GameMode {
-    Soccer = 0,
+    Soccar = 0,
     Hoops,
     HeatSeeker,
     Snowday,

@@ -19,7 +19,7 @@ struct ByteReader<'a> {
 
 impl<'a> ByteReader<'a> {
     #[inline]
-    pub fn new(bytes: &'a [u8]) -> Self {
+    pub const fn new(bytes: &'a [u8]) -> Self {
         Self { idx: 0, bytes }
     }
 
@@ -53,7 +53,7 @@ impl FromBytesExact for f32 {
 impl FromBytes for f32 {
     #[inline]
     fn from_bytes(bytes: &[u8]) -> Self {
-        f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
+        Self::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
     }
 }
 
@@ -64,7 +64,7 @@ impl FromBytesExact for u32 {
 impl FromBytes for u32 {
     #[inline]
     fn from_bytes(bytes: &[u8]) -> Self {
-        u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
+        Self::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
     }
 }
 
@@ -75,7 +75,7 @@ impl FromBytesExact for u64 {
 impl FromBytes for u64 {
     #[inline]
     fn from_bytes(bytes: &[u8]) -> Self {
-        u64::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7]])
+        Self::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7]])
     }
 }
 
@@ -87,8 +87,8 @@ impl FromBytes for Team {
     #[inline]
     fn from_bytes(bytes: &[u8]) -> Self {
         match bytes[0] {
-            0 => Team::Blue,
-            1 => Team::Orange,
+            0 => Self::Blue,
+            1 => Self::Orange,
             _ => unreachable!(),
         }
     }
@@ -102,11 +102,11 @@ impl FromBytes for GameMode {
     #[inline]
     fn from_bytes(bytes: &[u8]) -> Self {
         match bytes[0] {
-            0 => GameMode::Soccer,
-            1 => GameMode::Hoops,
-            2 => GameMode::HeatSeeker,
-            3 => GameMode::Snowday,
-            4 => GameMode::TheVoid,
+            0 => Self::Soccar,
+            1 => Self::Hoops,
+            2 => Self::HeatSeeker,
+            3 => Self::Snowday,
+            4 => Self::TheVoid,
             _ => unreachable!(),
         }
     }
@@ -119,7 +119,7 @@ impl FromBytesExact for Vec3 {
 impl FromBytes for Vec3 {
     fn from_bytes(bytes: &[u8]) -> Self {
         let mut reader = ByteReader::new(bytes);
-        Vec3::new(reader.read(), reader.read(), reader.read())
+        Self::new(reader.read(), reader.read(), reader.read())
     }
 }
 
@@ -153,7 +153,7 @@ struct ByteWriter<const N: usize> {
 
 impl<const N: usize> ByteWriter<N> {
     #[inline]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self { idx: 0, bytes: [0; N] }
     }
 
@@ -171,7 +171,7 @@ impl<const N: usize> ByteWriter<N> {
 
 impl ToBytesExact<{ Self::NUM_BYTES }> for bool {
     fn to_bytes(&self) -> [u8; Self::NUM_BYTES] {
-        [*self as u8]
+        [u8::from(*self)]
     }
 }
 
@@ -392,7 +392,7 @@ impl GameState {
 
     #[inline]
     pub fn read_game_mode(bytes: &[u8]) -> GameMode {
-        GameMode::from_bytes(&bytes[u64::NUM_BYTES + f32::NUM_BYTES..u64::NUM_BYTES + f32::NUM_BYTES + 1])
+        GameMode::from_bytes(&bytes[(u64::NUM_BYTES + f32::NUM_BYTES)..=(u64::NUM_BYTES + f32::NUM_BYTES)])
     }
 
     #[inline]
