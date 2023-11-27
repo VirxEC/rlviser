@@ -7,7 +7,7 @@ publish = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bevy_atmosphere = "0.8.0"
+bevy_atmosphere = "0.8.1"
 bevy_egui = "0.23.0"
 bevy_eventlistener = "0.6.0"
 bevy_framepace = { version = "0.14.0", default-features = false }
@@ -51,3 +51,6 @@ strip = false
 [profile.tiny]
 inherits = "release"
 opt-level = "s"
+
+[lints.clippy]
+all = "warn"
