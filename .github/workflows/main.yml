@@ -37,7 +37,8 @@ jobs:
           args: "--release"
       - name: Upload artifact
         uses: actions/upload-artifact@v3.1.3
-        with: "target/rlviser*"
+        with:
+          path: "target/rlviser*"
   publish:
     needs: [release]
     name: Publish
