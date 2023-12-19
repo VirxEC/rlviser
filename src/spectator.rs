@@ -1,4 +1,4 @@
-//! Copied over from bevy_spectator because base functions aren't public and changes are required to make it work nice
+//! Copied over from `bevy_spectator` because base functions aren't public and changes are required to make it work nice
 
 use crate::camera::PrimaryCamera;
 use bevy::{

@@ -87,9 +87,8 @@ trait ToBevyMat {
 impl ToBevyMat for Mat3A {
     #[inline]
     fn to_bevy(self) -> Quat {
-        let mut quat = Vec4::from(Quat::from_mat3a(&self)).xzyw();
-        quat.w *= -1.;
-        Quat::from_vec4(quat)
+        let quat = Quat::from_mat3a(&self);
+        Quat::from_xyzw(quat.x, quat.z, quat.y, -quat.w)
     }
 }
 
@@ -463,11 +462,14 @@ fn update_car(
     };
 
     for (mut car_transform, car, children) in &mut cars {
-        let car_state = &state.cars.iter().find(|car_info| car.0 == car_info.id).unwrap().state;
-        car_transform.translation = car_state.pos.to_bevy();
-        car_transform.rotation = car_state.rot_mat.to_bevy();
+        let Some(target_car) = state.cars.iter().find(|car_info| car.0 == car_info.id) else {
+            continue;
+        };
 
-        let is_boosting = car_state.last_controls.boost && car_state.boost > f32::EPSILON;
+        car_transform.translation = target_car.state.pos.to_bevy();
+        car_transform.rotation = target_car.state.rot_mat.to_bevy();
+
+        let is_boosting = target_car.state.last_controls.boost && target_car.state.boost > f32::EPSILON;
         let last_boosted = last_boost_states.iter().any(|&id| id == car.id());
 
         if is_boosting != last_boosted {
@@ -491,7 +493,8 @@ fn update_car(
             let camera_transform = camera_transform.as_mut();
 
             if ballcam.enabled
-                && (!car_state.is_on_ground || car_state.pos.distance_squared(state.ball.pos) > MIN_DIST_FROM_BALL_SQ)
+                && (!target_car.state.is_on_ground
+                    || target_car.state.pos.distance_squared(state.ball.pos) > MIN_DIST_FROM_BALL_SQ)
             {
                 let ball_pos = state.ball.pos.to_bevy();
                 camera_transform.translation =
@@ -504,7 +507,7 @@ fn update_car(
                     camera_transform.translation.y = MIN_CAMERA_BALLCAM_HEIGHT;
                 }
             } else {
-                let car_look = Vec3::new(car_state.vel.x, 0., car_state.vel.y)
+                let car_look = Vec3::new(target_car.state.vel.x, 0., target_car.state.vel.y)
                     .try_normalize()
                     .unwrap_or_else(|| car_transform.forward());
                 camera_transform.translation = car_transform.translation - car_look * 280. + Vec3::Y * 110.;
@@ -772,7 +775,9 @@ fn listen(socket: Res<Connection>, key: Res<Input<KeyCode>>, mut game_state: Res
     }
 
     if changed {
-        socket.0.send(&game_state.to_bytes()).unwrap();
+        if let Err(e) = socket.0.send(&game_state.to_bytes()) {
+            error!("Failed to send state setting packet: {e}");
+        }
     }
 }
 

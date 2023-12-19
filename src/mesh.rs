@@ -69,7 +69,9 @@ fn change_ball_pos(
     };
 
     game_state.ball.vel = (target.xzy() - game_state.ball.pos).normalize() * 2000.;
-    socket.0.send(&game_state.to_bytes()).unwrap();
+    if let Err(e) = socket.0.send(&game_state.to_bytes()) {
+        error!("Failed to send ball position: {e}");
+    }
 }
 
 #[derive(Event)]
@@ -89,7 +91,11 @@ fn change_car_pos(
     mut events: EventReader<ChangeCarPos>,
     camera: Query<(&Camera, &GlobalTransform), With<PrimaryCamera>>,
 ) {
-    let Ok(car_id) = cars.get(events.read().last().unwrap().0).map(Car::id) else {
+    let Some(last_event) = events.read().last() else {
+        return;
+    };
+
+    let Ok(car_id) = cars.get(last_event.0).map(Car::id) else {
         return;
     };
 
@@ -102,7 +108,9 @@ fn change_car_pos(
     };
 
     car.state.vel = (target.xzy() - car.state.pos).normalize() * 2000.;
-    socket.0.send(&game_state.to_bytes()).unwrap();
+    if let Err(e) = socket.0.send(&game_state.to_bytes()) {
+        error!("Failed to send car position: {e}");
+    }
 }
 
 fn get_move_object_target(
