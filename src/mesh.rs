@@ -2,6 +2,7 @@ use crate::{
     assets::*,
     bytes::ToBytes,
     camera::{HighlightedEntity, PrimaryCamera},
+    gui::EnableBallInfo,
     rocketsim::{GameMode, GameState},
     udp::{Ball, Car, Connection, ToBevyVec, ToBevyVecFlat},
     LoadState,
@@ -37,12 +38,14 @@ impl Plugin for FieldLoaderPlugin {
             .insert_resource(StateSetTime::default())
             .add_event::<ChangeBallPos>()
             .add_event::<ChangeCarPos>()
+            .add_event::<BallClicked>()
             .add_systems(
                 Update,
                 (
                     despawn_old_field.run_if(in_state(LoadState::Despawn)),
                     load_field.run_if(in_state(LoadState::Field)),
                     load_extra_field.run_if(in_state(LoadState::FieldExtra)),
+                    handle_ball_clicked.run_if(on_event::<BallClicked>()),
                     (
                         advance_stopwatch,
                         (
@@ -65,11 +68,11 @@ fn advance_stopwatch(mut last_state_set: ResMut<StateSetTime>, time: Res<Time>) 
 }
 
 #[derive(Event)]
-pub struct ChangeBallPos;
+pub struct ChangeBallPos(PointerButton);
 
 impl From<ListenerInput<Pointer<Drag>>> for ChangeBallPos {
-    fn from(_: ListenerInput<Pointer<Drag>>) -> Self {
-        Self
+    fn from(event: ListenerInput<Pointer<Drag>>) -> Self {
+        Self(event.button)
     }
 }
 
@@ -84,25 +87,32 @@ fn change_ball_pos(
     camera: Query<(&Camera, &GlobalTransform), With<PrimaryCamera>>,
     mut last_state_set: ResMut<StateSetTime>,
 ) {
+    if !events.read().any(|event| event.0 == PointerButton::Primary) {
+        events.clear();
+        return;
+    }
+
     events.clear();
-    let Some(target) = get_move_object_target(camera, windows, game_state.ball.pos.xzy()) else {
+
+    let Some([cam_pos, cursor_dir, plane_normal]) = project_ray_to_plane(camera, windows) else {
         return;
     };
 
-    last_state_set.0.reset();
-
+    let target = get_move_object_target(cam_pos, cursor_dir, plane_normal, game_state.ball.pos.xzy());
     game_state.ball.vel = (target.xzy() - game_state.ball.pos).normalize() * 2000.;
+
+    last_state_set.0.reset();
     if let Err(e) = socket.0.send(&game_state.to_bytes()) {
         error!("Failed to send ball position: {e}");
     }
 }
 
 #[derive(Event)]
-pub struct ChangeCarPos(Entity);
+pub struct ChangeCarPos(PointerButton, Entity);
 
 impl From<ListenerInput<Pointer<Drag>>> for ChangeCarPos {
     fn from(event: ListenerInput<Pointer<Drag>>) -> Self {
-        Self(event.target)
+        Self(event.button, event.target)
     }
 }
 
@@ -115,35 +125,39 @@ fn change_car_pos(
     camera: Query<(&Camera, &GlobalTransform), With<PrimaryCamera>>,
     mut last_state_set: ResMut<StateSetTime>,
 ) {
-    let Some(last_event) = events.read().last() else {
+    let Some([cam_pos, cursor_dir, plane_normal]) = project_ray_to_plane(camera, windows) else {
+        events.clear();
         return;
     };
 
-    let Ok(car_id) = cars.get(last_event.0).map(Car::id) else {
-        return;
-    };
+    for event in events.read() {
+        if event.0 != PointerButton::Primary {
+            continue;
+        }
 
-    let Some(car) = game_state.cars.iter_mut().find(|car| car.id == car_id) else {
-        return;
-    };
+        let Ok(car_id) = cars.get(event.1).map(Car::id) else {
+            return;
+        };
 
-    let Some(target) = get_move_object_target(camera, windows, car.state.pos.xzy()) else {
-        return;
-    };
+        let Some(car) = game_state.cars.iter_mut().find(|car| car.id == car_id) else {
+            return;
+        };
 
-    last_state_set.0.reset();
+        let target = get_move_object_target(cam_pos, cursor_dir, plane_normal, car.state.pos.xzy());
+        car.state.vel = (target.xzy() - car.state.pos).normalize() * 2000.;
 
-    car.state.vel = (target.xzy() - car.state.pos).normalize() * 2000.;
+        last_state_set.0.reset();
+    }
+
     if let Err(e) = socket.0.send(&game_state.to_bytes()) {
         error!("Failed to send car position: {e}");
     }
 }
 
-fn get_move_object_target(
+fn project_ray_to_plane(
     camera: Query<(&Camera, &GlobalTransform), With<PrimaryCamera>>,
     windows: Query<&Window, With<PrimaryWindow>>,
-    plane_point: Vec3A,
-) -> Option<Vec3A> {
+) -> Option<[Vec3A; 3]> {
     let (camera, global_transform) = camera.single();
     let cursor_coords = windows.single().cursor_position()?;
 
@@ -156,11 +170,34 @@ fn get_move_object_target(
     // define a plane that intersects the ball and is perpendicular to the camera direction
     let plane_normal = (global_transform.affine().matrix3 * Vec3A::Z).normalize();
 
+    Some([cam_pos, cursor_dir, plane_normal])
+}
+
+fn get_move_object_target(cam_pos: Vec3A, cursor_dir: Vec3A, plane_normal: Vec3A, plane_point: Vec3A) -> Vec3A {
     // get projection factor
     let lambda = (plane_point - cam_pos).dot(plane_normal) / plane_normal.dot(cursor_dir);
 
     // project cursor ray onto plane
-    Some(cam_pos + lambda * cursor_dir)
+    cam_pos + lambda * cursor_dir
+}
+
+#[derive(Event)]
+pub struct BallClicked(PointerButton);
+
+impl From<ListenerInput<Pointer<Click>>> for BallClicked {
+    fn from(event: ListenerInput<Pointer<Click>>) -> Self {
+        Self(event.button)
+    }
+}
+
+fn handle_ball_clicked(mut events: EventReader<BallClicked>, mut enable_ball_info: ResMut<EnableBallInfo>) {
+    // ensure that it was an odd amount of right clicks
+    // e.x. right click -> open then right click -> close (an event amount of clicks) wouldn't change the state
+    if events.read().filter(|event| event.0 == PointerButton::Secondary).count() % 2 == 0 {
+        return;
+    }
+
+    enable_ball_info.toggle();
 }
 
 fn load_extra_field(
@@ -198,6 +235,7 @@ fn load_extra_field(
             On::<Pointer<Over>>::target_insert(HighlightedEntity),
             On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
             On::<Pointer<Drag>>::send_event::<ChangeBallPos>(),
+            On::<Pointer<Click>>::send_event::<BallClicked>(),
         ))
         .with_children(|parent| {
             parent.spawn(PointLightBundle {

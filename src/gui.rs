@@ -1,5 +1,11 @@
-use crate::camera::{DaylightOffset, PrimaryCamera, Sun};
+use crate::{
+    bytes::ToBytes,
+    camera::{DaylightOffset, PrimaryCamera, Sun},
+    rocketsim::GameState,
+    udp::Connection,
+};
 use bevy::{
+    math::Vec3A,
     pbr::DirectionalLightShadowMap,
     prelude::*,
     window::{CursorGrabMode, PrimaryWindow},
@@ -62,6 +68,15 @@ impl Plugin for DebugOverlayPlugin {
             .insert_resource(ShowTime::default())
             .insert_resource(Options::default_read_file())
             .insert_resource(MenuFocused::default())
+            .insert_resource(EnableBallInfo::default())
+            .insert_resource(UserBallState::default())
+            .insert_resource(PickingPluginsSettings {
+                enable: true,
+                enable_input: false,
+                enable_highlighting: false,
+                enable_interacting: true,
+            })
+            .add_event::<UserSetBallState>()
             .add_systems(
                 Update,
                 (
@@ -76,6 +91,8 @@ impl Plugin for DebugOverlayPlugin {
                         update_msaa,
                         update_ui_scale,
                         update_shadows,
+                        update_ball_info.run_if(resource_equals(EnableBallInfo(true))),
+                        set_user_ball_state.run_if(on_event::<UserSetBallState>()),
                     )
                         .run_if(resource_equals(MenuFocused(true))),
                     update_camera_state,
@@ -86,6 +103,135 @@ impl Plugin for DebugOverlayPlugin {
 
         #[cfg(debug_assertions)]
         app.add_systems(Update, debug_ui);
+    }
+}
+
+#[derive(Resource, Default, PartialEq, Eq)]
+pub struct EnableBallInfo(bool);
+
+impl EnableBallInfo {
+    pub fn toggle(&mut self) {
+        self.0 = !self.0;
+    }
+}
+
+#[derive(Default, Resource)]
+struct UserBallState {
+    pub pos: [String; 3],
+    pub vel: [String; 3],
+    pub ang_vel: [String; 3],
+}
+
+enum SetBallStateAmount {
+    Pos,
+    Vel,
+    AngVel,
+    All,
+}
+
+#[derive(Event)]
+struct UserSetBallState(SetBallStateAmount);
+
+fn update_ball_info(
+    mut contexts: EguiContexts,
+    game_state: Res<GameState>,
+    mut enable_menu: ResMut<EnableBallInfo>,
+    mut set_user_state: EventWriter<UserSetBallState>,
+    mut user_ball: ResMut<UserBallState>,
+) {
+    egui::Window::new("Ball")
+        .open(&mut enable_menu.0)
+        .show(contexts.ctx_mut(), |ui| {
+            ui.label(format!(
+                "Position: [{:.1}, {:.1}, {:.1}]",
+                game_state.ball.pos.x, game_state.ball.pos.y, game_state.ball.pos.z
+            ));
+            ui.horizontal(|ui| {
+                ui.label("X: ");
+                ui.add(egui::TextEdit::singleline(&mut user_ball.pos[0]).desired_width(50.));
+                ui.label("Y: ");
+                ui.add(egui::TextEdit::singleline(&mut user_ball.pos[1]).desired_width(50.));
+                ui.label("Z: ");
+                ui.add(egui::TextEdit::singleline(&mut user_ball.pos[2]).desired_width(50.));
+                if ui.button("Set").on_hover_text("Set ball position").clicked() {
+                    set_user_state.send(UserSetBallState(SetBallStateAmount::Pos));
+                }
+            });
+            ui.label(format!(
+                "Velocity: [{:.1}, {:.1}, {:.1}]",
+                game_state.ball.vel.x, game_state.ball.vel.y, game_state.ball.vel.z
+            ));
+            ui.horizontal(|ui| {
+                ui.label("X: ");
+                ui.add(egui::TextEdit::singleline(&mut user_ball.vel[0]).desired_width(50.));
+                ui.label("Y: ");
+                ui.add(egui::TextEdit::singleline(&mut user_ball.vel[1]).desired_width(50.));
+                ui.label("Z: ");
+                ui.add(egui::TextEdit::singleline(&mut user_ball.vel[2]).desired_width(50.));
+                if ui.button("Set").on_hover_text("Set ball velocity").clicked() {
+                    set_user_state.send(UserSetBallState(SetBallStateAmount::Vel));
+                }
+            });
+            ui.label(format!(
+                "Angular velocity: [{:.1}, {:.1}, {:.1}]",
+                game_state.ball.ang_vel.x, game_state.ball.ang_vel.y, game_state.ball.ang_vel.z
+            ));
+            ui.horizontal(|ui| {
+                ui.label("X: ");
+                ui.add(egui::TextEdit::singleline(&mut user_ball.ang_vel[0]).desired_width(50.));
+                ui.label("Y: ");
+                ui.add(egui::TextEdit::singleline(&mut user_ball.ang_vel[1]).desired_width(50.));
+                ui.label("Z: ");
+                ui.add(egui::TextEdit::singleline(&mut user_ball.ang_vel[2]).desired_width(50.));
+                if ui.button("Set").on_hover_text("Set ball angular velocity").clicked() {
+                    set_user_state.send(UserSetBallState(SetBallStateAmount::AngVel));
+                }
+            });
+            if ui
+                .button("Set all")
+                .on_hover_text("Set all (defined) ball properties")
+                .clicked()
+            {
+                set_user_state.send(UserSetBallState(SetBallStateAmount::All));
+            }
+        });
+}
+
+fn set_vec3_from_arr_str(vec: &mut Vec3A, arr: &[String; 3]) {
+    if let Ok(x) = arr[0].parse() {
+        vec.x = x;
+    }
+
+    if let Ok(y) = arr[1].parse() {
+        vec.y = y;
+    }
+
+    if let Ok(z) = arr[2].parse() {
+        vec.z = z;
+    }
+}
+
+fn set_user_ball_state(
+    mut events: EventReader<UserSetBallState>,
+    mut game_state: ResMut<GameState>,
+    user_ball: Res<UserBallState>,
+    socket: Res<Connection>,
+) {
+    for event in events.read() {
+        match event.0 {
+            SetBallStateAmount::Pos => set_vec3_from_arr_str(&mut game_state.ball.pos, &user_ball.pos),
+            SetBallStateAmount::Vel => set_vec3_from_arr_str(&mut game_state.ball.vel, &user_ball.vel),
+            SetBallStateAmount::AngVel => set_vec3_from_arr_str(&mut game_state.ball.ang_vel, &user_ball.ang_vel),
+            SetBallStateAmount::All => {
+                set_vec3_from_arr_str(&mut game_state.ball.pos, &user_ball.pos);
+                set_vec3_from_arr_str(&mut game_state.ball.vel, &user_ball.vel);
+                set_vec3_from_arr_str(&mut game_state.ball.ang_vel, &user_ball.ang_vel);
+            }
+        }
+    }
+
+    if let Err(e) = socket.0.send(&game_state.to_bytes()) {
+        error!("Failed to send ball position: {e}");
     }
 }
 
@@ -257,6 +403,7 @@ fn ui_system(
     mut contexts: EguiContexts,
     time: Res<Time>,
 ) {
+    #[cfg(not(feature = "ssao"))]
     const MSAA_NAMES: [&str; 4] = ["Off", "2x", "4x", "8x"];
     const SHADOW_NAMES: [&str; 4] = ["Off", "0.5x", "1x", "1.5x"];
     let ctx = contexts.ctx_mut();

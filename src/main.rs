@@ -8,6 +8,7 @@ mod spectator;
 mod udp;
 
 use bevy::{
+    diagnostic::LogDiagnosticsPlugin,
     prelude::*,
     render::texture::{ImageAddressMode, ImageSamplerDescriptor},
     window::PresentMode,
@@ -43,28 +44,29 @@ fn main() {
             primary_port,
             secondary_port,
         })
-        .add_plugins(
-            DefaultPlugins
-                .set(ImagePlugin {
-                    default_sampler: ImageSamplerDescriptor {
-                        address_mode_u: ImageAddressMode::Repeat,
-                        address_mode_v: ImageAddressMode::Repeat,
-                        address_mode_w: ImageAddressMode::Repeat,
-                        ..default()
-                    },
-                })
-                .set(WindowPlugin {
-                    primary_window: Some(Window {
-                        title: "RLViser-rs".into(),
-                        present_mode: PresentMode::AutoNoVsync,
-                        ..default()
-                    }),
+        .add_plugins((DefaultPlugins
+            .set(ImagePlugin {
+                default_sampler: ImageSamplerDescriptor {
+                    address_mode_u: ImageAddressMode::Repeat,
+                    address_mode_v: ImageAddressMode::Repeat,
+                    address_mode_w: ImageAddressMode::Repeat,
+                    ..default()
+                },
+            })
+            .set(WindowPlugin {
+                primary_window: Some(Window {
+                    title: "RLViser-rs".into(),
+                    present_mode: PresentMode::AutoNoVsync,
                     ..default()
                 }),
-        )
+                ..default()
+            }),))
         .add_state::<LoadState>()
         .add_plugins((
-            bevy::diagnostic::LogDiagnosticsPlugin::default(),
+            LogDiagnosticsPlugin {
+                debug: cfg!(debug_assertions),
+                ..default()
+            },
             camera::CameraPlugin,
             gui::DebugOverlayPlugin,
             mesh::FieldLoaderPlugin,
