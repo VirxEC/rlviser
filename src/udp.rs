@@ -3,7 +3,7 @@ use crate::{
     bytes::{FromBytes, ToBytes},
     camera::{BoostAmount, HighlightedEntity, PrimaryCamera, TimeDisplay, BOOST_INDICATOR_FONT_SIZE, BOOST_INDICATOR_POS},
     gui::{BallCam, ShowTime, UiScale},
-    mesh::{ChangeCarPos, LargeBoostPadLocRots},
+    mesh::{CarClicked, ChangeCarPos, LargeBoostPadLocRots},
     rocketsim::{CarInfo, GameMode, GameState, Team},
     LoadState, ServerPort,
 };
@@ -199,6 +199,7 @@ fn spawn_car(
             On::<Pointer<Over>>::target_insert(HighlightedEntity),
             On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
             On::<Pointer<Drag>>::send_event::<ChangeCarPos>(),
+            On::<Pointer<Click>>::send_event::<CarClicked>(),
         ))
         .with_children(|parent| {
             const CAR_BOOST_LENGTH: f32 = 50.;

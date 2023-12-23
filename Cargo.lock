@@ -2900,6 +2900,7 @@ checksum = "3582f63211428f83597b51b2ddb88e2a91a9d52d12831f9d08f5e624e8977422"
 name = "rlviser"
 version = "0.6.4"
 dependencies = [
+ "ahash",
  "bevy",
  "bevy_atmosphere",
  "bevy_egui",

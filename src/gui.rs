@@ -4,6 +4,7 @@ use crate::{
     rocketsim::GameState,
     udp::Connection,
 };
+use ahash::AHashMap;
 use bevy::{
     math::Vec3A,
     pbr::DirectionalLightShadowMap,
@@ -70,6 +71,8 @@ impl Plugin for DebugOverlayPlugin {
             .insert_resource(MenuFocused::default())
             .insert_resource(EnableBallInfo::default())
             .insert_resource(UserBallState::default())
+            .insert_resource(EnableCarInfo::default())
+            .insert_resource(UserCarStates::default())
             .insert_resource(PickingPluginsSettings {
                 enable: true,
                 enable_input: false,
@@ -77,6 +80,7 @@ impl Plugin for DebugOverlayPlugin {
                 enable_interacting: true,
             })
             .add_event::<UserSetBallState>()
+            .add_event::<UserSetCarState>()
             .add_systems(
                 Update,
                 (
@@ -92,7 +96,9 @@ impl Plugin for DebugOverlayPlugin {
                         update_ui_scale,
                         update_shadows,
                         update_ball_info.run_if(resource_equals(EnableBallInfo(true))),
+                        update_car_info.run_if(|enable_menu: Res<EnableCarInfo>| !enable_menu.0.is_empty()),
                         set_user_ball_state.run_if(on_event::<UserSetBallState>()),
+                        set_user_car_state.run_if(on_event::<UserSetCarState>()),
                     )
                         .run_if(resource_equals(MenuFocused(true))),
                     update_camera_state,
@@ -112,6 +118,186 @@ pub struct EnableBallInfo(bool);
 impl EnableBallInfo {
     pub fn toggle(&mut self) {
         self.0 = !self.0;
+    }
+}
+
+#[derive(Resource, PartialEq, Eq)]
+pub struct EnableCarInfo(AHashMap<u32, bool>);
+
+impl Default for EnableCarInfo {
+    #[inline]
+    fn default() -> Self {
+        Self(AHashMap::with_capacity(8))
+    }
+}
+
+impl EnableCarInfo {
+    pub fn toggle(&mut self, id: u32) {
+        if let Some(enabled) = self.0.get_mut(&id) {
+            *enabled = !*enabled;
+        } else {
+            self.0.insert(id, true);
+        }
+    }
+}
+
+#[derive(Default)]
+struct UserCarState {
+    pub pos: [String; 3],
+    pub vel: [String; 3],
+    pub ang_vel: [String; 3],
+}
+
+#[derive(Resource)]
+struct UserCarStates(AHashMap<u32, UserCarState>);
+
+impl Default for UserCarStates {
+    #[inline]
+    fn default() -> Self {
+        Self(AHashMap::with_capacity(8))
+    }
+}
+
+enum SetCarStateAmount {
+    Pos,
+    Vel,
+    AngVel,
+    All,
+}
+
+#[derive(Event)]
+struct UserSetCarState(u32, SetCarStateAmount);
+
+fn set_user_car_state(
+    mut events: EventReader<UserSetCarState>,
+    mut game_state: ResMut<GameState>,
+    user_cars: Res<UserCarStates>,
+    socket: Res<Connection>,
+) {
+    for event in events.read() {
+        let Some(car_index) = game_state.cars.iter().position(|car| car.id == event.0) else {
+            continue;
+        };
+        let Some(user_car) = user_cars.0.get(&event.0) else {
+            continue;
+        };
+
+        match event.1 {
+            SetCarStateAmount::Pos => set_vec3_from_arr_str(&mut game_state.cars[car_index].state.pos, &user_car.pos),
+            SetCarStateAmount::Vel => set_vec3_from_arr_str(&mut game_state.cars[car_index].state.vel, &user_car.vel),
+            SetCarStateAmount::AngVel => {
+                set_vec3_from_arr_str(&mut game_state.cars[car_index].state.ang_vel, &user_car.ang_vel)
+            }
+            SetCarStateAmount::All => {
+                set_vec3_from_arr_str(&mut game_state.cars[car_index].state.pos, &user_car.pos);
+                set_vec3_from_arr_str(&mut game_state.cars[car_index].state.vel, &user_car.vel);
+                set_vec3_from_arr_str(&mut game_state.cars[car_index].state.ang_vel, &user_car.ang_vel);
+            }
+        }
+    }
+
+    if let Err(e) = socket.0.send(&game_state.to_bytes()) {
+        error!("Failed to send ball position: {e}");
+    }
+}
+
+fn update_car_info(
+    mut contexts: EguiContexts,
+    game_state: Res<GameState>,
+    mut enable_menu: ResMut<EnableCarInfo>,
+    mut set_user_state: EventWriter<UserSetCarState>,
+    mut user_cars: ResMut<UserCarStates>,
+) {
+    let ctx = contexts.ctx_mut();
+
+    for car in game_state.cars.iter() {
+        let Some(entry) = enable_menu.0.get_mut(&car.id) else {
+            continue;
+        };
+
+        if !*entry {
+            continue;
+        }
+
+        let user_car = user_cars.0.entry(car.id).or_default();
+
+        egui::Window::new(format!("{:?} Car {}", car.team, car.id))
+            .open(entry)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.vertical(|ui| {
+                        ui.label(format!("Is on ground: {}", car.state.is_on_ground));
+                        ui.label(format!("Last throttle: {:.1}", car.state.last_controls.throttle));
+                        ui.label(format!("Last steer: {:.1}", car.state.last_controls.steer));
+                        ui.label(format!("Last pitch: {:.1}", car.state.last_controls.pitch));
+                        ui.label(format!("Last yaw: {:.1}", car.state.last_controls.yaw));
+                        ui.label(format!("Last roll: {:.1}", car.state.last_controls.roll));
+                        ui.label(format!("Last boost: {}", car.state.last_controls.boost));
+                        ui.label(format!("Last jump: {}", car.state.last_controls.jump));
+                        ui.label(format!("Last handbrake: {}", car.state.last_controls.handbrake));
+                    });
+                    ui.vertical(|ui| {
+                        ui.label(format!(
+                            "Position: [{:.1}, {:.1}, {:.1}]",
+                            car.state.pos.x, car.state.pos.y, car.state.pos.z
+                        ));
+                        ui.horizontal(|ui| {
+                            ui.label("X: ");
+                            ui.add(egui::TextEdit::singleline(&mut user_car.pos[0]).desired_width(50.));
+                            ui.label("Y: ");
+                            ui.add(egui::TextEdit::singleline(&mut user_car.pos[1]).desired_width(50.));
+                            ui.label("Z: ");
+                            ui.add(egui::TextEdit::singleline(&mut user_car.pos[2]).desired_width(50.));
+                            if ui.button("Set").on_hover_text("Set car position").clicked() {
+                                set_user_state.send(UserSetCarState(car.id, SetCarStateAmount::Pos));
+                            }
+                        });
+                        ui.label(format!(
+                            "Velocity: [{:.1}, {:.1}, {:.1}]",
+                            car.state.vel.x, car.state.vel.y, car.state.vel.z
+                        ));
+                        ui.horizontal(|ui| {
+                            ui.label("X: ");
+                            ui.add(egui::TextEdit::singleline(&mut user_car.vel[0]).desired_width(50.));
+                            ui.label("Y: ");
+                            ui.add(egui::TextEdit::singleline(&mut user_car.vel[1]).desired_width(50.));
+                            ui.label("Z: ");
+                            ui.add(egui::TextEdit::singleline(&mut user_car.vel[2]).desired_width(50.));
+                            if ui.button("Set").on_hover_text("Set car velocity").clicked() {
+                                set_user_state.send(UserSetCarState(car.id, SetCarStateAmount::Vel));
+                            }
+                        });
+                        ui.label(format!(
+                            "Angular velocity: [{:.1}, {:.1}, {:.1}]",
+                            car.state.ang_vel.x, car.state.ang_vel.y, car.state.ang_vel.z
+                        ));
+                        ui.horizontal(|ui| {
+                            ui.label("X: ");
+                            ui.add(egui::TextEdit::singleline(&mut user_car.ang_vel[0]).desired_width(50.));
+                            ui.label("Y: ");
+                            ui.add(egui::TextEdit::singleline(&mut user_car.ang_vel[1]).desired_width(50.));
+                            ui.label("Z: ");
+                            ui.add(egui::TextEdit::singleline(&mut user_car.ang_vel[2]).desired_width(50.));
+                            if ui.button("Set").on_hover_text("Set car angular velocity").clicked() {
+                                set_user_state.send(UserSetCarState(car.id, SetCarStateAmount::AngVel));
+                            }
+                        });
+                        ui.label(format!("Has jumped: {}", car.state.has_jumped));
+                        ui.label(format!("Has double jumped: {}", car.state.has_double_jumped));
+                        ui.label(format!("Boost: {:.0}", car.state.boost));
+                        ui.label(format!("Is supersonic: {}", car.state.is_supersonic));
+                        ui.label(format!("Is demolished: {}", car.state.is_demoed));
+
+                        if ui
+                            .button("Set all")
+                            .on_hover_text("Set all (defined) car properties")
+                            .clicked()
+                        {
+                            set_user_state.send(UserSetCarState(car.id, SetCarStateAmount::All));
+                        }
+                    });
+                });
+            });
     }
 }
 

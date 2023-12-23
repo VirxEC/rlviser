@@ -2,7 +2,7 @@ use crate::{
     assets::*,
     bytes::ToBytes,
     camera::{HighlightedEntity, PrimaryCamera},
-    gui::EnableBallInfo,
+    gui::{EnableBallInfo, EnableCarInfo},
     rocketsim::{GameMode, GameState},
     udp::{Ball, Car, Connection, ToBevyVec, ToBevyVecFlat},
     LoadState,
@@ -39,6 +39,7 @@ impl Plugin for FieldLoaderPlugin {
             .add_event::<ChangeBallPos>()
             .add_event::<ChangeCarPos>()
             .add_event::<BallClicked>()
+            .add_event::<CarClicked>()
             .add_systems(
                 Update,
                 (
@@ -46,6 +47,7 @@ impl Plugin for FieldLoaderPlugin {
                     load_field.run_if(in_state(LoadState::Field)),
                     load_extra_field.run_if(in_state(LoadState::FieldExtra)),
                     handle_ball_clicked.run_if(on_event::<BallClicked>()),
+                    handle_car_clicked.run_if(on_event::<CarClicked>()),
                     (
                         advance_stopwatch,
                         (
@@ -151,6 +153,34 @@ fn change_car_pos(
 
     if let Err(e) = socket.0.send(&game_state.to_bytes()) {
         error!("Failed to send car position: {e}");
+    }
+}
+
+#[derive(Event)]
+pub struct CarClicked(PointerButton, Entity);
+
+impl From<ListenerInput<Pointer<Click>>> for CarClicked {
+    fn from(event: ListenerInput<Pointer<Click>>) -> Self {
+        Self(event.button, event.target)
+    }
+}
+
+fn handle_car_clicked(mut events: EventReader<CarClicked>, mut enable_car_info: ResMut<EnableCarInfo>, cars: Query<&Car>) {
+    let toggle_car_ids = events
+        .read()
+        .filter_map(|event| {
+            if event.0 != PointerButton::Secondary {
+                return None;
+            }
+
+            cars.get(event.1).map(Car::id).ok()
+        })
+        .collect::<Vec<_>>();
+
+    for car in cars.iter() {
+        if toggle_car_ids.contains(&car.id()) {
+            enable_car_info.toggle(car.id());
+        }
     }
 }
 
