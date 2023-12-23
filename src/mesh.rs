@@ -11,6 +11,7 @@ use bevy::{
     pbr::{NotShadowCaster, NotShadowReceiver},
     prelude::*,
     render::mesh::{self, VertexAttributeValues},
+    time::Stopwatch,
     window::PrimaryWindow,
 };
 use bevy_eventlistener::callbacks::ListenerInput;
@@ -21,6 +22,7 @@ use std::{
     io::{self, Read},
     rc::Rc,
     str::Utf8Error,
+    time::Duration,
 };
 use thiserror::Error;
 
@@ -32,19 +34,34 @@ pub struct FieldLoaderPlugin;
 impl Plugin for FieldLoaderPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(LargeBoostPadLocRots::default())
+            .insert_resource(StateSetTime::default())
+            .add_event::<ChangeBallPos>()
+            .add_event::<ChangeCarPos>()
             .add_systems(
                 Update,
                 (
                     despawn_old_field.run_if(in_state(LoadState::Despawn)),
                     load_field.run_if(in_state(LoadState::Field)),
                     load_extra_field.run_if(in_state(LoadState::FieldExtra)),
-                    change_ball_pos.run_if(on_event::<ChangeBallPos>()),
-                    change_car_pos.run_if(on_event::<ChangeCarPos>()),
+                    (
+                        advance_stopwatch,
+                        (
+                            change_ball_pos.run_if(on_event::<ChangeBallPos>()),
+                            change_car_pos.run_if(on_event::<ChangeCarPos>()),
+                        )
+                            .run_if(|last_state_set: Res<StateSetTime>| {
+                                // Limit state setting to avoid bogging down the simulation with state setting requests
+                                last_state_set.0.elapsed() >= Duration::from_secs_f32(1. / 60.)
+                            }),
+                    )
+                        .chain(),
                 ),
-            )
-            .add_event::<ChangeBallPos>()
-            .add_event::<ChangeCarPos>();
+            );
     }
+}
+
+fn advance_stopwatch(mut last_state_set: ResMut<StateSetTime>, time: Res<Time>) {
+    last_state_set.0.tick(time.delta());
 }
 
 #[derive(Event)]
@@ -56,17 +73,23 @@ impl From<ListenerInput<Pointer<Drag>>> for ChangeBallPos {
     }
 }
 
+#[derive(Resource, Default)]
+struct StateSetTime(Stopwatch);
+
 fn change_ball_pos(
     windows: Query<&Window, With<PrimaryWindow>>,
     socket: Res<Connection>,
     mut game_state: ResMut<GameState>,
     mut events: EventReader<ChangeBallPos>,
     camera: Query<(&Camera, &GlobalTransform), With<PrimaryCamera>>,
+    mut last_state_set: ResMut<StateSetTime>,
 ) {
     events.clear();
     let Some(target) = get_move_object_target(camera, windows, game_state.ball.pos.xzy()) else {
         return;
     };
+
+    last_state_set.0.reset();
 
     game_state.ball.vel = (target.xzy() - game_state.ball.pos).normalize() * 2000.;
     if let Err(e) = socket.0.send(&game_state.to_bytes()) {
@@ -90,6 +113,7 @@ fn change_car_pos(
     mut game_state: ResMut<GameState>,
     mut events: EventReader<ChangeCarPos>,
     camera: Query<(&Camera, &GlobalTransform), With<PrimaryCamera>>,
+    mut last_state_set: ResMut<StateSetTime>,
 ) {
     let Some(last_event) = events.read().last() else {
         return;
@@ -106,6 +130,8 @@ fn change_car_pos(
     let Some(target) = get_move_object_target(camera, windows, car.state.pos.xzy()) else {
         return;
     };
+
+    last_state_set.0.reset();
 
     car.state.vel = (target.xzy() - car.state.pos).normalize() * 2000.;
     if let Err(e) = socket.0.send(&game_state.to_bytes()) {
