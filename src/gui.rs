@@ -146,6 +146,11 @@ struct UserCarState {
     pub pos: [String; 3],
     pub vel: [String; 3],
     pub ang_vel: [String; 3],
+    pub has_jumped: usize,
+    pub has_double_jumped: usize,
+    pub has_flipped: usize,
+    pub boost: String,
+    pub demo_respawn_timer: String,
 }
 
 #[derive(Resource)]
@@ -162,6 +167,11 @@ enum SetCarStateAmount {
     Pos,
     Vel,
     AngVel,
+    Jumped,
+    DoubleJumped,
+    Flipped,
+    Boost,
+    DemoRespawnTimer,
     All,
 }
 
@@ -188,10 +198,36 @@ fn set_user_car_state(
             SetCarStateAmount::AngVel => {
                 set_vec3_from_arr_str(&mut game_state.cars[car_index].state.ang_vel, &user_car.ang_vel)
             }
+            SetCarStateAmount::Jumped => {
+                set_bool_from_usize(&mut game_state.cars[car_index].state.has_jumped, user_car.has_jumped)
+            }
+            SetCarStateAmount::DoubleJumped => set_bool_from_usize(
+                &mut game_state.cars[car_index].state.has_double_jumped,
+                user_car.has_double_jumped,
+            ),
+            SetCarStateAmount::Flipped => {
+                set_bool_from_usize(&mut game_state.cars[car_index].state.has_flipped, user_car.has_flipped)
+            }
+            SetCarStateAmount::Boost => set_f32_from_str(&mut game_state.cars[car_index].state.boost, &user_car.boost),
+            SetCarStateAmount::DemoRespawnTimer => set_f32_from_str(
+                &mut game_state.cars[car_index].state.demo_respawn_timer,
+                &user_car.demo_respawn_timer,
+            ),
             SetCarStateAmount::All => {
                 set_vec3_from_arr_str(&mut game_state.cars[car_index].state.pos, &user_car.pos);
                 set_vec3_from_arr_str(&mut game_state.cars[car_index].state.vel, &user_car.vel);
                 set_vec3_from_arr_str(&mut game_state.cars[car_index].state.ang_vel, &user_car.ang_vel);
+                set_bool_from_usize(&mut game_state.cars[car_index].state.has_jumped, user_car.has_jumped);
+                set_bool_from_usize(
+                    &mut game_state.cars[car_index].state.has_double_jumped,
+                    user_car.has_double_jumped,
+                );
+                set_bool_from_usize(&mut game_state.cars[car_index].state.has_flipped, user_car.has_flipped);
+                set_f32_from_str(&mut game_state.cars[car_index].state.boost, &user_car.boost);
+                set_f32_from_str(
+                    &mut game_state.cars[car_index].state.demo_respawn_timer,
+                    &user_car.demo_respawn_timer,
+                );
             }
         }
     }
@@ -208,6 +244,8 @@ fn update_car_info(
     mut set_user_state: EventWriter<UserSetCarState>,
     mut user_cars: ResMut<UserCarStates>,
 ) {
+    const USER_BOOL_NAMES: [&str; 2] = ["", "False"];
+
     let ctx = contexts.ctx_mut();
 
     for car in game_state.cars.iter() {
@@ -227,15 +265,20 @@ fn update_car_info(
                 ui.horizontal(|ui| {
                     ui.vertical(|ui| {
                         ui.label(format!("Is on ground: {}", car.state.is_on_ground));
-                        ui.label(format!("Last throttle: {:.1}", car.state.last_controls.throttle));
-                        ui.label(format!("Last steer: {:.1}", car.state.last_controls.steer));
-                        ui.label(format!("Last pitch: {:.1}", car.state.last_controls.pitch));
-                        ui.label(format!("Last yaw: {:.1}", car.state.last_controls.yaw));
-                        ui.label(format!("Last roll: {:.1}", car.state.last_controls.roll));
-                        ui.label(format!("Last boost: {}", car.state.last_controls.boost));
-                        ui.label(format!("Last jump: {}", car.state.last_controls.jump));
-                        ui.label(format!("Last handbrake: {}", car.state.last_controls.handbrake));
+                        ui.label(format!("Jump time: {:.1}", car.state.jump_time));
+                        ui.label(format!("Flip time: {:.1}", car.state.flip_time));
+                        ui.label(format!("Is flipping: {}", car.state.is_flipping));
+                        ui.label(format!("Is jumping: {}", car.state.is_jumping));
+                        ui.label(format!("Is jumping: {}", car.state.is_jumping));
+                        ui.label(format!("Time spent boosting: {:.1}", car.state.time_spent_boosting));
+                        ui.label(format!("Is supersonic: {}", car.state.is_supersonic));
+                        ui.label(format!("Supersonic time: {:.1}", car.state.supersonic_time));
+                        ui.label(format!("Handbrake val: {:.1}", car.state.handbrake_val));
+                        ui.label(format!("Is auto flipping: {}", car.state.is_auto_flipping));
+                        ui.label(format!("Auto flip timer: {:.1}", car.state.auto_flip_timer));
+                        ui.label(format!("Is demolished: {}", car.state.is_demoed));
                     });
+
                     ui.vertical(|ui| {
                         ui.label(format!(
                             "Position: [{:.1}, {:.1}, {:.1}]",
@@ -252,6 +295,7 @@ fn update_car_info(
                                 set_user_state.send(UserSetCarState(car.id, SetCarStateAmount::Pos));
                             }
                         });
+
                         ui.label(format!(
                             "Velocity: [{:.1}, {:.1}, {:.1}]",
                             car.state.vel.x, car.state.vel.y, car.state.vel.z
@@ -267,6 +311,7 @@ fn update_car_info(
                                 set_user_state.send(UserSetCarState(car.id, SetCarStateAmount::Vel));
                             }
                         });
+
                         ui.label(format!(
                             "Angular velocity: [{:.1}, {:.1}, {:.1}]",
                             car.state.ang_vel.x, car.state.ang_vel.y, car.state.ang_vel.z
@@ -282,19 +327,95 @@ fn update_car_info(
                                 set_user_state.send(UserSetCarState(car.id, SetCarStateAmount::AngVel));
                             }
                         });
-                        ui.label(format!("Has jumped: {}", car.state.has_jumped));
-                        ui.label(format!("Has double jumped: {}", car.state.has_double_jumped));
-                        ui.label(format!("Boost: {:.0}", car.state.boost));
-                        ui.label(format!("Is supersonic: {}", car.state.is_supersonic));
-                        ui.label(format!("Is demolished: {}", car.state.is_demoed));
 
-                        if ui
-                            .button("Set all")
-                            .on_hover_text("Set all (defined) car properties")
-                            .clicked()
-                        {
-                            set_user_state.send(UserSetCarState(car.id, SetCarStateAmount::All));
-                        }
+                        ui.horizontal(|ui| {
+                            ui.vertical(|ui| {
+                                ui.label(format!("Has jumped: {}", car.state.has_jumped));
+                                ui.horizontal(|ui| {
+                                    egui::ComboBox::from_id_source("Has jumped").width(60.).show_index(
+                                        ui,
+                                        &mut user_car.has_jumped,
+                                        USER_BOOL_NAMES.len(),
+                                        |i| USER_BOOL_NAMES[i],
+                                    );
+
+                                    if ui.button("Set").on_hover_text("Set car has jumped").clicked() {
+                                        set_user_state.send(UserSetCarState(car.id, SetCarStateAmount::Jumped));
+                                    }
+                                });
+
+                                ui.label(format!("Has flipped: {}", car.state.has_flipped));
+                                ui.horizontal(|ui| {
+                                    egui::ComboBox::from_id_source("Has flipped").width(60.).show_index(
+                                        ui,
+                                        &mut user_car.has_flipped,
+                                        USER_BOOL_NAMES.len(),
+                                        |i| USER_BOOL_NAMES[i],
+                                    );
+
+                                    if ui.button("Set").on_hover_text("Set car has flipped").clicked() {
+                                        set_user_state.send(UserSetCarState(car.id, SetCarStateAmount::Flipped));
+                                    }
+                                });
+
+                                ui.label("");
+
+                                if ui
+                                    .button("Set all")
+                                    .on_hover_text("Set all (defined) car properties")
+                                    .clicked()
+                                {
+                                    set_user_state.send(UserSetCarState(car.id, SetCarStateAmount::All));
+                                }
+                            });
+                            ui.vertical(|ui| {
+                                ui.label(format!("Has double jumped: {}", car.state.has_double_jumped));
+                                ui.horizontal(|ui| {
+                                    egui::ComboBox::from_id_source("Has double jumped").width(60.).show_index(
+                                        ui,
+                                        &mut user_car.has_double_jumped,
+                                        USER_BOOL_NAMES.len(),
+                                        |i| USER_BOOL_NAMES[i],
+                                    );
+
+                                    if ui.button("Set").on_hover_text("Set car has double jumped").clicked() {
+                                        set_user_state.send(UserSetCarState(car.id, SetCarStateAmount::DoubleJumped));
+                                    }
+                                });
+
+                                ui.label(format!("Boost: {:.0}", car.state.boost));
+                                ui.horizontal(|ui| {
+                                    ui.add(egui::TextEdit::singleline(&mut user_car.boost).desired_width(60.));
+                                    if ui.button("Set").on_hover_text("Set car boost").clicked() {
+                                        set_user_state.send(UserSetCarState(car.id, SetCarStateAmount::Boost));
+                                    }
+                                });
+
+                                ui.label(format!("Demo respawn timer: {:.1}", car.state.demo_respawn_timer));
+                                ui.horizontal(|ui| {
+                                    ui.add(egui::TextEdit::singleline(&mut user_car.demo_respawn_timer).desired_width(60.));
+                                    if ui.button("Set").on_hover_text("Set car demo respawn timer").clicked() {
+                                        set_user_state.send(UserSetCarState(car.id, SetCarStateAmount::DemoRespawnTimer));
+                                    }
+                                });
+                            });
+                        });
+                    });
+                });
+
+                ui.vertical(|ui| {
+                    ui.label("Last known controls:");
+                    ui.horizontal(|ui| {
+                        ui.label(format!("Throttle: {:.1}", car.state.last_controls.throttle));
+                        ui.label(format!("Steer: {:.1}", car.state.last_controls.steer));
+                        ui.label(format!("Boost: {}", car.state.last_controls.boost));
+                        ui.label(format!("Handbrake: {}", car.state.last_controls.handbrake));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label(format!("Pitch: {:.1}", car.state.last_controls.pitch));
+                        ui.label(format!("Yaw: {:.1}", car.state.last_controls.yaw));
+                        ui.label(format!("Roll: {:.1}", car.state.last_controls.roll));
+                        ui.label(format!("Jump: {}", car.state.last_controls.jump));
                     });
                 });
             });
@@ -383,17 +504,21 @@ fn update_ball_info(
         });
 }
 
+fn set_f32_from_str(num: &mut f32, s: &str) {
+    if let Ok(f) = s.parse() {
+        *num = f;
+    }
+}
+
 fn set_vec3_from_arr_str(vec: &mut Vec3A, arr: &[String; 3]) {
-    if let Ok(x) = arr[0].parse() {
-        vec.x = x;
-    }
+    set_f32_from_str(&mut vec.x, &arr[0]);
+    set_f32_from_str(&mut vec.y, &arr[1]);
+    set_f32_from_str(&mut vec.z, &arr[2]);
+}
 
-    if let Ok(y) = arr[1].parse() {
-        vec.y = y;
-    }
-
-    if let Ok(z) = arr[2].parse() {
-        vec.z = z;
+fn set_bool_from_usize(b: &mut bool, i: usize) {
+    if i != 0 {
+        *b = false;
     }
 }
 
