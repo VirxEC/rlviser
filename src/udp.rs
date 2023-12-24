@@ -2,8 +2,9 @@ use crate::{
     assets::{get_material, get_mesh_info, BoostPickupGlows},
     bytes::{FromBytes, ToBytes},
     camera::{BoostAmount, HighlightedEntity, PrimaryCamera, TimeDisplay, BOOST_INDICATOR_FONT_SIZE, BOOST_INDICATOR_POS},
-    gui::{BallCam, ShowTime, UiScale},
-    mesh::{CarClicked, ChangeCarPos, LargeBoostPadLocRots},
+    gui::{BallCam, ShowTime, UiScale, UserCarStates},
+    mesh::{BoostPadClicked, CarClicked, ChangeCarPos, LargeBoostPadLocRots},
+    morton::Morton,
     rocketsim::{CarInfo, GameMode, GameState, Team},
     LoadState, ServerPort,
 };
@@ -22,7 +23,14 @@ use std::{cmp::Ordering, f32::consts::PI, fs, net::UdpSocket, time::Duration};
 use crate::camera::EntityName;
 
 #[derive(Component)]
-struct BoostPadI;
+pub struct BoostPadI(u64);
+
+impl BoostPadI {
+    #[inline]
+    pub const fn id(&self) -> u64 {
+        self.0
+    }
+}
 
 #[derive(Component)]
 pub struct Ball;
@@ -189,7 +197,7 @@ fn spawn_car(
         .spawn((
             Car(car_info.id),
             PbrBundle {
-                mesh: meshes.add(shape::Box::new(hitbox.x * 2., hitbox.y * 2., hitbox.z * 2.).into()),
+                mesh: meshes.add(shape::Box::new(hitbox.x * 2., hitbox.y * 3., hitbox.z * 2.).into()),
                 material: materials.add(Color::NONE.into()),
                 ..default()
             },
@@ -217,7 +225,7 @@ fn spawn_car(
                 });
 
             parent.spawn((
-                MaterialMeshBundle {
+                PbrBundle {
                     mesh: meshes.add(Mesh::from(shape::Cylinder {
                         height: CAR_BOOST_LENGTH,
                         radius: 10.,
@@ -412,11 +420,13 @@ fn update_car(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut last_boost_states: Local<Vec<u32>>,
+    mut user_cars: ResMut<UserCarStates>,
 ) {
     match cars.iter().count().cmp(&state.cars.len()) {
         Ordering::Greater => {
             for (entity, car) in &car_entities {
                 if !state.cars.iter().any(|car_info| car.0 == car_info.id) {
+                    user_cars.remove(car.0);
                     commands.entity(entity).despawn_recursive();
                 }
             }
@@ -522,12 +532,14 @@ fn update_car(
 fn update_pads(
     state: Res<GameState>,
     pads: Query<(Entity, &BoostPadI)>,
-    query: Query<&Handle<StandardMaterial>, With<BoostPadI>>,
+    query: Query<(&Handle<StandardMaterial>, &BoostPadI)>,
     pad_glows: Res<BoostPickupGlows>,
     large_boost_pad_loc_rots: Res<LargeBoostPadLocRots>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut commands: Commands,
 ) {
+    let morton_generator = Morton::default();
+
     if pads.iter().count() != state.pads.len() && !large_boost_pad_loc_rots.rots.is_empty() {
         // The number of pads shouldn't change often
         // There's also not an easy way to determine
@@ -536,11 +548,13 @@ fn update_pads(
         for (entity, _) in pads.iter() {
             commands.entity(entity).despawn_recursive();
         }
+        let hitbox_material = materials.add(Color::NONE.into());
 
-        for pad in &*state.pads {
+        for pad in state.pads.iter() {
+            let code = morton_generator.get_code(pad.position);
             let mut transform = Transform::from_translation(pad.position.to_bevy() - Vec3::Y * 70.);
 
-            let mesh = if pad.is_big {
+            let (visual_mesh, hitbox) = if pad.is_big {
                 let rotation = large_boost_pad_loc_rots
                     .locs
                     .iter()
@@ -554,7 +568,7 @@ fn update_pads(
                     transform.translation.y += 5.2;
                 }
 
-                pad_glows.large.clone()
+                (pad_glows.large.clone(), pad_glows.large_hitbox.clone())
             } else {
                 if state.game_mode == GameMode::Soccar {
                     if transform.translation.z > 10. {
@@ -602,41 +616,61 @@ fn update_pads(
                     transform.translation.y += 5.7;
                 }
 
-                pad_glows.small.clone()
+                (pad_glows.small.clone(), pad_glows.small_hitbox.clone())
             };
 
-            commands.spawn((
-                BoostPadI,
-                PbrBundle {
-                    mesh,
-                    transform,
-                    material: materials.add(StandardMaterial {
-                        base_color: Color::rgba(0.9, 0.9, 0.1, 0.6),
-                        alpha_mode: AlphaMode::Add,
-                        double_sided: true,
-                        cull_mode: None,
+            commands
+                .spawn((
+                    BoostPadI(code),
+                    PbrBundle {
+                        mesh: visual_mesh,
+                        transform,
+                        material: materials.add(StandardMaterial {
+                            base_color: Color::rgba(0.9, 0.9, 0.1, 0.6),
+                            alpha_mode: AlphaMode::Add,
+                            double_sided: true,
+                            cull_mode: None,
+                            ..default()
+                        }),
                         ..default()
-                    }),
-                    ..default()
-                },
-                #[cfg(debug_assertions)]
-                EntityName::from("generic_boost_pad"),
-                RaycastPickable,
-                On::<Pointer<Over>>::target_insert(HighlightedEntity),
-                On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
-                NotShadowCaster,
-                NotShadowReceiver,
-            ));
+                    },
+                    #[cfg(debug_assertions)]
+                    EntityName::from("generic_boost_pad"),
+                    RaycastPickable,
+                    On::<Pointer<Over>>::target_insert(HighlightedEntity),
+                    On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
+                    On::<Pointer<Click>>::send_event::<BoostPadClicked>(),
+                    NotShadowCaster,
+                    NotShadowReceiver,
+                ))
+                .with_children(|parent| {
+                    parent.spawn(PbrBundle {
+                        mesh: hitbox,
+                        material: hitbox_material.clone(),
+                        ..default()
+                    });
+                });
         }
     }
 
-    for (pad, handle) in state.pads.iter().zip(query.iter()) {
-        materials.get_mut(handle).unwrap().base_color.set_a(if pad.state.is_active {
+    let mut sorted_pads = state
+        .pads
+        .iter()
+        .enumerate()
+        .map(|(i, pad)| (i, morton_generator.get_code(pad.position)))
+        .collect::<Vec<_>>();
+    radsort::sort_by_key(&mut sorted_pads, |(_, code)| *code);
+
+    for (handle, id) in query.iter() {
+        let index = sorted_pads.binary_search_by_key(&id.id(), |(_, code)| *code).unwrap();
+        let alpha = if state.pads[sorted_pads[index].0].state.is_active {
             0.6
         } else {
             // make the glow on inactive pads dissapear
             0.0
-        });
+        };
+
+        materials.get_mut(handle).unwrap().base_color.set_a(alpha);
     }
 }
 

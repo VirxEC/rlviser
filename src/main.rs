@@ -3,6 +3,7 @@ mod bytes;
 mod camera;
 mod gui;
 mod mesh;
+mod morton;
 mod rocketsim;
 mod spectator;
 mod udp;

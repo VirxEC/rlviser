@@ -27,10 +27,26 @@ impl Plugin for AssetsLoaderPlugin {
     }
 }
 
-fn load_assets(mut commands: Commands, assets: Res<AssetServer>) {
+fn load_assets(mut commands: Commands, assets: Res<AssetServer>, mut meshes: ResMut<Assets<Mesh>>) {
     commands.insert_resource(BoostPickupGlows {
         small: assets.load("Pickup_Boost/StaticMesh3/BoostPad_Small_02_SM.pskx"),
+        small_hitbox: meshes.add(
+            shape::Cylinder {
+                radius: 144. / 2.,
+                height: 165.,
+                ..default()
+            }
+            .into(),
+        ),
         large: assets.load("Pickup_Boost/StaticMesh3/BoostPad_Large_Glow.pskx"),
+        large_hitbox: meshes.add(
+            shape::Cylinder {
+                radius: 208. / 2.,
+                height: 168.,
+                ..default()
+            }
+            .into(),
+        ),
     });
 
     commands.insert_resource(BallAssets {
@@ -52,7 +68,9 @@ pub struct BallAssets {
 #[derive(Resource)]
 pub struct BoostPickupGlows {
     pub small: Handle<Mesh>,
+    pub small_hitbox: Handle<Mesh>,
     pub large: Handle<Mesh>,
+    pub large_hitbox: Handle<Mesh>,
 }
 
 const BLOCK_MESHES: [&str; 8] = [

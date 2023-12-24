@@ -2,9 +2,9 @@ use crate::{
     assets::*,
     bytes::ToBytes,
     camera::{HighlightedEntity, PrimaryCamera},
-    gui::{EnableBallInfo, EnableCarInfo},
+    gui::{EnableBallInfo, EnableCarInfo, EnablePadInfo, UserCarStates, UserPadStates},
     rocketsim::{GameMode, GameState},
-    udp::{Ball, Car, Connection, ToBevyVec, ToBevyVecFlat},
+    udp::{Ball, BoostPadI, Car, Connection, ToBevyVec, ToBevyVecFlat},
     LoadState,
 };
 use bevy::{
@@ -40,6 +40,7 @@ impl Plugin for FieldLoaderPlugin {
             .add_event::<ChangeCarPos>()
             .add_event::<BallClicked>()
             .add_event::<CarClicked>()
+            .add_event::<BoostPadClicked>()
             .add_systems(
                 Update,
                 (
@@ -48,6 +49,7 @@ impl Plugin for FieldLoaderPlugin {
                     load_extra_field.run_if(in_state(LoadState::FieldExtra)),
                     handle_ball_clicked.run_if(on_event::<BallClicked>()),
                     handle_car_clicked.run_if(on_event::<CarClicked>()),
+                    handle_boost_pad_clicked.run_if(on_event::<BoostPadClicked>()),
                     (
                         advance_stopwatch,
                         (
@@ -230,6 +232,31 @@ fn handle_ball_clicked(mut events: EventReader<BallClicked>, mut enable_ball_inf
     enable_ball_info.toggle();
 }
 
+#[derive(Event)]
+pub struct BoostPadClicked(PointerButton, Entity);
+
+impl From<ListenerInput<Pointer<Click>>> for BoostPadClicked {
+    fn from(event: ListenerInput<Pointer<Click>>) -> Self {
+        Self(event.button, event.target)
+    }
+}
+
+fn handle_boost_pad_clicked(
+    mut events: EventReader<BoostPadClicked>,
+    mut enable_boost_pad_info: ResMut<EnablePadInfo>,
+    boost_pads: Query<&BoostPadI>,
+) {
+    for event in events.read() {
+        if event.0 != PointerButton::Secondary {
+            continue;
+        }
+
+        if let Ok(boost_pad) = boost_pads.get(event.1) {
+            enable_boost_pad_info.toggle(boost_pad.id());
+        }
+    }
+}
+
 fn load_extra_field(
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -397,10 +424,16 @@ fn despawn_old_field(
     mut commands: Commands,
     mut state: ResMut<NextState<LoadState>>,
     static_field_entities: Query<Entity, With<StaticFieldEntity>>,
+    mut user_pads: ResMut<UserPadStates>,
+    mut user_cars: ResMut<UserCarStates>,
 ) {
+    user_pads.clear();
+    user_cars.clear();
+
     static_field_entities.for_each(|entity| {
         commands.entity(entity).despawn();
     });
+
     state.set(LoadState::Field);
 }
 

@@ -1,6 +1,7 @@
 use crate::{
     bytes::ToBytes,
     camera::{DaylightOffset, PrimaryCamera, Sun},
+    morton::Morton,
     rocketsim::GameState,
     udp::Connection,
 };
@@ -73,6 +74,8 @@ impl Plugin for DebugOverlayPlugin {
             .insert_resource(UserBallState::default())
             .insert_resource(EnableCarInfo::default())
             .insert_resource(UserCarStates::default())
+            .insert_resource(EnablePadInfo::default())
+            .insert_resource(UserPadStates::default())
             .insert_resource(PickingPluginsSettings {
                 enable: true,
                 enable_input: false,
@@ -81,6 +84,7 @@ impl Plugin for DebugOverlayPlugin {
             })
             .add_event::<UserSetBallState>()
             .add_event::<UserSetCarState>()
+            .add_event::<UserSetPadState>()
             .add_systems(
                 Update,
                 (
@@ -97,8 +101,10 @@ impl Plugin for DebugOverlayPlugin {
                         update_shadows,
                         update_ball_info.run_if(resource_equals(EnableBallInfo(true))),
                         update_car_info.run_if(|enable_menu: Res<EnableCarInfo>| !enable_menu.0.is_empty()),
+                        update_boost_pad_info.run_if(|enable_menu: Res<EnablePadInfo>| !enable_menu.0.is_empty()),
                         set_user_ball_state.run_if(on_event::<UserSetBallState>()),
                         set_user_car_state.run_if(on_event::<UserSetCarState>()),
+                        set_user_pad_state.run_if(on_event::<UserSetPadState>()),
                     )
                         .run_if(resource_equals(MenuFocused(true))),
                     update_camera_state,
@@ -141,6 +147,143 @@ impl EnableCarInfo {
     }
 }
 
+#[derive(Resource, PartialEq, Eq)]
+pub struct EnablePadInfo(AHashMap<u64, bool>);
+
+impl Default for EnablePadInfo {
+    #[inline]
+    fn default() -> Self {
+        Self(AHashMap::with_capacity(48))
+    }
+}
+
+impl EnablePadInfo {
+    pub fn toggle(&mut self, id: u64) {
+        if let Some(enabled) = self.0.get_mut(&id) {
+            *enabled = !*enabled;
+        } else {
+            self.0.insert(id, true);
+        }
+    }
+}
+
+#[derive(Default)]
+struct UserPadState {
+    pub is_active: usize,
+    pub timer: String,
+}
+
+#[derive(Resource)]
+pub struct UserPadStates(AHashMap<u64, UserPadState>);
+
+impl Default for UserPadStates {
+    #[inline]
+    fn default() -> Self {
+        Self(AHashMap::with_capacity(48))
+    }
+}
+
+impl UserPadStates {
+    pub fn clear(&mut self) {
+        self.0.clear();
+    }
+}
+
+#[derive(Event)]
+struct UserSetPadState(u64);
+
+fn update_boost_pad_info(
+    mut contexts: EguiContexts,
+    game_state: Res<GameState>,
+    mut enable_menu: ResMut<EnablePadInfo>,
+    mut set_user_state: EventWriter<UserSetPadState>,
+    mut user_pads: ResMut<UserPadStates>,
+) {
+    const USER_BOOL_NAMES: [&str; 3] = ["", "True", "False"];
+
+    let ctx = contexts.ctx_mut();
+
+    let morton_generator = Morton::default();
+    for (i, pad) in game_state.pads.iter().enumerate() {
+        let code = morton_generator.get_code(pad.position);
+        let Some(entry) = enable_menu.0.get_mut(&code) else {
+            continue;
+        };
+
+        if !*entry {
+            continue;
+        }
+
+        let user_pad = user_pads.0.entry(code).or_default();
+
+        let title = format!("{}Boost pad {}", if pad.is_big { "(Large) " } else { "" }, i);
+        egui::Window::new(title).open(entry).show(ctx, |ui| {
+            ui.label(format!(
+                "Position: [{:.0}, {:.0}, {:.0}]",
+                pad.position.x, pad.position.y, pad.position.z
+            ));
+
+            ui.horizontal(|ui| {
+                ui.vertical(|ui| {
+                    ui.label(format!("Is active: {}", pad.state.is_active));
+                    egui::ComboBox::from_id_source("Is active").width(60.).show_index(
+                        ui,
+                        &mut user_pad.is_active,
+                        USER_BOOL_NAMES.len(),
+                        |i| USER_BOOL_NAMES[i],
+                    );
+                });
+                ui.vertical(|ui| {
+                    ui.label(format!("Timer: {:.1}", pad.state.cooldown));
+                    ui.add(egui::TextEdit::singleline(&mut user_pad.timer).desired_width(60.));
+                });
+            });
+
+            if ui
+                .button("     Set all     ")
+                .on_hover_text("Set all (defined) boost pad properties")
+                .clicked()
+            {
+                set_user_state.send(UserSetPadState(code));
+            }
+        });
+    }
+}
+
+fn set_user_pad_state(
+    mut events: EventReader<UserSetPadState>,
+    mut game_state: ResMut<GameState>,
+    user_pads: Res<UserPadStates>,
+    socket: Res<Connection>,
+) {
+    let morton_generator = Morton::default();
+    let mut sorted_pads = game_state
+        .pads
+        .iter()
+        .enumerate()
+        .map(|(i, pad)| (i, morton_generator.get_code(pad.position)))
+        .collect::<Vec<_>>();
+    radsort::sort_by_key(&mut sorted_pads, |(_, code)| *code);
+
+    for event in events.read() {
+        let Some(user_pad) = user_pads.0.get(&event.0) else {
+            continue;
+        };
+
+        let Ok(index) = sorted_pads.binary_search_by_key(&event.0, |(_, code)| *code) else {
+            continue;
+        };
+        let pad = &mut game_state.pads[sorted_pads[index].0];
+
+        set_bool_from_usize(&mut pad.state.is_active, user_pad.is_active);
+        set_f32_from_str(&mut pad.state.cooldown, &user_pad.timer);
+    }
+
+    if let Err(e) = socket.0.send(&game_state.to_bytes()) {
+        error!("Failed to send boost pad information: {e}");
+    }
+}
+
 #[derive(Default)]
 struct UserCarState {
     pub pos: [String; 3],
@@ -154,12 +297,22 @@ struct UserCarState {
 }
 
 #[derive(Resource)]
-struct UserCarStates(AHashMap<u32, UserCarState>);
+pub struct UserCarStates(AHashMap<u32, UserCarState>);
 
 impl Default for UserCarStates {
     #[inline]
     fn default() -> Self {
         Self(AHashMap::with_capacity(8))
+    }
+}
+
+impl UserCarStates {
+    pub fn clear(&mut self) {
+        self.0.clear();
+    }
+
+    pub fn remove(&mut self, id: u32) {
+        self.0.remove(&id);
     }
 }
 
@@ -199,14 +352,14 @@ fn set_user_car_state(
                 set_vec3_from_arr_str(&mut game_state.cars[car_index].state.ang_vel, &user_car.ang_vel)
             }
             SetCarStateAmount::Jumped => {
-                set_bool_from_usize(&mut game_state.cars[car_index].state.has_jumped, user_car.has_jumped)
+                set_half_bool_from_usize(&mut game_state.cars[car_index].state.has_jumped, user_car.has_jumped)
             }
-            SetCarStateAmount::DoubleJumped => set_bool_from_usize(
+            SetCarStateAmount::DoubleJumped => set_half_bool_from_usize(
                 &mut game_state.cars[car_index].state.has_double_jumped,
                 user_car.has_double_jumped,
             ),
             SetCarStateAmount::Flipped => {
-                set_bool_from_usize(&mut game_state.cars[car_index].state.has_flipped, user_car.has_flipped)
+                set_half_bool_from_usize(&mut game_state.cars[car_index].state.has_flipped, user_car.has_flipped)
             }
             SetCarStateAmount::Boost => set_f32_from_str(&mut game_state.cars[car_index].state.boost, &user_car.boost),
             SetCarStateAmount::DemoRespawnTimer => set_f32_from_str(
@@ -217,12 +370,12 @@ fn set_user_car_state(
                 set_vec3_from_arr_str(&mut game_state.cars[car_index].state.pos, &user_car.pos);
                 set_vec3_from_arr_str(&mut game_state.cars[car_index].state.vel, &user_car.vel);
                 set_vec3_from_arr_str(&mut game_state.cars[car_index].state.ang_vel, &user_car.ang_vel);
-                set_bool_from_usize(&mut game_state.cars[car_index].state.has_jumped, user_car.has_jumped);
-                set_bool_from_usize(
+                set_half_bool_from_usize(&mut game_state.cars[car_index].state.has_jumped, user_car.has_jumped);
+                set_half_bool_from_usize(
                     &mut game_state.cars[car_index].state.has_double_jumped,
                     user_car.has_double_jumped,
                 );
-                set_bool_from_usize(&mut game_state.cars[car_index].state.has_flipped, user_car.has_flipped);
+                set_half_bool_from_usize(&mut game_state.cars[car_index].state.has_flipped, user_car.has_flipped);
                 set_f32_from_str(&mut game_state.cars[car_index].state.boost, &user_car.boost);
                 set_f32_from_str(
                     &mut game_state.cars[car_index].state.demo_respawn_timer,
@@ -233,7 +386,7 @@ fn set_user_car_state(
     }
 
     if let Err(e) = socket.0.send(&game_state.to_bytes()) {
-        error!("Failed to send ball position: {e}");
+        error!("Failed to send car information: {e}");
     }
 }
 
@@ -361,7 +514,7 @@ fn update_car_info(
                                 ui.label("");
 
                                 if ui
-                                    .button("Set all")
+                                    .button("     Set all     ")
                                     .on_hover_text("Set all (defined) car properties")
                                     .clicked()
                                 {
@@ -495,7 +648,7 @@ fn update_ball_info(
                 }
             });
             if ui
-                .button("Set all")
+                .button("     Set all     ")
                 .on_hover_text("Set all (defined) ball properties")
                 .clicked()
             {
@@ -516,9 +669,15 @@ fn set_vec3_from_arr_str(vec: &mut Vec3A, arr: &[String; 3]) {
     set_f32_from_str(&mut vec.z, &arr[2]);
 }
 
-fn set_bool_from_usize(b: &mut bool, i: usize) {
+fn set_half_bool_from_usize(b: &mut bool, i: usize) {
     if i != 0 {
         *b = false;
+    }
+}
+
+fn set_bool_from_usize(b: &mut bool, i: usize) {
+    if i != 0 {
+        *b = i == 1;
     }
 }
 
@@ -542,7 +701,7 @@ fn set_user_ball_state(
     }
 
     if let Err(e) = socket.0.send(&game_state.to_bytes()) {
-        error!("Failed to send ball position: {e}");
+        error!("Failed to send ball information: {e}");
     }
 }
 
