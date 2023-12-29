@@ -121,24 +121,24 @@ const CAR_BODY_NAMES: [&str; NUM_CAR_BODIES] = [
     "merc_body",
 ];
 
+pub const BLUE_COLOR: Color = if cfg!(feature = "full_load") {
+    Color::rgb(0.03, 0.09, 0.79)
+} else {
+    Color::rgb(0.01, 0.03, 0.39)
+};
+
+pub const ORANGE_COLOR: Color = if cfg!(feature = "full_load") {
+    Color::rgb(0.41, 0.21, 0.01)
+} else {
+    Color::rgb(0.82, 0.42, 0.02)
+};
+
 #[inline]
 /// Use colors that are a bit darker if we don't have the `full_load` feature
 const fn get_color_from_team(team: Team) -> Color {
     match team {
-        Team::Blue => {
-            if cfg!(feature = "full_load") {
-                Color::rgb(0.03, 0.09, 0.79)
-            } else {
-                Color::rgb(0.01, 0.03, 0.39)
-            }
-        }
-        Team::Orange => {
-            if cfg!(feature = "full_load") {
-                Color::rgb(0.41, 0.21, 0.01)
-            } else {
-                Color::rgb(0.82, 0.42, 0.02)
-            }
-        }
+        Team::Blue => BLUE_COLOR,
+        Team::Orange => ORANGE_COLOR,
     }
 }
 
@@ -414,12 +414,14 @@ fn update_car(
     car_entities: Query<(Entity, &Car)>,
     mut cars: Query<(&mut Transform, &Car, &Children)>,
     mut car_boosts: Query<&Handle<StandardMaterial>, With<CarBoost>>,
+    mut car_materials: Query<&Handle<StandardMaterial>, (With<Car>, Without<CarBoost>)>,
     mut camera_query: Query<(&mut PrimaryCamera, &mut Transform), Without<Car>>,
     mut timer: ResMut<DirectorTimer>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut last_boost_states: Local<Vec<u32>>,
+    mut last_demoed_states: Local<Vec<u32>>,
     mut user_cars: ResMut<UserCarStates>,
 ) {
     match cars.iter().count().cmp(&state.cars.len()) {
@@ -480,7 +482,25 @@ fn update_car(
         car_transform.translation = target_car.state.pos.to_bevy();
         car_transform.rotation = target_car.state.rot_mat.to_bevy();
 
-        let is_boosting = target_car.state.last_controls.boost && target_car.state.boost > f32::EPSILON;
+        let last_demoed = last_demoed_states.iter().any(|&id| id == car.id());
+
+        if target_car.state.is_demoed != last_demoed {
+            for (entity, car) in &car_entities {
+                if car.0 == target_car.id {
+                    let material_handle = car_materials.get_mut(entity).unwrap();
+                    let material = materials.get_mut(material_handle).unwrap();
+                    if target_car.state.is_demoed {
+                        material.base_color.set_a(0.);
+                        last_demoed_states.push(car.id());
+                    } else {
+                        material.base_color.set_a(1.);
+                        last_demoed_states.retain(|&id| id != car.id());
+                    }
+                }
+            }
+        }
+
+        let is_boosting = !target_car.state.is_demoed && target_car.state.last_controls.boost && target_car.state.boost > f32::EPSILON;
         let last_boosted = last_boost_states.iter().any(|&id| id == car.id());
 
         if is_boosting != last_boosted {

@@ -4,7 +4,7 @@ use crate::{
     camera::{HighlightedEntity, PrimaryCamera},
     gui::{EnableBallInfo, EnableCarInfo, EnablePadInfo, UserCarStates, UserPadStates},
     rocketsim::{GameMode, GameState},
-    udp::{Ball, BoostPadI, Car, Connection, ToBevyVec, ToBevyVecFlat},
+    udp::{Ball, BoostPadI, Car, Connection, ToBevyVec, ToBevyVecFlat, BLUE_COLOR, ORANGE_COLOR},
     LoadState,
 };
 use bevy::{
@@ -20,6 +20,7 @@ use bevy_mod_picking::{backends::raycast::RaycastPickable, prelude::*};
 use include_flate::flate;
 use serde::Deserialize;
 use std::{
+    f32::consts::FRAC_PI_2,
     io::{self, Read},
     rc::Rc,
     str::Utf8Error,
@@ -264,7 +265,6 @@ fn load_extra_field(
     ball_assets: Res<BallAssets>,
 ) {
     // load a glowing ball
-
     let initial_ball_color = Color::rgb(0.3, 0.3, 0.3);
 
     let ball_material = StandardMaterial {
@@ -437,6 +437,89 @@ fn despawn_old_field(
     state.set(LoadState::Field);
 }
 
+fn load_goals(
+    game_mode: GameMode,
+    commands: &mut Commands,
+    materials: &mut Assets<StandardMaterial>,
+    meshes: &mut Assets<Mesh>,
+) {
+    match game_mode {
+        GameMode::Soccar | GameMode::Snowday | GameMode::HeatSeeker => {
+            commands.spawn((
+                PbrBundle {
+                    mesh: meshes.add(Mesh::from(shape::Plane::from_size(1.))),
+                    material: materials.add(StandardMaterial {
+                        base_color: {
+                            let mut color = BLUE_COLOR;
+                            color.set_a(0.4);
+                            color
+                        },
+                        emissive: {
+                            let mut color = BLUE_COLOR;
+                            color.set_a(0.5);
+                            color
+                        },
+                        double_sided: true,
+                        cull_mode: None,
+                        alpha_mode: AlphaMode::Add,
+                        ..default()
+                    }),
+                    transform: Transform {
+                        translation: Vec3::new(0., 321.3875, -5120.),
+                        rotation: Quat::from_rotation_x(FRAC_PI_2),
+                        scale: Vec3::new(890. * 2., 0., 320. * 2.),
+                    },
+                    ..default()
+                },
+                #[cfg(debug_assertions)]
+                EntityName::from("blue_goal"),
+                RaycastPickable,
+                On::<Pointer<Over>>::target_insert(HighlightedEntity),
+                On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
+                StaticFieldEntity,
+            ));
+
+            commands.spawn((
+                PbrBundle {
+                    mesh: meshes.add(Mesh::from(shape::Plane::from_size(1.))),
+                    material: materials.add(StandardMaterial {
+                        base_color: {
+                            let mut color = ORANGE_COLOR;
+                            color.set_a(0.2);
+                            color
+                        },
+                        emissive: {
+                            let mut color = ORANGE_COLOR;
+                            color.set_a(0.5);
+                            color
+                        },
+                        double_sided: true,
+                        cull_mode: None,
+                        alpha_mode: AlphaMode::Add,
+                        ..default()
+                    }),
+                    transform: Transform {
+                        translation: Vec3::new(0., 321.3875, 5120.),
+                        rotation: Quat::from_rotation_x(FRAC_PI_2),
+                        scale: Vec3::new(890. * 2., 0., 320. * 2.),
+                    },
+                    ..default()
+                },
+                #[cfg(debug_assertions)]
+                EntityName::from("orange_goal"),
+                RaycastPickable,
+                On::<Pointer<Over>>::target_insert(HighlightedEntity),
+                On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
+                StaticFieldEntity,
+            ));
+        }
+        GameMode::Hoops => {
+            // TODO
+        }
+        _ => {}
+    }
+}
+
 fn load_field(
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -502,6 +585,8 @@ fn load_field(
             );
         }
     }
+
+    load_goals(*game_mode, &mut commands, &mut materials, &mut meshes);
 
     state.set(LoadState::None);
 }
@@ -840,7 +925,7 @@ impl MeshBuilder {
 
 fn process_materials(
     uvs: &mut Vec<[f32; 2]>,
-    ids: &Vec<usize>,
+    ids: &[usize],
     extra_uvs: &[Vec<[f32; 2]>],
     num_materials: usize,
     mat_ids: &[usize],
