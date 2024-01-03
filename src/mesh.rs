@@ -270,7 +270,6 @@ fn load_extra_field(
     let ball_material = StandardMaterial {
         base_color_texture: Some(ball_assets.ball_diffuse.clone()),
         // normal_map_texture: Some(ball_assets.ball_normal.clone()),
-        // flip_normal_map_y: true,
         // occlusion_texture: Some(ball_assets.ball_occlude.clone()),
         perceptual_roughness: 0.7,
         reflectance: 0.25,
@@ -447,7 +446,7 @@ fn load_goals(
         GameMode::Soccar | GameMode::Snowday | GameMode::HeatSeeker => {
             commands.spawn((
                 PbrBundle {
-                    mesh: meshes.add(Mesh::from(shape::Plane::from_size(100.))),
+                    mesh: meshes.add(Mesh::from(shape::Plane::from_size(1000.))),
                     material: materials.add(StandardMaterial {
                         base_color: {
                             let mut color = BLUE_COLOR;
@@ -467,7 +466,7 @@ fn load_goals(
                     transform: Transform {
                         translation: Vec3::new(0., 321.3875, -5120.),
                         rotation: Quat::from_rotation_x(FRAC_PI_2),
-                        scale: Vec3::new(8.9 * 2., 0., 3.2 * 2.),
+                        scale: Vec3::new(0.89 * 2., 0., 0.32 * 2.),
                     },
                     ..default()
                 },
@@ -477,11 +476,13 @@ fn load_goals(
                 On::<Pointer<Over>>::target_insert(HighlightedEntity),
                 On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
                 StaticFieldEntity,
+                NotShadowCaster,
+                NotShadowReceiver,
             ));
 
             commands.spawn((
                 PbrBundle {
-                    mesh: meshes.add(Mesh::from(shape::Plane::from_size(100.))),
+                    mesh: meshes.add(Mesh::from(shape::Plane::from_size(1000.))),
                     material: materials.add(StandardMaterial {
                         base_color: {
                             let mut color = ORANGE_COLOR;
@@ -501,7 +502,7 @@ fn load_goals(
                     transform: Transform {
                         translation: Vec3::new(0., 321.3875, 5120.),
                         rotation: Quat::from_rotation_x(FRAC_PI_2),
-                        scale: Vec3::new(8.9 * 2., 0., 3.2 * 2.),
+                        scale: Vec3::new(0.89 * 2., 0., 0.32 * 2.),
                     },
                     ..default()
                 },
@@ -511,6 +512,8 @@ fn load_goals(
                 On::<Pointer<Over>>::target_insert(HighlightedEntity),
                 On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
                 StaticFieldEntity,
+                NotShadowCaster,
+                NotShadowReceiver,
             ));
         }
         GameMode::Hoops => {
