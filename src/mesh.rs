@@ -447,7 +447,7 @@ fn load_goals(
         GameMode::Soccar | GameMode::Snowday | GameMode::HeatSeeker => {
             commands.spawn((
                 PbrBundle {
-                    mesh: meshes.add(Mesh::from(shape::Plane::from_size(1.))),
+                    mesh: meshes.add(Mesh::from(shape::Plane::from_size(100.))),
                     material: materials.add(StandardMaterial {
                         base_color: {
                             let mut color = BLUE_COLOR;
@@ -467,7 +467,7 @@ fn load_goals(
                     transform: Transform {
                         translation: Vec3::new(0., 321.3875, -5120.),
                         rotation: Quat::from_rotation_x(FRAC_PI_2),
-                        scale: Vec3::new(890. * 2., 0., 320. * 2.),
+                        scale: Vec3::new(8.9 * 2., 0., 3.2 * 2.),
                     },
                     ..default()
                 },
@@ -481,7 +481,7 @@ fn load_goals(
 
             commands.spawn((
                 PbrBundle {
-                    mesh: meshes.add(Mesh::from(shape::Plane::from_size(1.))),
+                    mesh: meshes.add(Mesh::from(shape::Plane::from_size(100.))),
                     material: materials.add(StandardMaterial {
                         base_color: {
                             let mut color = ORANGE_COLOR;
@@ -501,7 +501,7 @@ fn load_goals(
                     transform: Transform {
                         translation: Vec3::new(0., 321.3875, 5120.),
                         rotation: Quat::from_rotation_x(FRAC_PI_2),
-                        scale: Vec3::new(890. * 2., 0., 320. * 2.),
+                        scale: Vec3::new(8.9 * 2., 0., 3.2 * 2.),
                     },
                     ..default()
                 },

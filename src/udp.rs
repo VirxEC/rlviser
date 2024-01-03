@@ -500,7 +500,8 @@ fn update_car(
             }
         }
 
-        let is_boosting = !target_car.state.is_demoed && target_car.state.last_controls.boost && target_car.state.boost > f32::EPSILON;
+        let is_boosting =
+            !target_car.state.is_demoed && target_car.state.last_controls.boost && target_car.state.boost > f32::EPSILON;
         let last_boosted = last_boost_states.iter().any(|&id| id == car.id());
 
         if is_boosting != last_boosted {
