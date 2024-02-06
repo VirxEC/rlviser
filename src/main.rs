@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments, clippy::needless_pass_by_value, clippy::module_name_repetitions)]
+
 mod assets;
 mod bytes;
 mod camera;

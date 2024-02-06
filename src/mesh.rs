@@ -516,9 +516,7 @@ fn load_goals(
                 NotShadowReceiver,
             ));
         }
-        GameMode::Hoops => {
-            // TODO
-        }
+        // TODO: hoops
         _ => {}
     }
 }
@@ -593,9 +591,6 @@ fn load_field(
 
     state.set(LoadState::None);
 }
-
-#[derive(Component)]
-pub struct SceneType(GameState);
 
 fn process_info_node(
     node: &InfoNode,

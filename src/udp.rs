@@ -307,15 +307,15 @@ impl UdpPacketTypes {
     }
 }
 
-const PACKET_TYPE_BUFFER: [u8; 1] = [0];
-static mut INITIAL_BUFFER: [u8; GameState::MIN_NUM_BYTES] = [0; GameState::MIN_NUM_BYTES];
-
 fn step_arena(
     socket: Res<Connection>,
     mut game_state: ResMut<GameState>,
     mut exit: EventWriter<AppExit>,
     mut packet_updated: ResMut<PacketUpdated>,
 ) {
+    const PACKET_TYPE_BUFFER: [u8; 1] = [0];
+    const INITIAL_BUFFER: [u8; GameState::MIN_NUM_BYTES] = [0; GameState::MIN_NUM_BYTES];
+
     let mut packet_type = PACKET_TYPE_BUFFER;
 
     packet_updated.0 = false;
@@ -332,6 +332,8 @@ fn step_arena(
                 return;
             }
             UdpPacketTypes::GameState => {
+                let mut initial_buffer = INITIAL_BUFFER;
+
                 // wait until we receive the packet
                 // it should arrive VERY quickly, so a loop with no delay is fine
                 // if it doesn't, then there are other problems lol
@@ -351,16 +353,16 @@ fn step_arena(
 
                 #[cfg(not(windows))]
                 {
-                    while socket.0.peek_from(unsafe { &mut INITIAL_BUFFER }).is_err() {}
+                    while socket.0.peek_from(&mut initial_buffer).is_err() {}
                 }
 
-                let new_tick_count = GameState::read_tick_count(unsafe { &INITIAL_BUFFER });
+                let new_tick_count = GameState::read_tick_count(&initial_buffer);
                 if new_tick_count > 1 && game_state.tick_count > new_tick_count {
                     drop(socket.0.recv_from(&mut [0]));
                     return;
                 }
 
-                buf.resize(GameState::get_num_bytes(unsafe { &INITIAL_BUFFER }), 0);
+                buf.resize(GameState::get_num_bytes(&initial_buffer), 0);
                 if socket.0.recv_from(&mut buf).is_err() {
                     return;
                 }
@@ -405,7 +407,6 @@ const MIN_DIST_FROM_BALL_SQ: f32 = MIN_DIST_FROM_BALL * MIN_DIST_FROM_BALL;
 
 const MIN_CAMERA_BALLCAM_HEIGHT: f32 = 20.;
 
-#[allow(clippy::too_many_arguments)]
 fn update_car(
     time: Res<Time>,
     state: Res<GameState>,
@@ -417,35 +418,23 @@ fn update_car(
     mut car_materials: Query<&Handle<StandardMaterial>, (With<Car>, Without<CarBoost>)>,
     mut camera_query: Query<(&mut PrimaryCamera, &mut Transform), Without<Car>>,
     mut timer: ResMut<DirectorTimer>,
-    mut commands: Commands,
+    commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut last_boost_states: Local<Vec<u32>>,
     mut last_demoed_states: Local<Vec<u32>>,
     mut user_cars: ResMut<UserCarStates>,
 ) {
-    match cars.iter().count().cmp(&state.cars.len()) {
-        Ordering::Greater => {
-            for (entity, car) in &car_entities {
-                if !state.cars.iter().any(|car_info| car.0 == car_info.id) {
-                    user_cars.remove(car.0);
-                    commands.entity(entity).despawn_recursive();
-                }
-            }
-        }
-        Ordering::Less => {
-            let all_current_cars = cars.iter().map(|(_, car, _)| car.0).collect::<Vec<_>>();
-            let non_existant_cars = state
-                .cars
-                .iter()
-                .filter(|car_info| !all_current_cars.iter().any(|&id| id == car_info.id));
-
-            for car_info in non_existant_cars {
-                spawn_car(car_info, &mut commands, &mut meshes, &mut materials, &asset_server);
-            }
-        }
-        Ordering::Equal => {}
-    }
+    correct_car_count(
+        &cars,
+        &state,
+        &car_entities,
+        &mut user_cars,
+        commands,
+        &mut meshes,
+        &mut materials,
+        &asset_server,
+    );
 
     timer.0.tick(time.delta());
 
@@ -547,6 +536,40 @@ fn update_car(
                 camera_transform.rotation *= Quat::from_rotation_x(-PI / 30.);
             }
         }
+    }
+}
+
+fn correct_car_count(
+    cars: &Query<(&mut Transform, &Car, &Children)>,
+    state: &GameState,
+    car_entities: &Query<(Entity, &Car)>,
+    user_cars: &mut UserCarStates,
+    mut commands: Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    asset_server: &AssetServer,
+) {
+    match cars.iter().count().cmp(&state.cars.len()) {
+        Ordering::Greater => {
+            for (entity, car) in car_entities {
+                if !state.cars.iter().any(|car_info| car.0 == car_info.id) {
+                    user_cars.remove(car.0);
+                    commands.entity(entity).despawn_recursive();
+                }
+            }
+        }
+        Ordering::Less => {
+            let all_current_cars = cars.iter().map(|(_, car, _)| car.0).collect::<Vec<_>>();
+            let non_existant_cars = state
+                .cars
+                .iter()
+                .filter(|car_info| !all_current_cars.iter().any(|&id| id == car_info.id));
+
+            for car_info in non_existant_cars {
+                spawn_car(car_info, &mut commands, meshes, materials, asset_server);
+            }
+        }
+        Ordering::Equal => {}
     }
 }
 

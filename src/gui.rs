@@ -349,17 +349,17 @@ fn set_user_car_state(
             SetCarStateAmount::Pos => set_vec3_from_arr_str(&mut game_state.cars[car_index].state.pos, &user_car.pos),
             SetCarStateAmount::Vel => set_vec3_from_arr_str(&mut game_state.cars[car_index].state.vel, &user_car.vel),
             SetCarStateAmount::AngVel => {
-                set_vec3_from_arr_str(&mut game_state.cars[car_index].state.ang_vel, &user_car.ang_vel)
+                set_vec3_from_arr_str(&mut game_state.cars[car_index].state.ang_vel, &user_car.ang_vel);
             }
             SetCarStateAmount::Jumped => {
-                set_half_bool_from_usize(&mut game_state.cars[car_index].state.has_jumped, user_car.has_jumped)
+                set_half_bool_from_usize(&mut game_state.cars[car_index].state.has_jumped, user_car.has_jumped);
             }
             SetCarStateAmount::DoubleJumped => set_half_bool_from_usize(
                 &mut game_state.cars[car_index].state.has_double_jumped,
                 user_car.has_double_jumped,
             ),
             SetCarStateAmount::Flipped => {
-                set_half_bool_from_usize(&mut game_state.cars[car_index].state.has_flipped, user_car.has_flipped)
+                set_half_bool_from_usize(&mut game_state.cars[car_index].state.has_flipped, user_car.has_flipped);
             }
             SetCarStateAmount::Boost => set_f32_from_str(&mut game_state.cars[car_index].state.boost, &user_car.boost),
             SetCarStateAmount::DemoRespawnTimer => set_f32_from_str(
@@ -715,6 +715,7 @@ impl Default for MenuFocused {
     }
 }
 
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Resource)]
 struct Options {
     vsync: bool,
@@ -827,6 +828,7 @@ impl Options {
     }
 
     #[inline]
+    #[allow(clippy::float_cmp)]
     fn is_not_similar(&self, other: &Self) -> bool {
         self.vsync != other.vsync
             || self.uncap_fps != other.uncap_fps

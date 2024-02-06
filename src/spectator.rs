@@ -67,8 +67,7 @@ fn spectator_update(
 
     if primary_camera
         .get_single()
-        .map(|state| *state != PrimaryCamera::Spectator)
-        .unwrap_or_default()
+        .is_ok_and(|state| *state != PrimaryCamera::Spectator)
     {
         motion.clear();
         return;

@@ -104,6 +104,7 @@ pub struct CarControls {
     pub handbrake: bool,
 }
 
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct CarState {
     pub update_counter: u64,
