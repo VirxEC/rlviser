@@ -337,7 +337,7 @@ fn step_arena(
 
                 #[cfg(windows)]
                 {
-                    while let Err(e) = socket.0.peek_from(unsafe { &mut INITIAL_BUFFER }) {
+                    while let Err(e) = socket.0.peek_from(&mut initial_buffer) {
                         if let Some(code) = e.raw_os_error() {
                             if code == 10040 {
                                 break;
