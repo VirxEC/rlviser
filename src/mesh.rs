@@ -4,14 +4,17 @@ use crate::{
     camera::{HighlightedEntity, PrimaryCamera},
     gui::{EnableBallInfo, EnableCarInfo, EnablePadInfo, UserCarStates, UserPadStates},
     rocketsim::{GameMode, GameState},
-    udp::{Ball, BoostPadI, Car, Connection, ToBevyVec, ToBevyVecFlat, BLUE_COLOR, ORANGE_COLOR},
+    udp::{Ball, BoostPadI, Car, Connection, ToBevyVec, ToBevyVecFlat},
     LoadState,
 };
 use bevy::{
     math::{Vec3A, Vec3Swizzles},
     pbr::{NotShadowCaster, NotShadowReceiver},
     prelude::*,
-    render::mesh::{self, VertexAttributeValues},
+    render::{
+        mesh::{self, VertexAttributeValues},
+        render_asset::RenderAssetUsages,
+    },
     time::Stopwatch,
     window::PrimaryWindow,
 };
@@ -20,13 +23,15 @@ use bevy_mod_picking::{backends::raycast::RaycastPickable, prelude::*};
 use include_flate::flate;
 use serde::Deserialize;
 use std::{
-    f32::consts::FRAC_PI_2,
     io::{self, Read},
     rc::Rc,
     str::Utf8Error,
     time::Duration,
 };
 use thiserror::Error;
+
+#[cfg(feature = "team_goal_barriers")]
+use crate::udp::{BLUE_COLOR, ORANGE_COLOR};
 
 #[cfg(debug_assertions)]
 use crate::camera::EntityName;
@@ -198,7 +203,7 @@ fn project_ray_to_plane(
     let global_ray = camera.viewport_to_world(global_transform, cursor_coords)?;
 
     let cam_pos = Vec3A::from(global_ray.origin);
-    let cursor_dir = Vec3A::from(global_ray.direction);
+    let cursor_dir = Vec3A::from(Vec3::from(global_ray.direction));
 
     // define a plane that intersects the ball and is perpendicular to the camera direction
     let plane_normal = (global_transform.affine().matrix3 * Vec3A::Z).normalize();
@@ -298,7 +303,7 @@ fn load_extra_field(
                 point_light: PointLight {
                     color: initial_ball_color,
                     radius: 90.,
-                    intensity: 2_000_000.,
+                    intensity: 200_000_000.,
                     range: 1000.,
                     ..default()
                 },
@@ -429,13 +434,14 @@ fn despawn_old_field(
     user_pads.clear();
     user_cars.clear();
 
-    static_field_entities.for_each(|entity| {
+    static_field_entities.iter().for_each(|entity| {
         commands.entity(entity).despawn();
     });
 
     state.set(LoadState::Field);
 }
 
+#[cfg(feature = "team_goal_barriers")]
 fn load_goals(
     game_mode: GameMode,
     commands: &mut Commands,
@@ -446,11 +452,12 @@ fn load_goals(
         GameMode::Soccar | GameMode::Snowday | GameMode::HeatSeeker => {
             commands.spawn((
                 PbrBundle {
-                    mesh: meshes.add(Mesh::from(shape::Plane::from_size(1000.))),
+                    mesh: meshes.add(Rectangle::from_size(Vec2::splat(1000.))),
                     material: materials.add(StandardMaterial {
                         base_color: {
                             let mut color = BLUE_COLOR;
-                            color.set_a(0.4);
+                            color.set_b(color.b() * 2.);
+                            color.set_a(0.8);
                             color
                         },
                         emissive: {
@@ -465,8 +472,8 @@ fn load_goals(
                     }),
                     transform: Transform {
                         translation: Vec3::new(0., 321.3875, -5120.),
-                        rotation: Quat::from_rotation_x(FRAC_PI_2),
-                        scale: Vec3::new(0.89 * 2., 0., 0.32 * 2.),
+                        rotation: Quat::IDENTITY,
+                        scale: Vec3::new(0.89 * 2., 0.32 * 2., 0.),
                     },
                     ..default()
                 },
@@ -482,11 +489,11 @@ fn load_goals(
 
             commands.spawn((
                 PbrBundle {
-                    mesh: meshes.add(Mesh::from(shape::Plane::from_size(1000.))),
+                    mesh: meshes.add(Rectangle::from_size(Vec2::splat(1000.))),
                     material: materials.add(StandardMaterial {
                         base_color: {
                             let mut color = ORANGE_COLOR;
-                            color.set_a(0.2);
+                            color.set_a(0.8);
                             color
                         },
                         emissive: {
@@ -501,8 +508,8 @@ fn load_goals(
                     }),
                     transform: Transform {
                         translation: Vec3::new(0., 321.3875, 5120.),
-                        rotation: Quat::from_rotation_x(FRAC_PI_2),
-                        scale: Vec3::new(0.89 * 2., 0., 0.32 * 2.),
+                        rotation: Quat::IDENTITY,
+                        scale: Vec3::new(0.89 * 2., 0.32 * 2., 0.),
                     },
                     ..default()
                 },
@@ -587,6 +594,7 @@ fn load_field(
         }
     }
 
+    #[cfg(feature = "team_goal_barriers")]
     load_goals(*game_mode, &mut commands, &mut materials, &mut meshes);
 
     state.set(LoadState::None);
@@ -692,8 +700,8 @@ impl MeshBuilder {
         }
 
         let all_mat_ids = self.ids.iter().map(|&id| self.mat_ids[id]).collect::<Vec<_>>();
-
         let initial_mesh = self.build_mesh(scale);
+
         let all_verts = initial_mesh.attribute(Mesh::ATTRIBUTE_POSITION).unwrap().as_float3().unwrap();
         let VertexAttributeValues::Float32x2(all_uvs) = initial_mesh.attribute(Mesh::ATTRIBUTE_UV_0).unwrap() else {
             panic!("No UVs found");
@@ -709,7 +717,7 @@ impl MeshBuilder {
 
         (0..num_materials)
             .map(|mat_id| {
-                let mut mesh = Mesh::new(mesh::PrimitiveTopology::TriangleList);
+                let mut mesh = Mesh::new(mesh::PrimitiveTopology::TriangleList, RenderAssetUsages::default());
 
                 let verts = all_mat_ids
                     .chunks_exact(3)
@@ -791,7 +799,7 @@ impl MeshBuilder {
     #[must_use]
     // Build the Bevy Mesh
     pub fn build_mesh(self, scale: f32) -> Mesh {
-        let mut mesh = Mesh::new(mesh::PrimitiveTopology::TriangleList);
+        let mut mesh = Mesh::new(mesh::PrimitiveTopology::TriangleList, RenderAssetUsages::default());
 
         let verts = self
             .verts
@@ -809,7 +817,7 @@ impl MeshBuilder {
             mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, self.uvs);
 
             // compute tangents
-            mesh.set_indices(Some(mesh::Indices::U32((0..num_verts as u32).collect::<Vec<_>>())));
+            mesh.insert_indices(mesh::Indices::U32((0..num_verts as u32).collect::<Vec<_>>()));
             mesh.generate_tangents().unwrap();
         }
 

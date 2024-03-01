@@ -42,7 +42,7 @@ fn main() {
     assets::uncook().unwrap();
 
     App::new()
-        .add_state::<LoadState>()
+        .init_state::<LoadState>()
         .insert_resource(ServerPort {
             primary_port,
             secondary_port,
@@ -64,7 +64,6 @@ fn main() {
                 }),
                 ..default()
             }),))
-        .add_state::<LoadState>()
         .add_plugins((
             LogDiagnosticsPlugin {
                 debug: cfg!(debug_assertions),

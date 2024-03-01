@@ -53,7 +53,7 @@ fn spectator_init(cameras: Query<Entity, With<Spectator>>, mut settings: ResMut<
 
 fn spectator_update(
     time: Res<Time>,
-    keys: Res<Input<KeyCode>>,
+    keys: Res<ButtonInput<KeyCode>>,
     windows: Query<&Window, With<PrimaryWindow>>,
     primary_camera: Query<&PrimaryCamera>,
     mut motion: EventReader<MouseMotion>,
@@ -103,10 +103,10 @@ fn spectator_update(
 
     // translation
     {
-        let forward = f32::from(keys.pressed(KeyCode::W));
-        let backward = f32::from(keys.pressed(KeyCode::S));
-        let right = f32::from(keys.pressed(KeyCode::D));
-        let left = f32::from(keys.pressed(KeyCode::A));
+        let forward = f32::from(keys.pressed(KeyCode::KeyW));
+        let backward = f32::from(keys.pressed(KeyCode::KeyS));
+        let right = f32::from(keys.pressed(KeyCode::KeyD));
+        let left = f32::from(keys.pressed(KeyCode::KeyA));
         let up = f32::from(keys.pressed(KeyCode::Space));
         let down = f32::from(keys.pressed(KeyCode::ControlLeft));
 
@@ -120,7 +120,7 @@ fn spectator_update(
         let delta_lateral = (right - left) * speed;
         let delta_vertical = (up - down) * speed;
 
-        let mut forward = camera_transform.forward();
+        let mut forward = *camera_transform.forward();
         forward.y = 0f32;
         forward = forward.normalize(); // fly fast even when look down/up
 
@@ -160,7 +160,7 @@ pub struct SpectatorSettings {
     ///
     /// Use this to control how fast the [`Spectator`] moves when you hold `Shift`.
     pub alt_speed: f32,
-    /// The camera sensitivity of the active [`Spectator`]. (Default: `0.1`)
+    /// The camera sensitivity of the active [`Spectator`]. (Default: `0.001`)
     ///
     /// Use this to control how fast the [`Spectator`] turns when you move the mouse.
     pub sensitivity: f32,
@@ -173,7 +173,7 @@ impl Default for SpectatorSettings {
             active_window: None,
             base_speed: 0.1,
             alt_speed: 0.5,
-            sensitivity: 0.1,
+            sensitivity: 0.001,
         }
     }
 }

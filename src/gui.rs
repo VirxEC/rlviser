@@ -1032,7 +1032,7 @@ fn update_camera_state(mut primary_camera: Query<&mut PrimaryCamera>, options: R
 fn listen(
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
     mut picking_state: ResMut<PickingPluginsSettings>,
-    key: Res<Input<KeyCode>>,
+    key: Res<ButtonInput<KeyCode>>,
     mut menu_focused: ResMut<MenuFocused>,
     mut last_focus: Local<bool>,
     mut options: ResMut<Options>,
@@ -1061,25 +1061,25 @@ fn listen(
         return;
     }
 
-    if key.just_pressed(KeyCode::Key1) || key.just_pressed(KeyCode::Numpad1) {
+    if key.just_pressed(KeyCode::Digit1) || key.just_pressed(KeyCode::Numpad1) {
         options.camera_state = PrimaryCamera::TrackCar(1);
-    } else if key.just_pressed(KeyCode::Key2) || key.just_pressed(KeyCode::Numpad2) {
+    } else if key.just_pressed(KeyCode::Digit2) || key.just_pressed(KeyCode::Numpad2) {
         options.camera_state = PrimaryCamera::TrackCar(2);
-    } else if key.just_pressed(KeyCode::Key3) || key.just_pressed(KeyCode::Numpad3) {
+    } else if key.just_pressed(KeyCode::Digit3) || key.just_pressed(KeyCode::Numpad3) {
         options.camera_state = PrimaryCamera::TrackCar(3);
-    } else if key.just_pressed(KeyCode::Key4) || key.just_pressed(KeyCode::Numpad4) {
+    } else if key.just_pressed(KeyCode::Digit4) || key.just_pressed(KeyCode::Numpad4) {
         options.camera_state = PrimaryCamera::TrackCar(4);
-    } else if key.just_pressed(KeyCode::Key5) || key.just_pressed(KeyCode::Numpad5) {
+    } else if key.just_pressed(KeyCode::Digit5) || key.just_pressed(KeyCode::Numpad5) {
         options.camera_state = PrimaryCamera::TrackCar(5);
-    } else if key.just_pressed(KeyCode::Key6) || key.just_pressed(KeyCode::Numpad2) {
+    } else if key.just_pressed(KeyCode::Digit6) || key.just_pressed(KeyCode::Numpad2) {
         options.camera_state = PrimaryCamera::TrackCar(6);
-    } else if key.just_pressed(KeyCode::Key7) || key.just_pressed(KeyCode::Numpad7) {
+    } else if key.just_pressed(KeyCode::Digit7) || key.just_pressed(KeyCode::Numpad7) {
         options.camera_state = PrimaryCamera::TrackCar(7);
-    } else if key.just_pressed(KeyCode::Key8) || key.just_pressed(KeyCode::Numpad8) {
+    } else if key.just_pressed(KeyCode::Digit8) || key.just_pressed(KeyCode::Numpad8) {
         options.camera_state = PrimaryCamera::TrackCar(8);
-    } else if key.just_pressed(KeyCode::Key9) || key.just_pressed(KeyCode::Numpad9) {
+    } else if key.just_pressed(KeyCode::Digit9) || key.just_pressed(KeyCode::Numpad9) {
         options.camera_state = PrimaryCamera::Director(0);
-    } else if key.just_pressed(KeyCode::Key0) || key.just_pressed(KeyCode::Numpad0) {
+    } else if key.just_pressed(KeyCode::Digit0) || key.just_pressed(KeyCode::Numpad0) {
         options.camera_state = PrimaryCamera::Spectator;
     }
 }

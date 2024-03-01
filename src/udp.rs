@@ -190,15 +190,15 @@ fn spawn_car(
     let mesh_materials = if cfg!(feature = "full_load") {
         get_car_mesh_materials(mesh_id, materials, asset_server, base_color)
     } else {
-        vec![materials.add(base_color.into()); mesh_info.len()]
+        vec![materials.add(base_color); mesh_info.len()]
     };
 
     commands
         .spawn((
             Car(car_info.id),
             PbrBundle {
-                mesh: meshes.add(shape::Box::new(hitbox.x * 2., hitbox.y * 3., hitbox.z * 2.).into()),
-                material: materials.add(Color::NONE.into()),
+                mesh: meshes.add(Cuboid::new(hitbox.x * 2., hitbox.y * 3., hitbox.z * 2.)),
+                material: materials.add(Color::NONE),
                 ..default()
             },
             #[cfg(debug_assertions)]
@@ -226,12 +226,7 @@ fn spawn_car(
 
             parent.spawn((
                 PbrBundle {
-                    mesh: meshes.add(Mesh::from(shape::Cylinder {
-                        height: CAR_BOOST_LENGTH,
-                        radius: 10.,
-                        resolution: 16,
-                        ..default()
-                    })),
+                    mesh: meshes.add(Cylinder::new(10., CAR_BOOST_LENGTH)),
                     material: materials.add(StandardMaterial {
                         base_color: Color::Rgba {
                             red: 1.,
@@ -530,7 +525,7 @@ fn update_car(
             } else {
                 let car_look = Vec3::new(target_car.state.vel.x, 0., target_car.state.vel.y)
                     .try_normalize()
-                    .unwrap_or_else(|| car_transform.forward());
+                    .unwrap_or_else(|| car_transform.forward().into());
                 camera_transform.translation = car_transform.translation - car_look * 280. + Vec3::Y * 110.;
                 camera_transform.look_to(car_look, Vec3::Y);
                 camera_transform.rotation *= Quat::from_rotation_x(-PI / 30.);
@@ -592,7 +587,7 @@ fn update_pads(
         for (entity, _) in pads.iter() {
             commands.entity(entity).despawn_recursive();
         }
-        let hitbox_material = materials.add(Color::NONE.into());
+        let hitbox_material = materials.add(Color::NONE);
 
         for pad in state.pads.iter() {
             let code = morton_generator.get_code(pad.position);
@@ -844,9 +839,9 @@ fn update_field(state: Res<GameState>, mut game_mode: ResMut<GameMode>, mut load
     }
 }
 
-fn listen(socket: Res<Connection>, key: Res<Input<KeyCode>>, mut game_state: ResMut<GameState>) {
+fn listen(socket: Res<Connection>, key: Res<ButtonInput<KeyCode>>, mut game_state: ResMut<GameState>) {
     let mut changed = false;
-    if key.just_pressed(KeyCode::R) {
+    if key.just_pressed(KeyCode::KeyR) {
         changed = true;
 
         game_state.ball.pos = Vec3A::new(0., -2000., 1500.);

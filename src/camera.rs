@@ -1,6 +1,5 @@
 use crate::spectator::{Spectator, SpectatorPlugin, SpectatorSettings};
 use bevy::{
-    core_pipeline::clear_color::ClearColorConfig,
     pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap},
     prelude::*,
 };
@@ -49,7 +48,7 @@ pub const TIME_DISPLAY_POS: Vec2 = Vec2::new(0., 60.);
 
 fn setup(mut commands: Commands) {
     commands.insert_resource(AmbientLight {
-        brightness: 0.3,
+        brightness: 500.,
         ..default()
     });
 
@@ -96,12 +95,10 @@ fn setup(mut commands: Commands) {
     commands.spawn((
         MenuCamera,
         Camera2dBundle {
-            camera_2d: Camera2d {
-                clear_color: ClearColorConfig::None,
-            },
             camera: Camera {
                 order: 1,
                 hdr: true,
+                clear_color: ClearColorConfig::None,
                 ..default()
             },
             transform: Transform::from_translation(Vec3::Z),
@@ -184,7 +181,7 @@ fn daylight_cycle(
         if let Some((mut light_trans, mut directional)) = query.single_mut().into() {
             light_trans.translation = sun_position * 10_000_000.;
             light_trans.look_at(Vec3::ZERO, Vec3::Y);
-            directional.illuminance = t.sin().max(0.0).powi(2) * 50000.;
+            directional.illuminance = t.sin().max(0.0).powi(2) * 10000.;
         }
     }
 }
@@ -229,7 +226,7 @@ impl Plugin for CameraPlugin {
         app.insert_resource(SpectatorSettings {
             base_speed: 2500.,
             alt_speed: 750.,
-            sensitivity: 0.003,
+            sensitivity: 0.001,
             ..default()
         })
         .insert_resource(FramepaceSettings {
@@ -241,7 +238,10 @@ impl Plugin for CameraPlugin {
             TimerMode::Repeating,
         )))
         .insert_resource(DaylightOffset::default())
-        .insert_resource(RaycastBackendSettings { require_markers: true })
+        .insert_resource(RaycastBackendSettings {
+            require_markers: true,
+            ..default()
+        })
         .insert_resource(DirectionalLightShadowMap::default())
         .add_plugins((
             FramepacePlugin,
