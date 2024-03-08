@@ -77,10 +77,11 @@ impl Plugin for DebugOverlayPlugin {
             .insert_resource(EnablePadInfo::default())
             .insert_resource(UserPadStates::default())
             .insert_resource(PickingPluginsSettings {
-                enable: true,
-                enable_input: false,
-                enable_highlighting: false,
-                enable_interacting: true,
+                is_enabled: true,
+                is_input_enabled: false,
+                is_focus_enabled: false,
+                // enable_highlighting: false,
+                // enable_interacting: true,
             })
             .add_event::<UserSetBallState>()
             .add_event::<UserSetCarState>()
@@ -1052,7 +1053,7 @@ fn listen(
         };
 
         window.cursor.visible = menu_focused.0;
-        picking_state.enable = menu_focused.0;
+        picking_state.is_enabled = menu_focused.0;
     }
 
     *last_focus = menu_focused.0;
