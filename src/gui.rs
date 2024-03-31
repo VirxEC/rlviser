@@ -280,7 +280,7 @@ fn set_user_pad_state(
         set_f32_from_str(&mut pad.state.cooldown, &user_pad.timer);
     }
 
-    if let Err(e) = socket.0.send(&game_state.to_bytes()) {
+    if let Err(e) = socket.0.send_to(&game_state.to_bytes(), socket.1) {
         error!("Failed to send boost pad information: {e}");
     }
 }
@@ -386,7 +386,7 @@ fn set_user_car_state(
         }
     }
 
-    if let Err(e) = socket.0.send(&game_state.to_bytes()) {
+    if let Err(e) = socket.0.send_to(&game_state.to_bytes(), socket.1) {
         error!("Failed to send car information: {e}");
     }
 }
@@ -701,7 +701,7 @@ fn set_user_ball_state(
         }
     }
 
-    if let Err(e) = socket.0.send(&game_state.to_bytes()) {
+    if let Err(e) = socket.0.send_to(&game_state.to_bytes(), socket.1) {
         error!("Failed to send ball information: {e}");
     }
 }

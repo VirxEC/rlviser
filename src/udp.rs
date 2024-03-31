@@ -17,7 +17,14 @@ use bevy::{
 };
 use bevy_mod_picking::{backends::raycast::RaycastPickable, prelude::*};
 use bevy_vector_shapes::prelude::*;
-use std::{cmp::Ordering, f32::consts::PI, fs, net::UdpSocket, time::Duration};
+use std::{
+    cmp::Ordering,
+    f32::consts::PI,
+    fs,
+    net::{IpAddr, SocketAddr, UdpSocket},
+    str::FromStr,
+    time::Duration,
+};
 
 #[cfg(debug_assertions)]
 use crate::camera::EntityName;
@@ -44,18 +51,19 @@ impl Car {
         self.0
     }
 }
+
 #[derive(Resource)]
 struct DirectorTimer(Timer);
 
 #[derive(Resource)]
-pub struct Connection(pub UdpSocket);
+pub struct Connection(pub UdpSocket, pub SocketAddr);
 
 fn establish_connection(port: Res<ServerPort>, mut commands: Commands, mut state: ResMut<NextState<LoadState>>) {
-    let socket = UdpSocket::bind(("127.0.0.1", port.secondary_port)).unwrap();
-    socket.connect(("127.0.0.1", port.primary_port)).unwrap();
-    socket.send(&[1]).unwrap();
+    let socket_addr = SocketAddr::new(IpAddr::from_str("0.0.0.0").unwrap(), port.primary_port);
+    let socket = UdpSocket::bind(("0.0.0.0", port.secondary_port)).unwrap();
+    socket.send_to(&[1], socket_addr).unwrap();
     socket.set_nonblocking(true).unwrap();
-    commands.insert_resource(Connection(socket));
+    commands.insert_resource(Connection(socket, socket_addr));
     state.set(LoadState::FieldExtra);
 }
 
@@ -849,7 +857,7 @@ fn listen(socket: Res<Connection>, key: Res<ButtonInput<KeyCode>>, mut game_stat
     }
 
     if changed {
-        if let Err(e) = socket.0.send(&game_state.to_bytes()) {
+        if let Err(e) = socket.0.send_to(&game_state.to_bytes(), socket.1) {
             error!("Failed to send state setting packet: {e}");
         }
     }

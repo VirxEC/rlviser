@@ -1,5 +1,5 @@
 [package]
-version = "0.6.5"
+version = "0.6.6"
 name = "rlviser"
 edition = "2021"
 publish = false
@@ -8,7 +8,8 @@ publish = false
 
 [dependencies]
 bevy_atmosphere = "0.9"
-bevy_egui = "0.25.0"
+# bevy_atmosphere = { path = "../bevy_atmosphere" }
+bevy_egui = "0.26.0"
 bevy_eventlistener = "0.7.0"
 bevy_framepace = { version = "0.15.0", default-features = false }
 bevy_mod_picking = { version = "0.18.0", default-features = false, features = ["backend_raycast"] }

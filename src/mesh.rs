@@ -112,7 +112,7 @@ fn change_ball_pos(
     game_state.ball.vel = (target.xzy() - game_state.ball.pos).normalize() * 2000.;
 
     last_state_set.0.reset();
-    if let Err(e) = socket.0.send(&game_state.to_bytes()) {
+    if let Err(e) = socket.0.send_to(&game_state.to_bytes(), socket.1) {
         error!("Failed to send ball position: {e}");
     }
 }
@@ -159,7 +159,7 @@ fn change_car_pos(
         last_state_set.0.reset();
     }
 
-    if let Err(e) = socket.0.send(&game_state.to_bytes()) {
+    if let Err(e) = socket.0.send_to(&game_state.to_bytes(), socket.1) {
         error!("Failed to send car position: {e}");
     }
 }
