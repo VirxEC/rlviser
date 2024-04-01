@@ -10,7 +10,7 @@ use crate::{
 };
 use bevy::{
     app::AppExit,
-    math::{Mat3A, Vec3A, Vec3Swizzles},
+    math::{Mat3A, Vec3A},
     pbr::{NotShadowCaster, NotShadowReceiver},
     prelude::*,
     window::PrimaryWindow,

@@ -8,7 +8,7 @@ use crate::{
     LoadState,
 };
 use bevy::{
-    math::{Vec3A, Vec3Swizzles},
+    math::Vec3A,
     pbr::{NotShadowCaster, NotShadowReceiver},
     prelude::*,
     render::{
@@ -18,7 +18,6 @@ use bevy::{
     time::Stopwatch,
     window::PrimaryWindow,
 };
-use bevy_eventlistener::callbacks::ListenerInput;
 use bevy_mod_picking::{backends::raycast::RaycastPickable, prelude::*};
 use include_flate::flate;
 use serde::Deserialize;

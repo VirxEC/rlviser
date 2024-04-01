@@ -10,6 +10,7 @@ mod rocketsim;
 mod spectator;
 mod udp;
 
+use std::env;
 use bevy::{
     diagnostic::LogDiagnosticsPlugin,
     prelude::*,
@@ -34,10 +35,12 @@ pub struct ServerPort {
 }
 
 fn main() {
+    let mut args = env::args();
+
     // read the first argument and treat it as the port to connect to (u16)
-    let primary_port = std::env::args().nth(1).and_then(|s| s.parse::<u16>().ok()).unwrap_or(34254);
+    let primary_port = args.nth(1).and_then(|s| s.parse::<u16>().ok()).unwrap_or(34254);
     // read the second argument and treat it as the port to bind the UDP socket to (u16)
-    let secondary_port = std::env::args().nth(2).and_then(|s| s.parse::<u16>().ok()).unwrap_or(45243);
+    let secondary_port = args.next().and_then(|s| s.parse::<u16>().ok()).unwrap_or(45243);
 
     assets::uncook().unwrap();
 
