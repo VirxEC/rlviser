@@ -4,7 +4,7 @@ use crate::{
     camera::{HighlightedEntity, PrimaryCamera},
     gui::{EnableBallInfo, EnableCarInfo, EnablePadInfo, UserCarStates, UserPadStates},
     rocketsim::{GameMode, GameState},
-    udp::{Ball, BoostPadI, Car, Connection, ToBevyVec, ToBevyVecFlat},
+    udp::{Ball, BoostPadI, Car, Connection, ToBevyVec, ToBevyVecFlat, UdpPacketTypes},
     LoadState,
 };
 use bevy::{
@@ -111,6 +111,11 @@ fn change_ball_pos(
     game_state.ball.vel = (target.xzy() - game_state.ball.pos).normalize() * 2000.;
 
     last_state_set.0.reset();
+
+    if let Err(e) = socket.0.send_to(&[UdpPacketTypes::GameState as u8], socket.1) {
+        error!("Failed to send ball position: {e}");
+    }
+
     if let Err(e) = socket.0.send_to(&game_state.to_bytes(), socket.1) {
         error!("Failed to send ball position: {e}");
     }
@@ -156,6 +161,10 @@ fn change_car_pos(
         car.state.vel = (target.xzy() - car.state.pos).normalize() * 2000.;
 
         last_state_set.0.reset();
+    }
+
+    if let Err(e) = socket.0.send_to(&[UdpPacketTypes::GameState as u8], socket.1) {
+        error!("Failed to send car position: {e}");
     }
 
     if let Err(e) = socket.0.send_to(&game_state.to_bytes(), socket.1) {

@@ -61,7 +61,7 @@ pub struct Connection(pub UdpSocket, pub SocketAddr);
 fn establish_connection(port: Res<ServerPort>, mut commands: Commands, mut state: ResMut<NextState<LoadState>>) {
     let socket_addr = SocketAddr::new(IpAddr::from_str("0.0.0.0").unwrap(), port.primary_port);
     let socket = UdpSocket::bind(("0.0.0.0", port.secondary_port)).unwrap();
-    socket.send_to(&[1], socket_addr).unwrap();
+    socket.send_to(&[UdpPacketTypes::Connection as u8], socket_addr).unwrap();
     socket.set_nonblocking(true).unwrap();
     commands.insert_resource(Connection(socket, socket_addr));
     state.set(LoadState::FieldExtra);
@@ -293,19 +293,25 @@ fn get_car_mesh_materials(
 }
 
 #[repr(u8)]
-enum UdpPacketTypes {
+pub enum UdpPacketTypes {
     Quit,
     GameState,
+    Connection,
+    Paused,
+    Speed,
+    Render,
 }
 
 impl UdpPacketTypes {
     const fn new(byte: u8) -> Option<Self> {
-        if byte == 0 {
-            Some(Self::Quit)
-        } else if byte == 1 {
-            Some(Self::GameState)
-        } else {
-            None
+        match byte {
+            0 => Some(Self::Quit),
+            1 => Some(Self::GameState),
+            2 => Some(Self::Connection),
+            3 => Some(Self::Paused),
+            4 => Some(Self::Speed),
+            5 => Some(Self::Render),
+            _ => None,
         }
     }
 }
@@ -370,6 +376,7 @@ fn step_arena(
                     return;
                 }
             }
+            UdpPacketTypes::Render | UdpPacketTypes::Connection | UdpPacketTypes::Speed | UdpPacketTypes::Paused => {}
         }
     }
 

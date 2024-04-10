@@ -1,15 +1,16 @@
 use crate::{
-    bytes::ToBytes,
+    bytes::{ToBytes, ToBytesExact},
     camera::{DaylightOffset, PrimaryCamera, Sun},
     morton::Morton,
     rocketsim::GameState,
-    udp::Connection,
+    udp::{Connection, UdpPacketTypes},
 };
 use ahash::AHashMap;
 use bevy::{
     math::Vec3A,
     pbr::DirectionalLightShadowMap,
     prelude::*,
+    time::Stopwatch,
     window::{CursorGrabMode, PrimaryWindow},
 };
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
@@ -18,6 +19,7 @@ use bevy_mod_picking::picking_core::PickingPluginsSettings;
 use std::{
     fs,
     io::{self, Write},
+    time::Duration,
 };
 
 #[cfg(debug_assertions)]
@@ -61,6 +63,13 @@ impl Default for UiScale {
     }
 }
 
+#[derive(Resource, Default)]
+struct PacketSendTime(Stopwatch);
+
+fn advance_time(mut last_packet_send: ResMut<PacketSendTime>, time: Res<Time>) {
+    last_packet_send.0.tick(time.delta());
+}
+
 impl Plugin for DebugOverlayPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(EguiPlugin)
@@ -76,13 +85,7 @@ impl Plugin for DebugOverlayPlugin {
             .insert_resource(UserCarStates::default())
             .insert_resource(EnablePadInfo::default())
             .insert_resource(UserPadStates::default())
-            .insert_resource(PickingPluginsSettings {
-                is_enabled: true,
-                is_input_enabled: false,
-                is_focus_enabled: false,
-                // enable_highlighting: false,
-                // enable_interacting: true,
-            })
+            .insert_resource(PacketSendTime::default())
             .add_event::<UserSetBallState>()
             .add_event::<UserSetCarState>()
             .add_event::<UserSetPadState>()
@@ -91,6 +94,7 @@ impl Plugin for DebugOverlayPlugin {
                 (
                     listen,
                     (
+                        advance_time,
                         ui_system,
                         toggle_vsync,
                         toggle_ballcam,
@@ -103,9 +107,29 @@ impl Plugin for DebugOverlayPlugin {
                         update_ball_info.run_if(resource_equals(EnableBallInfo(true))),
                         update_car_info.run_if(|enable_menu: Res<EnableCarInfo>| !enable_menu.0.is_empty()),
                         update_boost_pad_info.run_if(|enable_menu: Res<EnablePadInfo>| !enable_menu.0.is_empty()),
-                        set_user_ball_state.run_if(on_event::<UserSetBallState>()),
-                        set_user_car_state.run_if(on_event::<UserSetCarState>()),
-                        set_user_pad_state.run_if(on_event::<UserSetPadState>()),
+                        (
+                            set_user_ball_state.run_if(on_event::<UserSetBallState>()),
+                            set_user_car_state.run_if(on_event::<UserSetCarState>()),
+                            set_user_pad_state.run_if(on_event::<UserSetPadState>()),
+                            update_speed.run_if(
+                                |options: Res<Options>, mut last: Local<f32>, last_packet_send: Res<PacketSendTime>| {
+                                    // Limit packet send rate to prevent spamming the server
+                                    if last_packet_send.0.elapsed() < Duration::from_secs_f32(1. / 15.) {
+                                        return false;
+                                    }
+
+                                    let run = options.game_speed != *last;
+                                    *last = options.game_speed;
+                                    run
+                                },
+                            ),
+                            update_paused.run_if(|options: Res<Options>, mut last: Local<bool>| {
+                                let run = options.paused != *last;
+                                *last = options.paused;
+                                run
+                            }),
+                        )
+                            .run_if(resource_exists::<Connection>),
                     )
                         .run_if(resource_equals(MenuFocused(true))),
                     update_camera_state,
@@ -280,6 +304,10 @@ fn set_user_pad_state(
         set_f32_from_str(&mut pad.state.cooldown, &user_pad.timer);
     }
 
+    if let Err(e) = socket.0.send_to(&[UdpPacketTypes::GameState as u8], socket.1) {
+        error!("Failed to send boost pad information: {e}");
+    }
+
     if let Err(e) = socket.0.send_to(&game_state.to_bytes(), socket.1) {
         error!("Failed to send boost pad information: {e}");
     }
@@ -384,6 +412,10 @@ fn set_user_car_state(
                 );
             }
         }
+    }
+
+    if let Err(e) = socket.0.send_to(&[UdpPacketTypes::GameState as u8], socket.1) {
+        error!("Failed to send car information: {e}");
     }
 
     if let Err(e) = socket.0.send_to(&game_state.to_bytes(), socket.1) {
@@ -701,6 +733,10 @@ fn set_user_ball_state(
         }
     }
 
+    if let Err(e) = socket.0.send_to(&[UdpPacketTypes::GameState as u8], socket.1) {
+        error!("Failed to send ball information: {e}");
+    }
+
     if let Err(e) = socket.0.send_to(&game_state.to_bytes(), socket.1) {
         error!("Failed to send ball information: {e}");
     }
@@ -732,6 +768,8 @@ struct Options {
     show_time: bool,
     ui_scale: f32,
     shadows: usize,
+    game_speed: f32,
+    paused: bool,
 }
 
 impl Default for Options {
@@ -751,6 +789,8 @@ impl Default for Options {
             show_time: true,
             ui_scale: 1.,
             shadows: 0,
+            game_speed: 1.,
+            paused: false,
         }
     }
 }
@@ -792,6 +832,8 @@ impl Options {
                 "show_time" => options.show_time = value.parse().unwrap(),
                 "ui_scale" => options.ui_scale = value.parse().unwrap(),
                 "shadows" => options.shadows = value.parse().unwrap(),
+                "game_speed" => options.game_speed = value.parse().unwrap(),
+                "paused" => options.paused = value.parse().unwrap(),
                 _ => println!("Unknown key {key} with value {value}"),
             }
         }
@@ -824,6 +866,8 @@ impl Options {
         file.write_fmt(format_args!("show_time={}\n", self.show_time))?;
         file.write_fmt(format_args!("ui_scale={}\n", self.ui_scale))?;
         file.write_fmt(format_args!("shadows={}\n", self.shadows))?;
+        file.write_fmt(format_args!("game_speed={}\n", self.game_speed))?;
+        file.write_fmt(format_args!("paused={}\n", self.paused))?;
 
         Ok(())
     }
@@ -843,6 +887,8 @@ impl Options {
             || self.show_time != other.show_time
             || self.ui_scale != other.ui_scale
             || self.shadows != other.shadows
+            || self.game_speed != other.game_speed
+            || self.paused != other.paused
     }
 }
 
@@ -919,6 +965,17 @@ fn ui_system(
                     .show_index(ui, &mut options.msaa, MSAA_NAMES.len(), |i| MSAA_NAMES[i]);
             });
 
+            ui.horizontal(|ui| {
+                ui.label("Game speed: ");
+                ui.add(
+                    egui::DragValue::new(&mut options.game_speed)
+                        .clamp_range(0.1..=10.0)
+                        .speed(0.02)
+                        .fixed_decimals(1),
+                );
+                ui.checkbox(&mut options.paused, "Paused");
+            });
+
             ui.add_space(10.);
 
             ui.horizontal(|ui| {
@@ -933,6 +990,26 @@ fn ui_system(
             ui.add(egui::Slider::new(&mut options.daytime, 0.0..=150.0).text("Daytime"));
             ui.add(egui::Slider::new(&mut options.day_speed, 0.0..=10.0).text("Day speed"));
         });
+}
+
+fn update_speed(options: Res<Options>, socket: Res<Connection>) {
+    if let Err(e) = socket.0.send_to(&[UdpPacketTypes::Speed as u8], socket.1) {
+        error!("Failed to change game speed: {e}");
+    }
+
+    if let Err(e) = socket.0.send_to(&options.game_speed.to_bytes(), socket.1) {
+        error!("Failed to change game speed: {e}");
+    }
+}
+
+fn update_paused(options: Res<Options>, socket: Res<Connection>) {
+    if let Err(e) = socket.0.send_to(&[UdpPacketTypes::Paused as u8], socket.1) {
+        error!("Failed to change game speed: {e}");
+    }
+
+    if let Err(e) = socket.0.send_to(&options.paused.to_bytes(), socket.1) {
+        error!("Failed to change game speed: {e}");
+    }
 }
 
 fn update_shadows(
