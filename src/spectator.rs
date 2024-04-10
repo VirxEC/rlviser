@@ -171,8 +171,8 @@ impl Default for SpectatorSettings {
         Self {
             active_spectator: None,
             active_window: None,
-            base_speed: 0.1,
-            alt_speed: 0.5,
+            base_speed: 2500.,
+            alt_speed: 750.,
             sensitivity: 0.001,
         }
     }

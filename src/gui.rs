@@ -3,6 +3,7 @@ use crate::{
     camera::{DaylightOffset, PrimaryCamera, Sun},
     morton::Morton,
     rocketsim::GameState,
+    spectator::SpectatorSettings,
     udp::{Connection, UdpPacketTypes},
 };
 use ahash::AHashMap;
@@ -104,6 +105,7 @@ impl Plugin for DebugOverlayPlugin {
                         update_msaa,
                         update_ui_scale,
                         update_shadows,
+                        update_sensitivity,
                         update_ball_info.run_if(resource_equals(EnableBallInfo(true))),
                         update_car_info.run_if(|enable_menu: Res<EnableCarInfo>| !enable_menu.0.is_empty()),
                         update_boost_pad_info.run_if(|enable_menu: Res<EnablePadInfo>| !enable_menu.0.is_empty()),
@@ -770,6 +772,7 @@ struct Options {
     shadows: usize,
     game_speed: f32,
     paused: bool,
+    mouse_sensitivity: f32,
 }
 
 impl Default for Options {
@@ -791,6 +794,7 @@ impl Default for Options {
             shadows: 0,
             game_speed: 1.,
             paused: false,
+            mouse_sensitivity: 1.,
         }
     }
 }
@@ -834,6 +838,7 @@ impl Options {
                 "shadows" => options.shadows = value.parse().unwrap(),
                 "game_speed" => options.game_speed = value.parse().unwrap(),
                 "paused" => options.paused = value.parse().unwrap(),
+                "mouse_sensitivity" => options.mouse_sensitivity = value.parse().unwrap(),
                 _ => println!("Unknown key {key} with value {value}"),
             }
         }
@@ -868,6 +873,7 @@ impl Options {
         file.write_fmt(format_args!("shadows={}\n", self.shadows))?;
         file.write_fmt(format_args!("game_speed={}\n", self.game_speed))?;
         file.write_fmt(format_args!("paused={}\n", self.paused))?;
+        file.write_fmt(format_args!("mouse_sensitivity={}\n", self.mouse_sensitivity))?;
 
         Ok(())
     }
@@ -889,6 +895,7 @@ impl Options {
             || self.shadows != other.shadows
             || self.game_speed != other.game_speed
             || self.paused != other.paused
+            || self.mouse_sensitivity != other.mouse_sensitivity
     }
 }
 
@@ -983,6 +990,8 @@ fn ui_system(
                 ui.checkbox(&mut options.ball_cam, "Ball cam");
             });
             ui.add(egui::Slider::new(&mut options.ui_scale, 0.4..=4.0).text("UI scale"));
+            ui.label("Mouse sensitivity:");
+            ui.add(egui::Slider::new(&mut options.mouse_sensitivity, 0.01..=4.0));
 
             ui.add_space(10.);
 
@@ -990,6 +999,10 @@ fn ui_system(
             ui.add(egui::Slider::new(&mut options.daytime, 0.0..=150.0).text("Daytime"));
             ui.add(egui::Slider::new(&mut options.day_speed, 0.0..=10.0).text("Day speed"));
         });
+}
+
+fn update_sensitivity(options: Res<Options>, mut settings: ResMut<SpectatorSettings>) {
+    settings.sensitivity = SpectatorSettings::default().sensitivity * options.mouse_sensitivity;
 }
 
 fn update_speed(options: Res<Options>, socket: Res<Connection>) {

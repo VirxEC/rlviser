@@ -223,36 +223,31 @@ pub struct CameraPlugin;
 
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(SpectatorSettings {
-            base_speed: 2500.,
-            alt_speed: 750.,
-            sensitivity: 0.001,
-            ..default()
-        })
-        .insert_resource(FramepaceSettings {
-            limiter: bevy_framepace::Limiter::from_framerate(60.),
-        })
-        .insert_resource(AtmosphereModel::default())
-        .insert_resource(CycleTimer(Timer::new(
-            Duration::from_secs_f32(1. / 60.),
-            TimerMode::Repeating,
-        )))
-        .insert_resource(DaylightOffset::default())
-        .insert_resource(RaycastBackendSettings {
-            require_markers: true,
-            ..default()
-        })
-        .insert_resource(DirectionalLightShadowMap::default())
-        .add_plugins((
-            FramepacePlugin,
-            SpectatorPlugin,
-            DefaultPickingPlugins,
-            AtmospherePlugin,
-            Shape2dPlugin::default(),
-            #[cfg(feature = "ssao")]
-            TemporalAntiAliasPlugin,
-        ))
-        .add_systems(Update, daylight_cycle)
-        .add_systems(Startup, setup);
+        app.insert_resource(SpectatorSettings::default())
+            .insert_resource(FramepaceSettings {
+                limiter: bevy_framepace::Limiter::from_framerate(60.),
+            })
+            .insert_resource(AtmosphereModel::default())
+            .insert_resource(CycleTimer(Timer::new(
+                Duration::from_secs_f32(1. / 60.),
+                TimerMode::Repeating,
+            )))
+            .insert_resource(DaylightOffset::default())
+            .insert_resource(RaycastBackendSettings {
+                require_markers: true,
+                ..default()
+            })
+            .insert_resource(DirectionalLightShadowMap::default())
+            .add_plugins((
+                FramepacePlugin,
+                SpectatorPlugin,
+                DefaultPickingPlugins,
+                AtmospherePlugin,
+                Shape2dPlugin::default(),
+                #[cfg(feature = "ssao")]
+                TemporalAntiAliasPlugin,
+            ))
+            .add_systems(Update, daylight_cycle)
+            .add_systems(Startup, setup);
     }
 }
