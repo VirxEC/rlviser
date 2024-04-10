@@ -7,8 +7,7 @@ publish = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bevy_atmosphere = "0.9"
-# bevy_atmosphere = { path = "../bevy_atmosphere" }
+bevy_atmosphere = "0.9.1"
 bevy_egui = "0.26.0"
 bevy_eventlistener = "0.7.0"
 bevy_framepace = { version = "0.15.0", default-features = false }
