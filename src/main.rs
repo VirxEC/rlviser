@@ -6,6 +6,7 @@ mod camera;
 mod gui;
 mod mesh;
 mod morton;
+mod renderer;
 mod rocketsim;
 mod spectator;
 mod udp;

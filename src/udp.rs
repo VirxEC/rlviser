@@ -5,6 +5,7 @@ use crate::{
     gui::{BallCam, ShowTime, UiScale, UserCarStates},
     mesh::{BoostPadClicked, CarClicked, ChangeCarPos, LargeBoostPadLocRots},
     morton::Morton,
+    renderer::{Renders, UdpRendererPlugin},
     rocketsim::{CarInfo, GameMode, GameState, Team},
     LoadState, ServerPort,
 };
@@ -321,11 +322,13 @@ fn step_arena(
     mut game_state: ResMut<GameState>,
     mut exit: EventWriter<AppExit>,
     mut packet_updated: ResMut<PacketUpdated>,
+    mut renders: ResMut<Renders>,
 ) {
-    const PACKET_TYPE_BUFFER: [u8; 1] = [0];
+    const BYTE_BUFFER: [u8; 1] = [0];
+    const FOUR_BYTE_BUFFER: [u8; 4] = [0; 4];
     const INITIAL_BUFFER: [u8; GameState::MIN_NUM_BYTES] = [0; GameState::MIN_NUM_BYTES];
 
-    let mut packet_type = PACKET_TYPE_BUFFER;
+    let mut packet_type = BYTE_BUFFER;
 
     packet_updated.0 = false;
     let mut buf = Vec::new();
@@ -376,7 +379,29 @@ fn step_arena(
                     return;
                 }
             }
-            UdpPacketTypes::Render | UdpPacketTypes::Connection | UdpPacketTypes::Speed | UdpPacketTypes::Paused => {}
+            UdpPacketTypes::Render => {
+                let mut message_type = BYTE_BUFFER;
+
+                if socket.0.recv_from(&mut message_type).is_err() {
+                    return;
+                }
+
+                match message_type[0] {
+                    0 => {}
+                    1 => {
+                        let mut id_buffer = FOUR_BYTE_BUFFER;
+
+                        if socket.0.recv_from(&mut id_buffer).is_err() {
+                            return;
+                        }
+
+                        let id = u32::from_bytes(&id_buffer);
+                        renders.groups.remove(&id);
+                    }
+                    _ => {}
+                }
+            }
+            UdpPacketTypes::Connection | UdpPacketTypes::Speed | UdpPacketTypes::Paused => {}
         }
     }
 
@@ -881,6 +906,7 @@ impl Plugin for RocketSimPlugin {
             .insert_resource(DirectorTimer(Timer::new(Duration::from_secs(12), TimerMode::Repeating)))
             .insert_resource(PacketUpdated(false))
             .insert_resource(GameMode::default())
+            .add_plugins(UdpRendererPlugin)
             .add_systems(
                 Update,
                 (

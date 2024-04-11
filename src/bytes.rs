@@ -1,8 +1,11 @@
-use crate::rocketsim::{
-    BallHitInfo, BallState, BoostPad, BoostPadState, CarConfig, CarControls, CarInfo, CarState, GameMode, GameState,
-    HeatseekerInfo, Team, WheelPairConfig,
+use crate::{
+    renderer::{CustomColor as Color, Render, RenderMessage},
+    rocketsim::{
+        BallHitInfo, BallState, BoostPad, BoostPadState, CarConfig, CarControls, CarInfo, CarState, GameMode, GameState,
+        HeatseekerInfo, Team, WheelPairConfig,
+    },
 };
-use bevy::math::{Mat3A as RotMat, Vec3A as Vec3};
+use bevy::math::{Mat3A as RotMat, Vec2, Vec3 as BVec3, Vec3A as Vec3};
 
 pub trait FromBytes {
     fn from_bytes(bytes: &[u8]) -> Self;
@@ -54,6 +57,28 @@ impl FromBytes for f32 {
     #[inline]
     fn from_bytes(bytes: &[u8]) -> Self {
         Self::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
+    }
+}
+
+impl FromBytesExact for u8 {
+    const NUM_BYTES: usize = 1;
+}
+
+impl FromBytes for u8 {
+    #[inline]
+    fn from_bytes(bytes: &[u8]) -> Self {
+        bytes[0]
+    }
+}
+
+impl FromBytesExact for u16 {
+    const NUM_BYTES: usize = 2;
+}
+
+impl FromBytes for u16 {
+    #[inline]
+    fn from_bytes(bytes: &[u8]) -> Self {
+        Self::from_le_bytes([bytes[0], bytes[1]])
     }
 }
 
@@ -120,6 +145,92 @@ impl FromBytes for Vec3 {
     fn from_bytes(bytes: &[u8]) -> Self {
         let mut reader = ByteReader::new(bytes);
         Self::new(reader.read(), reader.read(), reader.read())
+    }
+}
+
+impl FromBytesExact for BVec3 {
+    const NUM_BYTES: usize = f32::NUM_BYTES * 3;
+}
+
+impl FromBytes for BVec3 {
+    fn from_bytes(bytes: &[u8]) -> Self {
+        let mut reader = ByteReader::new(bytes);
+        Self::new(reader.read(), reader.read(), reader.read())
+    }
+}
+
+impl FromBytesExact for Vec2 {
+    const NUM_BYTES: usize = f32::NUM_BYTES * 2;
+}
+
+impl FromBytes for Vec2 {
+    fn from_bytes(bytes: &[u8]) -> Self {
+        let mut reader = ByteReader::new(bytes);
+        Self::new(reader.read(), reader.read())
+    }
+}
+
+impl FromBytesExact for Color {
+    const NUM_BYTES: usize = f32::NUM_BYTES * 4;
+}
+
+impl FromBytes for Color {
+    fn from_bytes(bytes: &[u8]) -> Self {
+        let mut reader = ByteReader::new(bytes);
+        Self::rgba(reader.read(), reader.read(), reader.read(), reader.read())
+    }
+}
+
+impl Render {
+    fn from_reader(reader: &mut ByteReader) -> Self {
+        match reader.read::<u8>() {
+            0 => Self::Line2D {
+                start: reader.read(),
+                end: reader.read(),
+                color: reader.read(),
+            },
+            1 => Self::Line3D {
+                start: reader.read(),
+                end: reader.read(),
+                color: reader.read(),
+            },
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl ToBytes for Render {
+    fn to_bytes(&self) -> Vec<u8> {
+        match *self {
+            Render::Line2D { start, end, color } => {
+                let mut bytes = Vec::new();
+                bytes.extend_from_slice(&start.to_bytes());
+                bytes.extend_from_slice(&end.to_bytes());
+                bytes.extend_from_slice(&color.to_bytes());
+                bytes
+            }
+            Render::Line3D { start, end, color } => {
+                let mut bytes = Vec::new();
+                bytes.extend_from_slice(&start.to_bytes());
+                bytes.extend_from_slice(&end.to_bytes());
+                bytes.extend_from_slice(&color.to_bytes());
+                bytes
+            }
+        }
+    }
+}
+
+impl FromBytes for RenderMessage {
+    fn from_bytes(bytes: &[u8]) -> Self {
+        let mut reader = ByteReader::new(bytes);
+        match reader.read::<u8>() {
+            0 => Self::AddRender(
+                reader.read(),
+                (0..reader.read::<u16>()).map(|_| Render::from_reader(&mut reader)).collect(),
+            ),
+            1 => Self::RemoveRender(reader.read()),
+            _ => unreachable!(),
+        }
     }
 }
 
@@ -217,7 +328,10 @@ macro_rules! impl_to_bytes_exact {
     };
 }
 
+impl_to_bytes_exact!(Vec2, x, y);
 impl_to_bytes_exact!(Vec3, x, y, z);
+impl_to_bytes_exact!(BVec3, x, y, z);
+impl_to_bytes_exact!(Color, r, g, b, a);
 
 macro_rules! impl_bytes_exact {
     ($t:ty, $n:expr, $($p:ident),+) => {

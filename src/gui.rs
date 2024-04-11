@@ -2,6 +2,7 @@ use crate::{
     bytes::{ToBytes, ToBytesExact},
     camera::{DaylightOffset, PrimaryCamera, Sun},
     morton::Morton,
+    renderer::{DoRendering, Renders},
     rocketsim::GameState,
     spectator::SpectatorSettings,
     udp::{Connection, UdpPacketTypes},
@@ -106,6 +107,7 @@ impl Plugin for DebugOverlayPlugin {
                         update_ui_scale,
                         update_shadows,
                         update_sensitivity,
+                        update_allow_rendering,
                         update_ball_info.run_if(resource_equals(EnableBallInfo(true))),
                         update_car_info.run_if(|enable_menu: Res<EnableCarInfo>| !enable_menu.0.is_empty()),
                         update_boost_pad_info.run_if(|enable_menu: Res<EnablePadInfo>| !enable_menu.0.is_empty()),
@@ -133,7 +135,7 @@ impl Plugin for DebugOverlayPlugin {
                         )
                             .run_if(resource_exists::<Connection>),
                     )
-                        .run_if(resource_equals(MenuFocused(true))),
+                        .run_if(resource_equals(MenuFocused::default())),
                     update_camera_state,
                     write_settings_to_file,
                 )
@@ -773,6 +775,7 @@ struct Options {
     game_speed: f32,
     paused: bool,
     mouse_sensitivity: f32,
+    allow_rendering: bool,
 }
 
 impl Default for Options {
@@ -795,6 +798,7 @@ impl Default for Options {
             game_speed: 1.,
             paused: false,
             mouse_sensitivity: 1.,
+            allow_rendering: true,
         }
     }
 }
@@ -839,6 +843,7 @@ impl Options {
                 "game_speed" => options.game_speed = value.parse().unwrap(),
                 "paused" => options.paused = value.parse().unwrap(),
                 "mouse_sensitivity" => options.mouse_sensitivity = value.parse().unwrap(),
+                "allow_rendering" => options.allow_rendering = value.parse().unwrap(),
                 _ => println!("Unknown key {key} with value {value}"),
             }
         }
@@ -874,6 +879,7 @@ impl Options {
         file.write_fmt(format_args!("game_speed={}\n", self.game_speed))?;
         file.write_fmt(format_args!("paused={}\n", self.paused))?;
         file.write_fmt(format_args!("mouse_sensitivity={}\n", self.mouse_sensitivity))?;
+        file.write_fmt(format_args!("allow_rendering={}\n", self.allow_rendering))?;
 
         Ok(())
     }
@@ -896,6 +902,7 @@ impl Options {
             || self.game_speed != other.game_speed
             || self.paused != other.paused
             || self.mouse_sensitivity != other.mouse_sensitivity
+            || self.allow_rendering != other.allow_rendering
     }
 }
 
@@ -983,6 +990,10 @@ fn ui_system(
                 ui.checkbox(&mut options.paused, "Paused");
             });
 
+            ui.menu_button("Toggle rendering manager", |ui| {
+                ui.checkbox(&mut options.allow_rendering, "Allow rendering");
+            });
+
             ui.add_space(10.);
 
             ui.horizontal(|ui| {
@@ -999,6 +1010,14 @@ fn ui_system(
             ui.add(egui::Slider::new(&mut options.daytime, 0.0..=150.0).text("Daytime"));
             ui.add(egui::Slider::new(&mut options.day_speed, 0.0..=10.0).text("Day speed"));
         });
+}
+
+fn update_allow_rendering(options: Res<Options>, mut do_rendering: ResMut<DoRendering>, mut renders: ResMut<Renders>) {
+    if !options.allow_rendering {
+        renders.groups.clear();
+    }
+
+    do_rendering.0 = options.allow_rendering;
 }
 
 fn update_sensitivity(options: Res<Options>, mut settings: ResMut<SpectatorSettings>) {

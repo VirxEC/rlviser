@@ -26,7 +26,7 @@ radsort = "0.1.0"
 [dependencies.bevy]
 version = "0.13.0"
 default-features = false
-features = ["bevy_core_pipeline", "bevy_pbr", "bevy_ui", "wayland", "x11", "tga", "tonemapping_luts", "default_font"]
+features = ["bevy_core_pipeline", "bevy_pbr", "bevy_ui", "wayland", "x11", "tga", "tonemapping_luts", "default_font", "bevy_gizmos"]
 
 [features]
 full_load = []
