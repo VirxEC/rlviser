@@ -5,7 +5,7 @@ use crate::{
     renderer::{DoRendering, RenderGroups},
     rocketsim::GameState,
     spectator::SpectatorSettings,
-    udp::{Connection, UdpPacketTypes},
+    udp::{Connection, PausedUpdate, SpeedUpdate, UdpPacketTypes},
 };
 use ahash::AHashMap;
 use bevy::{
@@ -72,6 +72,12 @@ fn advance_time(mut last_packet_send: ResMut<PacketSendTime>, time: Res<Time>) {
     last_packet_send.0.tick(time.delta());
 }
 
+#[derive(Resource, Default)]
+pub struct GameSpeed {
+    pub paused: bool,
+    pub speed: f32,
+}
+
 impl Plugin for DebugOverlayPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(EguiPlugin)
@@ -79,6 +85,7 @@ impl Plugin for DebugOverlayPlugin {
             .insert_resource(BallCam::default())
             .insert_resource(UiScale::default())
             .insert_resource(ShowTime::default())
+            .insert_resource(GameSpeed::default())
             .insert_resource(Options::default_read_file())
             .insert_resource(MenuFocused::default())
             .insert_resource(EnableBallInfo::default())
@@ -97,6 +104,7 @@ impl Plugin for DebugOverlayPlugin {
                 Update,
                 (
                     listen,
+                    (read_speed_update_event, read_paused_update_event),
                     (
                         advance_time,
                         ui_system,
@@ -118,16 +126,10 @@ impl Plugin for DebugOverlayPlugin {
                             set_user_ball_state.run_if(on_event::<UserSetBallState>()),
                             set_user_car_state.run_if(on_event::<UserSetCarState>()),
                             set_user_pad_state.run_if(on_event::<UserSetPadState>()),
-                            update_speed.run_if(|options: Res<Options>, mut last: Local<f32>| {
-                                let run = options.game_speed != *last;
-                                *last = options.game_speed;
-                                run
-                            }),
-                            update_paused.run_if(|options: Res<Options>, mut last: Local<bool>| {
-                                let run = options.paused != *last;
-                                *last = options.paused;
-                                run
-                            }),
+                            update_speed
+                                .run_if(|options: Res<Options>, last: Res<GameSpeed>| options.game_speed != last.speed),
+                            update_paused
+                                .run_if(|options: Res<Options>, last: Res<GameSpeed>| options.paused != last.paused),
                         )
                             .run_if(resource_exists::<Connection>),
                     )
@@ -1003,7 +1005,7 @@ fn ui_system(
             });
 
             ui.horizontal(|ui| {
-                ui.label("Game speed: ");
+                ui.label("Game speed:");
                 ui.add(
                     egui::DragValue::new(&mut options.game_speed)
                         .clamp_range(0.1..=10.0)
@@ -1052,11 +1054,34 @@ fn update_sensitivity(options: Res<Options>, mut settings: ResMut<SpectatorSetti
     settings.sensitivity = SpectatorSettings::default().sensitivity * options.mouse_sensitivity;
 }
 
+fn read_speed_update_event(
+    mut events: EventReader<SpeedUpdate>,
+    mut options: ResMut<Options>,
+    mut game_speed: ResMut<GameSpeed>,
+) {
+    for event in events.read() {
+        options.game_speed = event.0;
+        game_speed.speed = event.0;
+    }
+}
+
+fn read_paused_update_event(
+    mut events: EventReader<PausedUpdate>,
+    mut options: ResMut<Options>,
+    mut game_speed: ResMut<GameSpeed>,
+) {
+    for event in events.read() {
+        options.paused = event.0;
+        game_speed.paused = event.0;
+    }
+}
+
 fn update_speed(
     options: Res<Options>,
     socket: Res<Connection>,
     mut last_packet_send: ResMut<PacketSendTime>,
     time: Res<Time>,
+    mut global: ResMut<GameSpeed>,
 ) {
     last_packet_send.0.tick(time.delta());
     if last_packet_send.0.elapsed() < Duration::from_secs_f32(1. / 15.) {
@@ -1071,9 +1096,11 @@ fn update_speed(
     if let Err(e) = socket.0.send_to(&options.game_speed.to_bytes(), socket.1) {
         error!("Failed to change game speed: {e}");
     }
+
+    global.speed = options.game_speed;
 }
 
-fn update_paused(options: Res<Options>, socket: Res<Connection>) {
+fn update_paused(options: Res<Options>, socket: Res<Connection>, mut global: ResMut<GameSpeed>) {
     if let Err(e) = socket.0.send_to(&[UdpPacketTypes::Paused as u8], socket.1) {
         error!("Failed to change game speed: {e}");
     }
@@ -1081,6 +1108,8 @@ fn update_paused(options: Res<Options>, socket: Res<Connection>) {
     if let Err(e) = socket.0.send_to(&options.paused.to_bytes(), socket.1) {
         error!("Failed to change game speed: {e}");
     }
+
+    global.paused = options.paused;
 }
 
 fn update_shadows(

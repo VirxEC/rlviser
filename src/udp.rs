@@ -2,7 +2,7 @@ use crate::{
     assets::{get_material, get_mesh_info, BoostPickupGlows, CarWheelMesh},
     bytes::{FromBytes, ToBytes},
     camera::{BoostAmount, HighlightedEntity, PrimaryCamera, TimeDisplay, BOOST_INDICATOR_FONT_SIZE, BOOST_INDICATOR_POS},
-    gui::{BallCam, ShowTime, UiScale, UserCarStates},
+    gui::{BallCam, GameSpeed, ShowTime, UiScale, UserCarStates},
     mesh::{BoostPadClicked, CarClicked, ChangeCarPos, LargeBoostPadLocRots},
     morton::Morton,
     renderer::{RenderGroups, RenderMessage, UdpRendererPlugin},
@@ -369,16 +369,22 @@ impl UdpPacketTypes {
     }
 }
 
+#[derive(Event)]
+pub struct SpeedUpdate(pub f32);
+
+#[derive(Event)]
+pub struct PausedUpdate(pub bool);
+
 fn step_arena(
     socket: Res<Connection>,
     mut game_state: ResMut<GameState>,
     mut exit: EventWriter<AppExit>,
     mut packet_updated: ResMut<PacketUpdated>,
     mut render_groups: ResMut<RenderGroups>,
+    mut speed_update: EventWriter<SpeedUpdate>,
+    mut paused_update: EventWriter<PausedUpdate>,
 ) {
     const BYTE_BUFFER: [u8; 1] = [0];
-    const INITIAL_RENDER_BUFFER: [u8; RenderMessage::MIN_NUM_BYTES] = [0; RenderMessage::MIN_NUM_BYTES];
-    const INITIAL_GAMESTATE_BUFFER: [u8; GameState::MIN_NUM_BYTES] = [0; GameState::MIN_NUM_BYTES];
 
     let mut packet_type = BYTE_BUFFER;
 
@@ -397,7 +403,8 @@ fn step_arena(
                 return;
             }
             UdpPacketTypes::GameState => {
-                let mut initial_buffer = INITIAL_GAMESTATE_BUFFER;
+                const INITIAL_BUFFER: [u8; GameState::MIN_NUM_BYTES] = [0; GameState::MIN_NUM_BYTES];
+                let mut initial_buffer = INITIAL_BUFFER;
 
                 // wait until we receive the packet
                 // it should arrive VERY quickly, so a loop with no delay is fine
@@ -433,7 +440,8 @@ fn step_arena(
                 }
             }
             UdpPacketTypes::Render => {
-                let mut initial_buffer = INITIAL_RENDER_BUFFER;
+                const INITIAL_BUFFER: [u8; RenderMessage::MIN_NUM_BYTES] = [0; RenderMessage::MIN_NUM_BYTES];
+                let mut initial_buffer = INITIAL_BUFFER;
 
                 #[cfg(windows)]
                 {
@@ -467,7 +475,26 @@ fn step_arena(
                     }
                 }
             }
-            UdpPacketTypes::Connection | UdpPacketTypes::Speed | UdpPacketTypes::Paused => {}
+            UdpPacketTypes::Speed => {
+                const SPEED_BUFFER: [u8; 4] = [0; 4];
+                let mut speed_buffer = SPEED_BUFFER;
+                if socket.0.recv_from(&mut speed_buffer).is_err() {
+                    return;
+                }
+
+                let speed = f32::from_le_bytes(speed_buffer);
+                speed_update.send(SpeedUpdate(speed));
+            }
+            UdpPacketTypes::Paused => {
+                let mut paused_buffer = BYTE_BUFFER;
+                if socket.0.recv_from(&mut paused_buffer).is_err() {
+                    return;
+                }
+
+                let paused = paused_buffer[0] != 0;
+                paused_update.send(PausedUpdate(paused));
+            }
+            UdpPacketTypes::Connection => {}
         }
     }
 
@@ -518,6 +545,7 @@ fn update_car(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut last_boost_states: Local<Vec<u32>>,
     mut last_demoed_states: Local<Vec<u32>>,
+    game_speed: Res<GameSpeed>,
 ) {
     for (mut car_transform, car, children) in &mut cars {
         let Some(target_car) = state.cars.iter().find(|car_info| car.0 == car_info.id) else {
@@ -566,45 +594,44 @@ fn update_car(
             }
         }
 
-        for child in children {
-            let Ok((mut wheel_transform, mut data)) = car_wheels.get_mut(*child) else {
-                continue;
-            };
+        if !game_speed.paused {
+            for child in children {
+                let Ok((mut wheel_transform, mut data)) = car_wheels.get_mut(*child) else {
+                    continue;
+                };
 
-            let wheel_radius = if data.front {
-                target_car.config.front_wheels.wheel_radius
-            } else {
-                target_car.config.back_wheels.wheel_radius
-            };
+                let wheel_radius = if data.front {
+                    target_car.config.front_wheels.wheel_radius
+                } else {
+                    target_car.config.back_wheels.wheel_radius
+                };
 
-            let car_rot = car_transform.rotation;
-            let car_vel = target_car.state.vel.to_bevy();
+                let car_rot = car_transform.rotation;
+                let car_vel = target_car.state.vel.to_bevy();
 
-            // determine if the velocity is in the same direction as the car's forward vector
-            let forward = car_rot.mul_vec3(Vec3::X);
-            let forward_dot = forward.dot(car_vel);
-            let forward_dir = forward_dot.signum();
+                // determine if the velocity is in the same direction as the car's forward vector
+                let forward = car_rot.mul_vec3(Vec3::X);
+                let forward_dot = forward.dot(car_vel);
+                let forward_dir = forward_dot.signum();
 
-            data.angular_velocity = car_vel.length() * forward_dir / wheel_radius;
+                data.angular_velocity = car_vel.length() * forward_dir / wheel_radius;
 
-            if !data.left {
-                data.angular_velocity *= -1.;
+                if !data.left {
+                    data.angular_velocity *= -1.;
+                }
+
+                wheel_transform.rotation *=
+                    Quat::from_rotation_z(data.angular_velocity / (state.tick_rate * game_speed.speed));
             }
-
-            wheel_transform.rotation *= Quat::from_rotation_z(data.angular_velocity / state.tick_rate);
         }
     }
 }
 
-fn update_car_extra(
-    time: Res<Time>,
+fn pre_update_car(
+    cars: Query<&Car>,
     state: Res<GameState>,
-    ballcam: Res<BallCam>,
     asset_server: Res<AssetServer>,
     car_entities: Query<(Entity, &Car)>,
-    mut cars: Query<(&mut Transform, &Car)>,
-    mut camera_query: Query<(&mut PrimaryCamera, &mut Transform), Without<Car>>,
-    mut timer: ResMut<DirectorTimer>,
     commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -622,7 +649,16 @@ fn update_car_extra(
         &asset_server,
         &car_wheel_mesh,
     );
+}
 
+fn post_update_car(
+    time: Res<Time>,
+    state: Res<GameState>,
+    ballcam: Res<BallCam>,
+    mut cars: Query<(&mut Transform, &Car)>,
+    mut camera_query: Query<(&mut PrimaryCamera, &mut Transform), Without<Car>>,
+    mut timer: ResMut<DirectorTimer>,
+) {
     timer.0.tick(time.delta());
 
     let (mut primary_camera, mut camera_transform) = camera_query.single_mut();
@@ -685,7 +721,7 @@ fn update_car_extra(
 }
 
 fn correct_car_count(
-    cars: &Query<(&mut Transform, &Car)>,
+    cars: &Query<&Car>,
     state: &GameState,
     car_entities: &Query<(Entity, &Car)>,
     user_cars: &mut UserCarStates,
@@ -705,11 +741,10 @@ fn correct_car_count(
             }
         }
         Ordering::Less => {
-            let all_current_cars = cars.iter().map(|(_, car)| car.0).collect::<Vec<_>>();
             let non_existant_cars = state
                 .cars
                 .iter()
-                .filter(|car_info| !all_current_cars.iter().any(|&id| id == car_info.id));
+                .filter(|car_info| !cars.iter().any(|id| id.0 == car_info.id));
 
             for car_info in non_existant_cars {
                 spawn_car(car_info, &mut commands, meshes, materials, asset_server, car_wheel_mesh);
@@ -1013,7 +1048,9 @@ pub struct RocketSimPlugin;
 
 impl Plugin for RocketSimPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(GameState::default())
+        app.add_event::<PausedUpdate>()
+            .add_event::<SpeedUpdate>()
+            .insert_resource(GameState::default())
             .insert_resource(DirectorTimer(Timer::new(Duration::from_secs(12), TimerMode::Repeating)))
             .insert_resource(PacketUpdated(false))
             .insert_resource(GameMode::default())
@@ -1026,7 +1063,12 @@ impl Plugin for RocketSimPlugin {
                         (
                             step_arena,
                             (
-                                (update_ball, (update_car, update_car_extra).chain(), update_pads, update_field)
+                                (
+                                    update_ball,
+                                    (pre_update_car, update_car, post_update_car).chain(),
+                                    update_pads,
+                                    update_field,
+                                )
                                     .run_if(|updated: Res<PacketUpdated>| updated.0),
                                 (listen, update_boost_meter),
                             ),
