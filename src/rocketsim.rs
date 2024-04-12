@@ -107,16 +107,16 @@ pub struct CarControls {
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct CarState {
-    pub update_counter: u64,
     pub pos: Vec3,
     pub rot_mat: RotMat,
     pub vel: Vec3,
     pub ang_vel: Vec3,
+    pub update_counter: u64,
     pub is_on_ground: bool,
     pub has_jumped: bool,
     pub has_double_jumped: bool,
     pub has_flipped: bool,
-    pub last_rel_dodge_torque: Vec3,
+    pub flip_rel_torque: Vec3,
     pub jump_time: f32,
     pub flip_time: f32,
     pub is_flipping: bool,

@@ -5,7 +5,7 @@ use crate::{
     gui::{BallCam, ShowTime, UiScale, UserCarStates},
     mesh::{BoostPadClicked, CarClicked, ChangeCarPos, LargeBoostPadLocRots},
     morton::Morton,
-    renderer::{Renders, UdpRendererPlugin},
+    renderer::{RenderGroups, RenderMessage, UdpRendererPlugin},
     rocketsim::{CarInfo, GameMode, GameState, Team},
     LoadState, ServerPort,
 };
@@ -91,6 +91,13 @@ impl ToBevyVec for [f32; 3] {
 }
 
 impl ToBevyVec for Vec3A {
+    #[inline]
+    fn to_bevy(self) -> Vec3 {
+        Vec3::new(self.x, self.z, self.y)
+    }
+}
+
+impl ToBevyVec for Vec3 {
     #[inline]
     fn to_bevy(self) -> Vec3 {
         Vec3::new(self.x, self.z, self.y)
@@ -322,16 +329,17 @@ fn step_arena(
     mut game_state: ResMut<GameState>,
     mut exit: EventWriter<AppExit>,
     mut packet_updated: ResMut<PacketUpdated>,
-    mut renders: ResMut<Renders>,
+    mut render_groups: ResMut<RenderGroups>,
 ) {
     const BYTE_BUFFER: [u8; 1] = [0];
-    const FOUR_BYTE_BUFFER: [u8; 4] = [0; 4];
-    const INITIAL_BUFFER: [u8; GameState::MIN_NUM_BYTES] = [0; GameState::MIN_NUM_BYTES];
+    const INITIAL_RENDER_BUFFER: [u8; RenderMessage::MIN_NUM_BYTES] = [0; RenderMessage::MIN_NUM_BYTES];
+    const INITIAL_GAMESTATE_BUFFER: [u8; GameState::MIN_NUM_BYTES] = [0; GameState::MIN_NUM_BYTES];
 
     let mut packet_type = BYTE_BUFFER;
 
     packet_updated.0 = false;
     let mut buf = Vec::new();
+    let mut render_buf = Vec::new();
 
     while socket.0.recv_from(&mut packet_type).is_ok() {
         let Some(packet_type) = UdpPacketTypes::new(packet_type[0]) else {
@@ -344,7 +352,7 @@ fn step_arena(
                 return;
             }
             UdpPacketTypes::GameState => {
-                let mut initial_buffer = INITIAL_BUFFER;
+                let mut initial_buffer = INITIAL_GAMESTATE_BUFFER;
 
                 // wait until we receive the packet
                 // it should arrive VERY quickly, so a loop with no delay is fine
@@ -380,25 +388,38 @@ fn step_arena(
                 }
             }
             UdpPacketTypes::Render => {
-                let mut message_type = BYTE_BUFFER;
+                let mut initial_buffer = INITIAL_RENDER_BUFFER;
 
-                if socket.0.recv_from(&mut message_type).is_err() {
+                #[cfg(windows)]
+                {
+                    while let Err(e) = socket.0.peek_from(&mut initial_buffer) {
+                        if let Some(code) = e.raw_os_error() {
+                            if code == 10040 {
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                #[cfg(not(windows))]
+                {
+                    while socket.0.peek_from(&mut initial_buffer).is_err() {}
+                }
+
+                render_buf.resize(RenderMessage::get_num_bytes(&initial_buffer), 0);
+                if socket.0.recv_from(&mut render_buf).is_err() {
                     return;
                 }
 
-                match message_type[0] {
-                    0 => {}
-                    1 => {
-                        let mut id_buffer = FOUR_BYTE_BUFFER;
+                let render_message = RenderMessage::from_bytes(&render_buf);
 
-                        if socket.0.recv_from(&mut id_buffer).is_err() {
-                            return;
-                        }
-
-                        let id = u32::from_bytes(&id_buffer);
-                        renders.groups.remove(&id);
+                match render_message {
+                    RenderMessage::AddRender(group_id, renders) => {
+                        render_groups.groups.insert(group_id, renders);
                     }
-                    _ => {}
+                    RenderMessage::RemoveRender(group_id) => {
+                        render_groups.groups.remove(&group_id);
+                    }
                 }
             }
             UdpPacketTypes::Connection | UdpPacketTypes::Speed | UdpPacketTypes::Paused => {}

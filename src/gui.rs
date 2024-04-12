@@ -2,7 +2,7 @@ use crate::{
     bytes::{ToBytes, ToBytesExact},
     camera::{DaylightOffset, PrimaryCamera, Sun},
     morton::Morton,
-    renderer::{DoRendering, Renders},
+    renderer::{DoRendering, RenderGroups},
     rocketsim::GameState,
     spectator::SpectatorSettings,
     udp::{Connection, UdpPacketTypes},
@@ -88,6 +88,8 @@ impl Plugin for DebugOverlayPlugin {
             .insert_resource(EnablePadInfo::default())
             .insert_resource(UserPadStates::default())
             .insert_resource(PacketSendTime::default())
+            .insert_resource(RenderInfo::default())
+            .insert_resource(UpdateRenderInfoTime::default())
             .add_event::<UserSetBallState>()
             .add_event::<UserSetCarState>()
             .add_event::<UserSetPadState>()
@@ -108,6 +110,7 @@ impl Plugin for DebugOverlayPlugin {
                         update_shadows,
                         update_sensitivity,
                         update_allow_rendering,
+                        update_render_info,
                         update_ball_info.run_if(resource_equals(EnableBallInfo(true))),
                         update_car_info.run_if(|enable_menu: Res<EnableCarInfo>| !enable_menu.0.is_empty()),
                         update_boost_pad_info.run_if(|enable_menu: Res<EnablePadInfo>| !enable_menu.0.is_empty()),
@@ -116,12 +119,7 @@ impl Plugin for DebugOverlayPlugin {
                             set_user_car_state.run_if(on_event::<UserSetCarState>()),
                             set_user_pad_state.run_if(on_event::<UserSetPadState>()),
                             update_speed.run_if(
-                                |options: Res<Options>, mut last: Local<f32>, last_packet_send: Res<PacketSendTime>| {
-                                    // Limit packet send rate to prevent spamming the server
-                                    if last_packet_send.0.elapsed() < Duration::from_secs_f32(1. / 15.) {
-                                        return false;
-                                    }
-
+                                |options: Res<Options>, mut last: Local<f32>| {
                                     let run = options.game_speed != *last;
                                     *last = options.game_speed;
                                     run
@@ -930,10 +928,32 @@ fn debug_ui(
     });
 }
 
+#[derive(Resource, Default)]
+struct UpdateRenderInfoTime(Stopwatch);
+
+#[derive(Resource, Default)]
+struct RenderInfo {
+    groups: usize,
+    items: usize,
+}
+
+fn update_render_info(renders: Res<RenderGroups>, mut render_info: ResMut<RenderInfo>, mut last_render_update: ResMut<UpdateRenderInfoTime>, time: Res<Time>) {
+    last_render_update.0.tick(time.delta());
+
+    if last_render_update.0.elapsed() < Duration::from_secs_f32(1. / 10.) {
+        last_render_update.0.reset();
+        return;
+    }
+
+    render_info.groups = renders.groups.len();
+    render_info.items = renders.groups.values().map(Vec::len).sum();
+}
+
 fn ui_system(
     mut menu_focused: ResMut<MenuFocused>,
     mut options: ResMut<Options>,
     mut contexts: EguiContexts,
+    render_info: Res<RenderInfo>,
     time: Res<Time>,
 ) {
     #[cfg(not(feature = "ssao"))]
@@ -992,6 +1012,11 @@ fn ui_system(
 
             ui.menu_button("Toggle rendering manager", |ui| {
                 ui.checkbox(&mut options.allow_rendering, "Allow rendering");
+
+                ui.add_space(10.);
+
+                ui.label(format!("Groups: {}", render_info.groups));
+                ui.label(format!("Items: {}", render_info.items));
             });
 
             ui.add_space(10.);
@@ -1012,7 +1037,7 @@ fn ui_system(
         });
 }
 
-fn update_allow_rendering(options: Res<Options>, mut do_rendering: ResMut<DoRendering>, mut renders: ResMut<Renders>) {
+fn update_allow_rendering(options: Res<Options>, mut do_rendering: ResMut<DoRendering>, mut renders: ResMut<RenderGroups>) {
     if !options.allow_rendering {
         renders.groups.clear();
     }
@@ -1024,7 +1049,13 @@ fn update_sensitivity(options: Res<Options>, mut settings: ResMut<SpectatorSetti
     settings.sensitivity = SpectatorSettings::default().sensitivity * options.mouse_sensitivity;
 }
 
-fn update_speed(options: Res<Options>, socket: Res<Connection>) {
+fn update_speed(options: Res<Options>, socket: Res<Connection>, mut last_packet_send: ResMut<PacketSendTime>, time: Res<Time>) {
+    last_packet_send.0.tick(time.delta());
+    if last_packet_send.0.elapsed() < Duration::from_secs_f32(1. / 15.) {
+        last_packet_send.0.reset();
+        return;
+    }
+
     if let Err(e) = socket.0.send_to(&[UdpPacketTypes::Speed as u8], socket.1) {
         error!("Failed to change game speed: {e}");
     }

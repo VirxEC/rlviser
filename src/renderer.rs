@@ -1,3 +1,4 @@
+use crate::udp::ToBevyVec;
 use bevy::{prelude::*, utils::HashMap};
 
 #[derive(Clone, Copy, Debug)]
@@ -21,32 +22,36 @@ impl CustomColor {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub enum Render {
     Line2D { start: Vec2, end: Vec2, color: CustomColor },
-    Line3D { start: Vec3, end: Vec3, color: CustomColor },
+    Line { start: Vec3, end: Vec3, color: CustomColor },
+    LineStrip { positions: Vec<Vec3>, color: CustomColor },
 }
 
 #[derive(Clone, Debug)]
 pub enum RenderMessage {
-    AddRender(u32, Vec<Render>),
-    RemoveRender(u32),
+    AddRender(i32, Vec<Render>),
+    RemoveRender(i32),
 }
 
 #[derive(Resource, Default)]
-pub struct Renders {
-    pub groups: HashMap<u32, Vec<Render>>,
+pub struct RenderGroups {
+    pub groups: HashMap<i32, Vec<Render>>,
 }
 
-fn render_gizmos(mut renders: ResMut<Renders>, mut gizmos: Gizmos) {
+fn render_gizmos(mut renders: ResMut<RenderGroups>, mut gizmos: Gizmos) {
     for (_, renders) in renders.groups.iter_mut() {
         for render in renders.iter() {
-            match *render {
+            match render {
                 Render::Line2D { start, end, color } => {
-                    gizmos.line_2d(start, end, color.into());
+                    gizmos.line_2d(*start, *end, (*color).into());
                 }
-                Render::Line3D { start, end, color } => {
-                    gizmos.line(start, end, color.into());
+                Render::Line { start, end, color } => {
+                    gizmos.line(start.to_bevy(), end.to_bevy(), (*color).into());
+                }
+                Render::LineStrip { positions, color } => {
+                    gizmos.linestrip(positions.iter().copied().map(ToBevyVec::to_bevy), (*color).into());
                 }
             }
         }
@@ -60,7 +65,7 @@ pub struct UdpRendererPlugin;
 
 impl Plugin for UdpRendererPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(Renders::default())
+        app.insert_resource(RenderGroups::default())
             .insert_resource(DoRendering(true))
             .add_systems(Update, render_gizmos.run_if(|do_rendering: Res<DoRendering>| do_rendering.0));
     }
