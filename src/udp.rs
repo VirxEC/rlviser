@@ -1,6 +1,6 @@
 use crate::{
     assets::{get_material, get_mesh_info, BoostPickupGlows, CarWheelMesh},
-    bytes::{FromBytes, ToBytes},
+    bytes::{FromBytes, ToBytes, ToBytesExact},
     camera::{BoostAmount, HighlightedEntity, PrimaryCamera, TimeDisplay, BOOST_INDICATOR_FONT_SIZE, BOOST_INDICATOR_POS},
     gui::{BallCam, GameSpeed, ShowTime, UiScale, UserCarStates},
     mesh::{BoostPadClicked, CarClicked, ChangeCarPos, LargeBoostPadLocRots},
@@ -165,16 +165,11 @@ pub struct CarBoost;
 struct CarWheel {
     front: bool,
     left: bool,
-    angular_velocity: f32,
 }
 
 impl CarWheel {
     fn new(front: bool, left: bool) -> Self {
-        Self {
-            front,
-            left,
-            angular_velocity: 0.,
-        }
+        Self { front, left }
     }
 }
 
@@ -220,20 +215,17 @@ fn spawn_car(
         return;
     };
 
-    let mesh_materials = if cfg!(feature = "full_load") {
-        get_car_mesh_materials(mesh_id, materials, asset_server, base_color)
-    } else {
-        vec![materials.add(base_color); mesh_info.len()]
-    };
-
-    let transparent = materials.add(Color::NONE);
-
     commands
         .spawn((
             Car(car_info.id),
             PbrBundle {
                 mesh: meshes.add(Cuboid::new(hitbox.x * 2., hitbox.y * 3., hitbox.z * 2.)),
-                material: transparent.clone(),
+                material: materials.add(StandardMaterial {
+                    base_color: Color::NONE,
+                    alpha_mode: AlphaMode::Add,
+                    unlit: true,
+                    ..default()
+                }),
                 ..default()
             },
             #[cfg(debug_assertions)]
@@ -247,28 +239,40 @@ fn spawn_car(
         .with_children(|parent| {
             const CAR_BOOST_LENGTH: f32 = 50.;
 
-            mesh_info
-                .into_iter()
-                .zip(mesh_materials)
-                .map(|(mesh, material)| PbrBundle {
-                    mesh,
-                    material,
-                    ..default()
-                })
-                .for_each(|bundle| {
-                    parent.spawn(bundle);
-                });
+            if cfg!(feature = "full_load") {
+                let mesh_materials = get_car_mesh_materials(mesh_id, materials, asset_server, base_color);
+
+                mesh_info
+                    .into_iter()
+                    .zip(mesh_materials)
+                    .map(|(mesh, material)| PbrBundle {
+                        mesh,
+                        material,
+                        ..default()
+                    })
+                    .for_each(|bundle| {
+                        parent.spawn(bundle);
+                    });
+            } else {
+                let material = materials.add(base_color);
+
+                mesh_info
+                    .into_iter()
+                    .map(|mesh| PbrBundle {
+                        mesh,
+                        material: material.clone(),
+                        ..default()
+                    })
+                    .for_each(|bundle| {
+                        parent.spawn(bundle);
+                    });
+            }
 
             parent.spawn((
                 PbrBundle {
                     mesh: meshes.add(Cylinder::new(10., CAR_BOOST_LENGTH)),
                     material: materials.add(StandardMaterial {
-                        base_color: Color::Rgba {
-                            red: 1.,
-                            green: 1.,
-                            blue: 0.,
-                            alpha: 0.,
-                        },
+                        base_color: Color::rgb(1., 1., 0.),
                         alpha_mode: AlphaMode::Add,
                         cull_mode: None,
                         ..default()
@@ -298,10 +302,9 @@ fn spawn_car(
                             material: wheel_material.clone(),
                             transform: Transform {
                                 translation: wheel_pair.connection_point_offset.to_bevy() * offset + wheel_offset,
-                                rotation: Quat::from_rotation_z(PI / 2.) * Quat::from_rotation_x(PI * side as f32),
+                                rotation: Quat::from_rotation_x(PI * side as f32),
                                 ..default()
                             },
-                            visibility: Visibility::Visible,
                             ..default()
                         },
                         CarWheel::new(i == 0, side == 0),
@@ -375,8 +378,9 @@ pub struct SpeedUpdate(pub f32);
 #[derive(Event)]
 pub struct PausedUpdate(pub bool);
 
-fn step_arena(
+fn handle_udp(
     socket: Res<Connection>,
+    game_speed: Res<GameSpeed>,
     mut game_state: ResMut<GameState>,
     mut exit: EventWriter<AppExit>,
     mut packet_updated: ResMut<PacketUpdated>,
@@ -494,7 +498,15 @@ fn step_arena(
                 let paused = paused_buffer[0] != 0;
                 paused_update.send(PausedUpdate(paused));
             }
-            UdpPacketTypes::Connection => {}
+            UdpPacketTypes::Connection => {
+                let paused = [game_speed.paused as u8];
+                socket.0.send_to(&[UdpPacketTypes::Paused as u8], socket.1).unwrap();
+                socket.0.send_to(&paused, socket.1).unwrap();
+
+                let speed = game_speed.speed.to_bytes();
+                socket.0.send_to(&[UdpPacketTypes::Speed as u8], socket.1).unwrap();
+                socket.0.send_to(&speed, socket.1).unwrap();
+            }
         }
     }
 
@@ -535,25 +547,31 @@ const MIN_DIST_FROM_BALL_SQ: f32 = MIN_DIST_FROM_BALL * MIN_DIST_FROM_BALL;
 
 const MIN_CAMERA_BALLCAM_HEIGHT: f32 = 20.;
 
-fn update_car(
-    state: Res<GameState>,
-    car_entities: Query<(Entity, &Car)>,
-    mut cars: Query<(&mut Transform, &Car, &Children)>,
-    mut car_wheels: Query<(&mut Transform, &mut CarWheel), Without<Car>>,
-    mut car_boosts: Query<&Handle<StandardMaterial>, With<CarBoost>>,
-    mut car_materials: Query<&Handle<StandardMaterial>, (With<Car>, Without<CarBoost>)>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut last_boost_states: Local<Vec<u32>>,
-    mut last_demoed_states: Local<Vec<u32>>,
-    game_speed: Res<GameSpeed>,
-) {
-    for (mut car_transform, car, children) in &mut cars {
+fn update_car(state: Res<GameState>, mut cars: Query<(&mut Transform, &Car)>) {
+    for (mut car_transform, car) in &mut cars {
         let Some(target_car) = state.cars.iter().find(|car_info| car.0 == car_info.id) else {
             continue;
         };
 
         car_transform.translation = target_car.state.pos.to_bevy();
         car_transform.rotation = target_car.state.rot_mat.to_bevy();
+    }
+}
+
+fn update_car_extra(
+    state: Res<GameState>,
+    car_entities: Query<(Entity, &Car)>,
+    mut cars: Query<(&Car, &Children)>,
+    mut car_boosts: Query<&Handle<StandardMaterial>, With<CarBoost>>,
+    mut car_materials: Query<&Handle<StandardMaterial>, (With<Car>, Without<CarBoost>)>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut last_boost_states: Local<Vec<u32>>,
+    mut last_demoed_states: Local<Vec<u32>>,
+) {
+    for (car, children) in &mut cars {
+        let Some(target_car) = state.cars.iter().find(|car_info| car.0 == car_info.id) else {
+            continue;
+        };
 
         let last_demoed = last_demoed_states.iter().any(|&id| id == car.id());
 
@@ -593,36 +611,71 @@ fn update_car(
                 }
             }
         }
+    }
+}
 
-        if !game_speed.paused {
-            for child in children {
-                let Ok((mut wheel_transform, mut data)) = car_wheels.get_mut(*child) else {
-                    continue;
-                };
+fn update_car_wheels(
+    state: Res<GameState>,
+    cars: Query<(&Transform, &Car, &Children)>,
+    car_wheels: Query<(&mut Transform, &CarWheel), Without<Car>>,
+    game_speed: Res<GameSpeed>,
+    time: Res<Time>,
+    key: Res<ButtonInput<KeyCode>>,
+) {
+    if game_speed.paused {
+        return;
+    }
 
-                let wheel_radius = if data.front {
-                    target_car.config.front_wheels.wheel_radius
-                } else {
-                    target_car.config.back_wheels.wheel_radius
-                };
+    let delta_time = if key.pressed(KeyCode::KeyI) {
+        game_speed.speed / state.tick_rate
+    } else {
+        time.delta_seconds() * game_speed.speed
+    };
 
-                let car_rot = car_transform.rotation;
-                let car_vel = target_car.state.vel.to_bevy();
+    calc_car_wheel_update(&state, cars, car_wheels, delta_time);
+}
 
+fn calc_car_wheel_update(
+    state: &GameState,
+    mut cars: Query<(&Transform, &Car, &Children)>,
+    mut car_wheels: Query<(&mut Transform, &CarWheel), Without<Car>>,
+    delta_time: f32,
+) {
+    for (car_transform, car, children) in &mut cars {
+        let Some(target_car) = state.cars.iter().find(|car_info| car.0 == car_info.id) else {
+            continue;
+        };
+
+        for child in children {
+            let Ok((mut wheel_transform, data)) = car_wheels.get_mut(*child) else {
+                continue;
+            };
+
+            let wheel_radius = if data.front {
+                target_car.config.front_wheels.wheel_radius
+            } else {
+                target_car.config.back_wheels.wheel_radius
+            };
+
+            let car_vel = target_car.state.vel.to_bevy();
+            let mut angular_velocity = car_vel.length() * delta_time / wheel_radius;
+
+            if data.left {
+                angular_velocity *= -1.;
+            }
+
+            if target_car.state.has_contact {
                 // determine if the velocity is in the same direction as the car's forward vector
-                let forward = car_rot.mul_vec3(Vec3::X);
+                let forward = car_transform.rotation.mul_vec3(Vec3::X);
                 let forward_dot = forward.dot(car_vel);
                 let forward_dir = forward_dot.signum();
 
-                data.angular_velocity = car_vel.length() * forward_dir / wheel_radius;
-
-                if !data.left {
-                    data.angular_velocity *= -1.;
-                }
-
-                wheel_transform.rotation *=
-                    Quat::from_rotation_z(data.angular_velocity / (state.tick_rate * game_speed.speed));
+                angular_velocity *= forward_dir;
+            } else {
+                angular_velocity *= target_car.state.last_controls.throttle;
             }
+
+            wheel_transform.rotation *= Quat::from_rotation_z(angular_velocity);
         }
     }
 }
@@ -1025,6 +1078,38 @@ fn update_field(state: Res<GameState>, mut game_mode: ResMut<GameMode>, mut load
     }
 }
 
+fn interpolate_packet(mut state: ResMut<GameState>, game_speed: Res<GameSpeed>, time: Res<Time>) {
+    if game_speed.paused {
+        return;
+    }
+
+    let delta_time = time.delta_seconds() * game_speed.speed;
+
+    let ball_pos = state.ball.vel * delta_time;
+    state.ball.pos += ball_pos;
+
+    let ball_ang_vel = state.ball.ang_vel * delta_time;
+    let ang_vel = ball_ang_vel.length();
+    if ang_vel > f32::EPSILON {
+        let axis = ball_ang_vel / ang_vel;
+        let rot = Mat3A::from_axis_angle(axis.into(), ang_vel);
+        state.ball.rot_mat = rot * state.ball.rot_mat;
+    }
+
+    for car in state.cars.iter_mut() {
+        let car_pos = car.state.vel * delta_time;
+        car.state.pos += car_pos;
+
+        let car_ang_vel = car.state.ang_vel * delta_time;
+        let ang_vel = car_ang_vel.length();
+        if ang_vel > f32::EPSILON {
+            let axis = car_ang_vel / ang_vel;
+            let rot = Mat3A::from_axis_angle(axis.into(), ang_vel);
+            car.state.rot_mat = rot * car.state.rot_mat;
+        }
+    }
+}
+
 fn listen(socket: Res<Connection>, key: Res<ButtonInput<KeyCode>>, mut game_state: ResMut<GameState>) {
     let mut changed = false;
     if key.just_pressed(KeyCode::KeyR) {
@@ -1061,15 +1146,30 @@ impl Plugin for RocketSimPlugin {
                     establish_connection.run_if(in_state(LoadState::Connect)),
                     (
                         (
-                            step_arena,
+                            handle_udp,
                             (
                                 (
                                     update_ball,
-                                    (pre_update_car, update_car, post_update_car).chain(),
+                                    (
+                                        pre_update_car,
+                                        (update_car, update_car_extra, update_car_wheels),
+                                        post_update_car,
+                                    )
+                                        .chain(),
                                     update_pads,
                                     update_field,
                                 )
                                     .run_if(|updated: Res<PacketUpdated>| updated.0),
+                                (
+                                    interpolate_packet,
+                                    (update_ball, (update_car, post_update_car).chain(), update_car_wheels),
+                                )
+                                    .chain()
+                                    .run_if(
+                                        |updated: Res<PacketUpdated>, key: Res<ButtonInput<KeyCode>>| {
+                                            !updated.0 && !key.pressed(KeyCode::KeyI)
+                                        },
+                                    ),
                                 (listen, update_boost_meter),
                             ),
                         )
