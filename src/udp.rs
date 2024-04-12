@@ -60,7 +60,7 @@ struct DirectorTimer(Timer);
 pub struct Connection(pub UdpSocket, pub SocketAddr);
 
 fn establish_connection(port: Res<ServerPort>, mut commands: Commands, mut state: ResMut<NextState<LoadState>>) {
-    let socket_addr = SocketAddr::new(IpAddr::from_str("0.0.0.0").unwrap(), port.primary_port);
+    let socket_addr = SocketAddr::new(IpAddr::from_str("127.0.0.1").unwrap(), port.primary_port);
     let socket = UdpSocket::bind(("0.0.0.0", port.secondary_port)).unwrap();
     socket.send_to(&[UdpPacketTypes::Connection as u8], socket_addr).unwrap();
     socket.set_nonblocking(true).unwrap();
@@ -161,6 +161,21 @@ const fn get_color_from_team(team: Team) -> Color {
 #[derive(Component)]
 pub struct CarBoost;
 
+#[derive(Component)]
+struct CarWheel {
+    front: bool,
+    angular_velocity: f32,
+}
+
+impl CarWheel {
+    fn new(front: bool) -> Self {
+        Self {
+            front,
+            angular_velocity: 0.,
+        }
+    }
+}
+
 fn spawn_car(
     car_info: &CarInfo,
     commands: &mut Commands,
@@ -169,7 +184,6 @@ fn spawn_car(
     asset_server: &AssetServer,
 ) {
     let hitbox = car_info.config.hitbox_size.to_bevy();
-    let hitbox_offset = car_info.config.hitbox_pos_offset.to_bevy();
     let base_color = get_color_from_team(car_info.team);
 
     let car_index = if (120f32..121.).contains(&hitbox.x) {
@@ -209,12 +223,14 @@ fn spawn_car(
         vec![materials.add(base_color); mesh_info.len()]
     };
 
+    let transparent = materials.add(Color::NONE);
+
     commands
         .spawn((
             Car(car_info.id),
             PbrBundle {
                 mesh: meshes.add(Cuboid::new(hitbox.x * 2., hitbox.y * 3., hitbox.z * 2.)),
-                material: materials.add(Color::NONE),
+                material: transparent.clone(),
                 ..default()
             },
             #[cfg(debug_assertions)]
@@ -227,13 +243,14 @@ fn spawn_car(
         ))
         .with_children(|parent| {
             const CAR_BOOST_LENGTH: f32 = 50.;
+            const CAR_WHEEL_THICKNESS: f32 = 10.;
+
             mesh_info
                 .into_iter()
                 .zip(mesh_materials)
                 .map(|(mesh, material)| PbrBundle {
                     mesh,
                     material,
-                    transform: Transform::from_translation(hitbox_offset),
                     ..default()
                 })
                 .for_each(|bundle| {
@@ -255,7 +272,7 @@ fn spawn_car(
                         ..default()
                     }),
                     transform: Transform {
-                        translation: Vec3::new((hitbox.x + CAR_BOOST_LENGTH) / -2., hitbox.y / 2., 0.) + hitbox_offset,
+                        translation: Vec3::new((hitbox.x + CAR_BOOST_LENGTH) / -2., hitbox.y / 2., 0.),
                         rotation: Quat::from_rotation_z(PI / 2.),
                         ..default()
                     },
@@ -263,6 +280,32 @@ fn spawn_car(
                 },
                 CarBoost,
             ));
+
+            let wheel_material = materials.add(base_color);
+            let wheel_pairs = [car_info.config.front_wheels, car_info.config.back_wheels];
+
+            for wheel_pair in wheel_pairs {
+                let wheel_offset = -Vec3::Y * (wheel_pair.suspension_rest_length - 12.);
+
+                for side in 0..=1 {
+                    let offset = [Vec3::ONE, Vec3::new(1., 1., -1.)][side];
+
+                    parent.spawn((
+                        PbrBundle {
+                            mesh: meshes.add(Cylinder::new(wheel_pair.wheel_radius, CAR_WHEEL_THICKNESS)),
+                            material: wheel_material.clone(),
+                            transform: Transform {
+                                translation: wheel_pair.connection_point_offset.to_bevy() * offset + wheel_offset,
+                                rotation: Quat::from_rotation_z(PI / 2.) * Quat::from_rotation_x(PI / 2.),
+                                ..default()
+                            },
+                            visibility: Visibility::Visible,
+                            ..default()
+                        },
+                        CarWheel::new(side == 0),
+                    ));
+                }
+            }
         });
 }
 
@@ -464,61 +507,16 @@ const MIN_DIST_FROM_BALL_SQ: f32 = MIN_DIST_FROM_BALL * MIN_DIST_FROM_BALL;
 const MIN_CAMERA_BALLCAM_HEIGHT: f32 = 20.;
 
 fn update_car(
-    time: Res<Time>,
     state: Res<GameState>,
-    ballcam: Res<BallCam>,
-    asset_server: Res<AssetServer>,
     car_entities: Query<(Entity, &Car)>,
     mut cars: Query<(&mut Transform, &Car, &Children)>,
+    mut car_wheels: Query<(&mut Transform, &mut CarWheel), Without<Car>>,
     mut car_boosts: Query<&Handle<StandardMaterial>, With<CarBoost>>,
     mut car_materials: Query<&Handle<StandardMaterial>, (With<Car>, Without<CarBoost>)>,
-    mut camera_query: Query<(&mut PrimaryCamera, &mut Transform), Without<Car>>,
-    mut timer: ResMut<DirectorTimer>,
-    commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut last_boost_states: Local<Vec<u32>>,
     mut last_demoed_states: Local<Vec<u32>>,
-    mut user_cars: ResMut<UserCarStates>,
 ) {
-    correct_car_count(
-        &cars,
-        &state,
-        &car_entities,
-        &mut user_cars,
-        commands,
-        &mut meshes,
-        &mut materials,
-        &asset_server,
-    );
-
-    timer.0.tick(time.delta());
-
-    let (mut primary_camera, mut camera_transform) = camera_query.single_mut();
-
-    let car_id = match primary_camera.as_mut() {
-        PrimaryCamera::TrackCar(id) => *id,
-        PrimaryCamera::Director(id) => {
-            if *id == 0 || timer.0.finished() {
-                // get the car closest to the ball
-                let mut min_dist = f32::MAX;
-                let mut new_id = *id;
-                for car in &*state.cars {
-                    let dist = car.state.pos.distance_squared(state.ball.pos);
-                    if dist < min_dist {
-                        new_id = car.id;
-                        min_dist = dist;
-                    }
-                }
-
-                *id = new_id;
-            }
-
-            *id
-        }
-        PrimaryCamera::Spectator => 0,
-    };
-
     for (mut car_transform, car, children) in &mut cars {
         let Some(target_car) = state.cars.iter().find(|car_info| car.0 == car_info.id) else {
             continue;
@@ -566,6 +564,88 @@ fn update_car(
             }
         }
 
+        for child in children {
+            let Ok((mut wheel_transform, mut data)) = car_wheels.get_mut(*child) else {
+                continue;
+            };
+
+            let wheel_radius = if data.front {
+                target_car.config.front_wheels.wheel_radius
+            } else {
+                target_car.config.back_wheels.wheel_radius
+            };
+
+            let car_rot = car_transform.rotation;
+            let car_vel = target_car.state.vel.to_bevy();
+
+            // determine if the velocity is in the same direction as the car's forward vector
+            let forward = car_rot.mul_vec3(Vec3::X);
+            let forward_dot = forward.dot(car_vel);
+            let forward_dir = forward_dot.signum();
+
+            data.angular_velocity = car_vel.length() * forward_dir / wheel_radius;
+            wheel_transform.rotation *= Quat::from_rotation_y(data.angular_velocity / state.tick_rate);
+        }
+    }
+}
+
+fn update_car_extra(
+    time: Res<Time>,
+    state: Res<GameState>,
+    ballcam: Res<BallCam>,
+    asset_server: Res<AssetServer>,
+    car_entities: Query<(Entity, &Car)>,
+    mut cars: Query<(&mut Transform, &Car)>,
+    mut camera_query: Query<(&mut PrimaryCamera, &mut Transform), Without<Car>>,
+    mut timer: ResMut<DirectorTimer>,
+    commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut user_cars: ResMut<UserCarStates>,
+) {
+    correct_car_count(
+        &cars,
+        &state,
+        &car_entities,
+        &mut user_cars,
+        commands,
+        &mut meshes,
+        &mut materials,
+        &asset_server,
+    );
+
+    timer.0.tick(time.delta());
+
+    let (mut primary_camera, mut camera_transform) = camera_query.single_mut();
+
+    let car_id = match primary_camera.as_mut() {
+        PrimaryCamera::TrackCar(id) => *id,
+        PrimaryCamera::Director(id) => {
+            if *id == 0 || timer.0.finished() {
+                // get the car closest to the ball
+                let mut min_dist = f32::MAX;
+                let mut new_id = *id;
+                for car in &*state.cars {
+                    let dist = car.state.pos.distance_squared(state.ball.pos);
+                    if dist < min_dist {
+                        new_id = car.id;
+                        min_dist = dist;
+                    }
+                }
+
+                *id = new_id;
+            }
+
+            *id
+        }
+        PrimaryCamera::Spectator => 0,
+    };
+
+    for (car_transform, car) in &mut cars {
+        let Some(target_car) = state.cars.iter().find(|car_info| car.0 == car_info.id) else {
+            continue;
+        };
+
         if car_id == car.id() {
             let camera_transform = camera_transform.as_mut();
 
@@ -596,7 +676,7 @@ fn update_car(
 }
 
 fn correct_car_count(
-    cars: &Query<(&mut Transform, &Car, &Children)>,
+    cars: &Query<(&mut Transform, &Car)>,
     state: &GameState,
     car_entities: &Query<(Entity, &Car)>,
     user_cars: &mut UserCarStates,
@@ -615,7 +695,7 @@ fn correct_car_count(
             }
         }
         Ordering::Less => {
-            let all_current_cars = cars.iter().map(|(_, car, _)| car.0).collect::<Vec<_>>();
+            let all_current_cars = cars.iter().map(|(_, car)| car.0).collect::<Vec<_>>();
             let non_existant_cars = state
                 .cars
                 .iter()
@@ -936,7 +1016,7 @@ impl Plugin for RocketSimPlugin {
                         (
                             step_arena,
                             (
-                                (update_ball, update_car, update_pads, update_field)
+                                (update_ball, (update_car, update_car_extra).chain(), update_pads, update_field)
                                     .run_if(|updated: Res<PacketUpdated>| updated.0),
                                 (listen, update_boost_meter),
                             ),

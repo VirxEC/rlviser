@@ -118,13 +118,11 @@ impl Plugin for DebugOverlayPlugin {
                             set_user_ball_state.run_if(on_event::<UserSetBallState>()),
                             set_user_car_state.run_if(on_event::<UserSetCarState>()),
                             set_user_pad_state.run_if(on_event::<UserSetPadState>()),
-                            update_speed.run_if(
-                                |options: Res<Options>, mut last: Local<f32>| {
-                                    let run = options.game_speed != *last;
-                                    *last = options.game_speed;
-                                    run
-                                },
-                            ),
+                            update_speed.run_if(|options: Res<Options>, mut last: Local<f32>| {
+                                let run = options.game_speed != *last;
+                                *last = options.game_speed;
+                                run
+                            }),
                             update_paused.run_if(|options: Res<Options>, mut last: Local<bool>| {
                                 let run = options.paused != *last;
                                 *last = options.paused;
@@ -937,7 +935,12 @@ struct RenderInfo {
     items: usize,
 }
 
-fn update_render_info(renders: Res<RenderGroups>, mut render_info: ResMut<RenderInfo>, mut last_render_update: ResMut<UpdateRenderInfoTime>, time: Res<Time>) {
+fn update_render_info(
+    renders: Res<RenderGroups>,
+    mut render_info: ResMut<RenderInfo>,
+    mut last_render_update: ResMut<UpdateRenderInfoTime>,
+    time: Res<Time>,
+) {
     last_render_update.0.tick(time.delta());
 
     if last_render_update.0.elapsed() < Duration::from_secs_f32(1. / 10.) {
@@ -1049,7 +1052,12 @@ fn update_sensitivity(options: Res<Options>, mut settings: ResMut<SpectatorSetti
     settings.sensitivity = SpectatorSettings::default().sensitivity * options.mouse_sensitivity;
 }
 
-fn update_speed(options: Res<Options>, socket: Res<Connection>, mut last_packet_send: ResMut<PacketSendTime>, time: Res<Time>) {
+fn update_speed(
+    options: Res<Options>,
+    socket: Res<Connection>,
+    mut last_packet_send: ResMut<PacketSendTime>,
+    time: Res<Time>,
+) {
     last_packet_send.0.tick(time.delta());
     if last_packet_send.0.elapsed() < Duration::from_secs_f32(1. / 15.) {
         last_packet_send.0.reset();
