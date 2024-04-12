@@ -1,5 +1,5 @@
 use crate::{
-    assets::{get_material, get_mesh_info, BoostPickupGlows},
+    assets::{get_material, get_mesh_info, BoostPickupGlows, CarWheelMesh},
     bytes::{FromBytes, ToBytes},
     camera::{BoostAmount, HighlightedEntity, PrimaryCamera, TimeDisplay, BOOST_INDICATOR_FONT_SIZE, BOOST_INDICATOR_POS},
     gui::{BallCam, ShowTime, UiScale, UserCarStates},
@@ -164,13 +164,15 @@ pub struct CarBoost;
 #[derive(Component)]
 struct CarWheel {
     front: bool,
+    left: bool,
     angular_velocity: f32,
 }
 
 impl CarWheel {
-    fn new(front: bool) -> Self {
+    fn new(front: bool, left: bool) -> Self {
         Self {
             front,
+            left,
             angular_velocity: 0.,
         }
     }
@@ -182,6 +184,7 @@ fn spawn_car(
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
     asset_server: &AssetServer,
+    car_wheel_mesh: &CarWheelMesh,
 ) {
     let hitbox = car_info.config.hitbox_size.to_bevy();
     let base_color = get_color_from_team(car_info.team);
@@ -243,7 +246,6 @@ fn spawn_car(
         ))
         .with_children(|parent| {
             const CAR_BOOST_LENGTH: f32 = 50.;
-            const CAR_WHEEL_THICKNESS: f32 = 10.;
 
             mesh_info
                 .into_iter()
@@ -284,25 +286,25 @@ fn spawn_car(
             let wheel_material = materials.add(base_color);
             let wheel_pairs = [car_info.config.front_wheels, car_info.config.back_wheels];
 
-            for wheel_pair in wheel_pairs {
+            for (i, wheel_pair) in wheel_pairs.iter().enumerate() {
                 let wheel_offset = -Vec3::Y * (wheel_pair.suspension_rest_length - 12.);
 
                 for side in 0..=1 {
-                    let offset = [Vec3::ONE, Vec3::new(1., 1., -1.)][side];
+                    let offset = Vec3::new(1., 1., 1. - (2. * side as f32));
 
                     parent.spawn((
                         PbrBundle {
-                            mesh: meshes.add(Cylinder::new(wheel_pair.wheel_radius, CAR_WHEEL_THICKNESS)),
+                            mesh: car_wheel_mesh.mesh.clone(),
                             material: wheel_material.clone(),
                             transform: Transform {
                                 translation: wheel_pair.connection_point_offset.to_bevy() * offset + wheel_offset,
-                                rotation: Quat::from_rotation_z(PI / 2.) * Quat::from_rotation_x(PI / 2.),
+                                rotation: Quat::from_rotation_z(PI / 2.) * Quat::from_rotation_x(PI * side as f32),
                                 ..default()
                             },
                             visibility: Visibility::Visible,
                             ..default()
                         },
-                        CarWheel::new(side == 0),
+                        CarWheel::new(i == 0, side == 0),
                     ));
                 }
             }
@@ -584,7 +586,12 @@ fn update_car(
             let forward_dir = forward_dot.signum();
 
             data.angular_velocity = car_vel.length() * forward_dir / wheel_radius;
-            wheel_transform.rotation *= Quat::from_rotation_y(data.angular_velocity / state.tick_rate);
+
+            if !data.left {
+                data.angular_velocity *= -1.;
+            }
+
+            wheel_transform.rotation *= Quat::from_rotation_z(data.angular_velocity / state.tick_rate);
         }
     }
 }
@@ -602,6 +609,7 @@ fn update_car_extra(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut user_cars: ResMut<UserCarStates>,
+    car_wheel_mesh: Res<CarWheelMesh>,
 ) {
     correct_car_count(
         &cars,
@@ -612,6 +620,7 @@ fn update_car_extra(
         &mut meshes,
         &mut materials,
         &asset_server,
+        &car_wheel_mesh,
     );
 
     timer.0.tick(time.delta());
@@ -684,6 +693,7 @@ fn correct_car_count(
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
     asset_server: &AssetServer,
+    car_wheel_mesh: &CarWheelMesh,
 ) {
     match cars.iter().count().cmp(&state.cars.len()) {
         Ordering::Greater => {
@@ -702,7 +712,7 @@ fn correct_car_count(
                 .filter(|car_info| !all_current_cars.iter().any(|&id| id == car_info.id));
 
             for car_info in non_existant_cars {
-                spawn_car(car_info, &mut commands, meshes, materials, asset_server);
+                spawn_car(car_info, &mut commands, meshes, materials, asset_server, car_wheel_mesh);
             }
         }
         Ordering::Equal => {}

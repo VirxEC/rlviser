@@ -27,7 +27,16 @@ impl Plugin for AssetsLoaderPlugin {
     }
 }
 
+#[derive(Resource)]
+pub struct CarWheelMesh {
+    pub mesh: Handle<Mesh>,
+}
+
 fn load_assets(mut commands: Commands, assets: Res<AssetServer>, mut meshes: ResMut<Assets<Mesh>>) {
+    commands.insert_resource(CarWheelMesh {
+        mesh: assets.load("WHEEL_Star/StaticMesh3/WHEEL_Star_SM.pskx"),
+    });
+
     commands.insert_resource(BoostPickupGlows {
         small: assets.load("Pickup_Boost/StaticMesh3/BoostPad_Small_02_SM.pskx"),
         small_hitbox: meshes.add(Cylinder::new(144. / 2., 165.)),
