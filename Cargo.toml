@@ -8,7 +8,7 @@ publish = false
 
 [dependencies]
 bevy_atmosphere = "0.9.1"
-bevy_egui = "0.26.0"
+bevy_egui = "0.27.0"
 bevy_eventlistener = "0.7.0"
 bevy_framepace = { version = "0.15.0", default-features = false }
 bevy_mod_picking = { version = "0.18.0", default-features = false, features = ["backend_raycast"] }
