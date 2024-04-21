@@ -1005,7 +1005,7 @@ fn ui_system(
             });
 
             ui.horizontal(|ui| {
-                ui.label("Game speed:");
+                ui.label("Game speed");
                 ui.add(
                     egui::DragValue::new(&mut options.game_speed)
                         .clamp_range(0.1..=10.0)
@@ -1015,7 +1015,7 @@ fn ui_system(
                 ui.checkbox(&mut options.paused, "Paused");
             });
 
-            ui.menu_button("Toggle rendering manager", |ui| {
+            ui.menu_button("Open rendering manager", |ui| {
                 ui.checkbox(&mut options.allow_rendering, "Allow rendering");
 
                 ui.add_space(10.);
