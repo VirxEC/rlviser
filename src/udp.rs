@@ -664,7 +664,7 @@ fn calc_car_wheel_update(
                 angular_velocity *= -1.;
             }
 
-            if target_car.state.has_contact {
+            if target_car.state.is_on_ground {
                 // determine if the velocity is in the same direction as the car's forward vector
                 let forward = car_transform.rotation.mul_vec3(Vec3::X);
                 let forward_dot = forward.dot(car_vel);

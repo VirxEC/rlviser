@@ -146,12 +146,6 @@ pub struct SpectatorSettings {
     ///
     /// Setting to `None` will disable the spectator mode.
     pub active_spectator: Option<Entity>,
-    /// The `Entity` of the active `Window`. (Default: `None`)
-    ///
-    /// Use this to control which `Window` will grab your mouse/hide the cursor.
-    ///
-    /// If `None`, the primary window will be used.
-    pub active_window: Option<Entity>,
     /// The base speed of the active [`Spectator`]. (Default: `0.1`)
     ///
     /// Use this to control how fast the [`Spectator`] normally moves.
@@ -170,7 +164,6 @@ impl Default for SpectatorSettings {
     fn default() -> Self {
         Self {
             active_spectator: None,
-            active_window: None,
             base_speed: 2500.,
             alt_speed: 750.,
             sensitivity: 0.001,
