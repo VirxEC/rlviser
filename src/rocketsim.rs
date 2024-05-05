@@ -104,6 +104,18 @@ pub struct CarControls {
     pub handbrake: bool,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct WorldContact {
+    pub has_contact: bool,
+    pub contact_normal: Vec3,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct CarContact {
+    pub other_car_id: u32,
+    pub cooldown_timer: f32,
+}
+
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct CarState {
@@ -113,6 +125,7 @@ pub struct CarState {
     pub ang_vel: Vec3,
     pub update_counter: u64,
     pub is_on_ground: bool,
+    pub wheels_with_contact: [bool; 4],
     pub has_jumped: bool,
     pub has_double_jumped: bool,
     pub has_flipped: bool,
@@ -121,6 +134,7 @@ pub struct CarState {
     pub flip_time: f32,
     pub is_flipping: bool,
     pub is_jumping: bool,
+    pub air_time: f32,
     pub air_time_since_jump: f32,
     pub boost: f32,
     pub time_spent_boosting: f32,
@@ -130,10 +144,8 @@ pub struct CarState {
     pub is_auto_flipping: bool,
     pub auto_flip_timer: f32,
     pub auto_flip_torque_scale: f32,
-    pub has_contact: bool,
-    pub contact_normal: Vec3,
-    pub other_car_id: u32,
-    pub cooldown_timer: f32,
+    pub world_contact: WorldContact,
+    pub car_contact: CarContact,
     pub is_demoed: bool,
     pub demo_respawn_timer: f32,
     pub ball_hit_info: BallHitInfo,

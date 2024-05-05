@@ -1,11 +1,12 @@
 use crate::{
     renderer::{CustomColor as Color, Render, RenderMessage},
     rocketsim::{
-        BallHitInfo, BallState, BoostPad, BoostPadState, CarConfig, CarControls, CarInfo, CarState, GameMode, GameState,
-        HeatseekerInfo, Team, WheelPairConfig,
+        BallHitInfo, BallState, BoostPad, BoostPadState, CarConfig, CarContact, CarControls, CarInfo, CarState, GameMode,
+        GameState, HeatseekerInfo, Team, WheelPairConfig, WorldContact,
     },
 };
 use bevy::math::{Mat3A as RotMat, Vec2, Vec3 as BVec3, Vec3A as Vec3};
+use core::fmt;
 
 pub trait FromBytes {
     fn from_bytes(bytes: &[u8]) -> Self;
@@ -34,6 +35,7 @@ impl<'a> ByteReader<'a> {
     }
 
     #[inline]
+    #[track_caller]
     pub fn debug_assert_num_bytes(&self, num_bytes: usize) {
         debug_assert_eq!(self.idx, num_bytes, "ByteReader::debug_assert_num_bytes() failed");
     }
@@ -113,6 +115,20 @@ impl FromBytes for i32 {
     #[inline]
     fn from_bytes(bytes: &[u8]) -> Self {
         Self::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
+    }
+}
+
+impl<T: FromBytesExact + fmt::Debug, const N: usize> FromBytesExact for [T; N] {
+    const NUM_BYTES: usize = T::NUM_BYTES * N;
+}
+
+impl<T: FromBytesExact + fmt::Debug, const N: usize> FromBytes for [T; N] {
+    fn from_bytes(bytes: &[u8]) -> Self {
+        let mut reader = ByteReader::new(bytes);
+
+        let items = (0..N).map(|_| reader.read()).collect::<Vec<T>>();
+        reader.debug_assert_num_bytes(Self::NUM_BYTES);
+        items.try_into().unwrap()
     }
 }
 
@@ -239,6 +255,16 @@ impl<const N: usize> ByteWriter<N> {
     }
 }
 
+impl ToBytesExact<{ bool::NUM_BYTES * 4 }> for [bool; 4] {
+    fn to_bytes(&self) -> [u8; bool::NUM_BYTES * 4] {
+        let mut writer = ByteWriter::<{ bool::NUM_BYTES * 4 }>::new();
+        for item in self {
+            writer.write(item);
+        }
+        writer.inner()
+    }
+}
+
 macro_rules! impl_to_bytes_exact_via_std {
     ($($t:ty),+) => {
         $(impl ToBytesExact<{ Self::NUM_BYTES }> for $t {
@@ -342,14 +368,17 @@ impl_bytes_exact!(
     jump,
     handbrake
 );
+impl_bytes_exact!(WorldContact, 1 + Vec3::NUM_BYTES, has_contact, contact_normal);
+impl_bytes_exact!(CarContact, u32::NUM_BYTES + f32::NUM_BYTES, other_car_id, cooldown_timer);
 impl_bytes_exact!(
     CarState,
     u64::NUM_BYTES
-        + Vec3::NUM_BYTES * 5
+        + Vec3::NUM_BYTES * 4
         + RotMat::NUM_BYTES
-        + 10
+        + 13
         + f32::NUM_BYTES * 11
-        + u32::NUM_BYTES
+        + WorldContact::NUM_BYTES
+        + CarContact::NUM_BYTES
         + BallHitInfo::NUM_BYTES
         + CarControls::NUM_BYTES,
     update_counter,
@@ -358,6 +387,7 @@ impl_bytes_exact!(
     vel,
     ang_vel,
     is_on_ground,
+    wheels_with_contact,
     has_jumped,
     has_double_jumped,
     has_flipped,
@@ -366,6 +396,7 @@ impl_bytes_exact!(
     flip_time,
     is_flipping,
     is_jumping,
+    air_time,
     air_time_since_jump,
     boost,
     time_spent_boosting,
@@ -375,10 +406,8 @@ impl_bytes_exact!(
     is_auto_flipping,
     auto_flip_timer,
     auto_flip_torque_scale,
-    has_contact,
-    contact_normal,
-    other_car_id,
-    cooldown_timer,
+    world_contact,
+    car_contact,
     is_demoed,
     demo_respawn_timer,
     ball_hit_info,
