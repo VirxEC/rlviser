@@ -9,6 +9,7 @@ use crate::{
     rocketsim::{CarInfo, GameMode, GameState, Team},
     LoadState, ServerPort,
 };
+use ahash::HashMap;
 use bevy::{
     app::AppExit,
     math::{Mat3A, Vec3A},
@@ -272,7 +273,7 @@ fn spawn_car(
                 PbrBundle {
                     mesh: meshes.add(Cylinder::new(10., CAR_BOOST_LENGTH)),
                     material: materials.add(StandardMaterial {
-                        base_color: Color::rgb(1., 1., 0.),
+                        base_color: Color::rgba(1., 1., 0., 0.),
                         alpha_mode: AlphaMode::Add,
                         cull_mode: None,
                         ..default()
@@ -567,6 +568,7 @@ fn update_car_extra(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut last_boost_states: Local<Vec<u32>>,
     mut last_demoed_states: Local<Vec<u32>>,
+    mut last_boost_amounts: Local<HashMap<u32, f32>>,
 ) {
     for (car, children) in &mut cars {
         let Some(target_car) = state.cars.iter().find(|car_info| car.0 == car_info.id) else {
@@ -591,8 +593,13 @@ fn update_car_extra(
             }
         }
 
-        let is_boosting =
-            !target_car.state.is_demoed && target_car.state.last_controls.boost && target_car.state.boost > f32::EPSILON;
+        let last_boost_amount = last_boost_amounts
+            .insert(car.id(), target_car.state.boost)
+            .unwrap_or_default();
+
+        let is_boosting = !target_car.state.is_demoed
+            && target_car.state.boost > f32::EPSILON
+            && (target_car.state.last_controls.boost || last_boost_amount > target_car.state.boost);
         let last_boosted = last_boost_states.iter().any(|&id| id == car.id());
 
         if is_boosting != last_boosted {
@@ -1127,6 +1134,9 @@ fn listen(socket: Res<Connection>, key: Res<ButtonInput<KeyCode>>, mut game_stat
 }
 
 #[derive(Resource)]
+pub struct Interpolation(pub bool);
+
+#[derive(Resource)]
 struct PacketUpdated(bool);
 
 pub struct RocketSimPlugin;
@@ -1137,6 +1147,7 @@ impl Plugin for RocketSimPlugin {
             .add_event::<SpeedUpdate>()
             .insert_resource(GameState::default())
             .insert_resource(DirectorTimer(Timer::new(Duration::from_secs(12), TimerMode::Repeating)))
+            .insert_resource(Interpolation(false))
             .insert_resource(PacketUpdated(false))
             .insert_resource(GameMode::default())
             .add_plugins(UdpRendererPlugin)
@@ -1165,11 +1176,7 @@ impl Plugin for RocketSimPlugin {
                                     (update_ball, (update_car, post_update_car).chain(), update_car_wheels),
                                 )
                                     .chain()
-                                    .run_if(
-                                        |updated: Res<PacketUpdated>, key: Res<ButtonInput<KeyCode>>| {
-                                            !updated.0 && !key.pressed(KeyCode::KeyI)
-                                        },
-                                    ),
+                                    .run_if(|updated: Res<PacketUpdated>, ip: Res<Interpolation>| !updated.0 && ip.0),
                                 (listen, update_boost_meter),
                             ),
                         )

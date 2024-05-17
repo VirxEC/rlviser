@@ -5,7 +5,7 @@ use crate::{
     renderer::{DoRendering, RenderGroups},
     rocketsim::GameState,
     spectator::SpectatorSettings,
-    udp::{Connection, PausedUpdate, SpeedUpdate, UdpPacketTypes},
+    udp::{Connection, Interpolation, PausedUpdate, SpeedUpdate, UdpPacketTypes},
 };
 use ahash::AHashMap;
 use bevy::{
@@ -119,6 +119,7 @@ impl Plugin for DebugOverlayPlugin {
                         update_sensitivity,
                         update_allow_rendering,
                         update_render_info,
+                        update_interpolation,
                         update_ball_info.run_if(resource_equals(EnableBallInfo(true))),
                         update_car_info.run_if(|enable_menu: Res<EnableCarInfo>| !enable_menu.0.is_empty()),
                         update_boost_pad_info.run_if(|enable_menu: Res<EnablePadInfo>| !enable_menu.0.is_empty()),
@@ -774,6 +775,7 @@ struct Options {
     paused: bool,
     mouse_sensitivity: f32,
     allow_rendering: bool,
+    interpolation: bool,
 }
 
 impl Default for Options {
@@ -797,6 +799,7 @@ impl Default for Options {
             paused: false,
             mouse_sensitivity: 1.,
             allow_rendering: true,
+            interpolation: false,
         }
     }
 }
@@ -842,6 +845,7 @@ impl Options {
                 "paused" => options.paused = value.parse().unwrap(),
                 "mouse_sensitivity" => options.mouse_sensitivity = value.parse().unwrap(),
                 "allow_rendering" => options.allow_rendering = value.parse().unwrap(),
+                "interpolation" => options.interpolation = value.parse().unwrap(),
                 _ => println!("Unknown key {key} with value {value}"),
             }
         }
@@ -878,6 +882,7 @@ impl Options {
         file.write_fmt(format_args!("paused={}\n", self.paused))?;
         file.write_fmt(format_args!("mouse_sensitivity={}\n", self.mouse_sensitivity))?;
         file.write_fmt(format_args!("allow_rendering={}\n", self.allow_rendering))?;
+        file.write_fmt(format_args!("interpolation={}\n", self.interpolation))?;
 
         Ok(())
     }
@@ -901,6 +906,7 @@ impl Options {
             || self.paused != other.paused
             || self.mouse_sensitivity != other.mouse_sensitivity
             || self.allow_rendering != other.allow_rendering
+            || self.interpolation != other.interpolation
     }
 }
 
@@ -1015,6 +1021,8 @@ fn ui_system(
                 ui.checkbox(&mut options.paused, "Paused");
             });
 
+            ui.checkbox(&mut options.interpolation, "Packet Interpolation");
+
             ui.menu_button("Open rendering manager", |ui| {
                 ui.checkbox(&mut options.allow_rendering, "Allow rendering");
 
@@ -1074,6 +1082,10 @@ fn read_paused_update_event(
         options.paused = event.0;
         game_speed.paused = event.0;
     }
+}
+
+fn update_interpolation(options: Res<Options>, mut interpolation: ResMut<Interpolation>) {
+    interpolation.0 = options.interpolation;
 }
 
 fn update_speed(
