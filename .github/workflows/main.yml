@@ -57,11 +57,12 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v3
         with:
+          name: linux, windows
           path: target/
       - name: Publish to GitHub Releases
         uses: softprops/action-gh-release@v1
         with:
-          files: target/**
+          files: ./**/target/**
           generate_release_notes: true
           body: |
             Remember that you must download `umodel` and setup `assets.path`
