@@ -39,11 +39,13 @@ jobs:
         if: contains(matrix.platform.os, 'windows')
         uses: actions/upload-artifact@v4.3.3
         with:
+          name: windows
           path: target/**/release/rlviser.exe
       - name: Upload artifact (Ubuntu)
         if: contains(matrix.platform.os, 'ubuntu')
         uses: actions/upload-artifact@v4.3.3
         with:
+          name: linux
           path: target/**/release/rlviser
   publish:
     needs: [release]
