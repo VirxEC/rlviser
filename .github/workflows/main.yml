@@ -65,6 +65,6 @@ jobs:
           files: ./**/target/**
           generate_release_notes: true
           body: |
-            Remember that you must download `umodel` and setup `assets.path`
+            Remember that you should download `umodel` for RLViser's use if you want more than the minimalist default assets.
 
-            Directions in included README
+            Directions in included README.
