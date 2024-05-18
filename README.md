@@ -10,9 +10,12 @@ Any language can communicate with the visualizer by sending UDP packets in the c
 
 ### First-time Launch Setup
 
-You must have [umodel](https://www.gildor.org/en/projects/umodel) in your root directory along with an `assets.path` file that points to your `rocketleague/TAGame/CookedPCConsole` directory so the visualizer can uncook the game assets into the `assets/` directory.
+You should have [umodel](https://www.gildor.org/en/projects/umodel) so the visualizer can uncook the game assets into the `assets/` directory.
 
 Precompiled versions of umodel for Windows and Linux are available on the website linked above.
+
+If you do not include umodel, the visualizer will use some minimalist default assets.
+Certain things may not be present due to the lack of assets, but the field, cars and ball are clearly visible.
 
 ### Usage
 
@@ -46,4 +49,3 @@ You can also choose to use the integrated support in RLGym 2.0 or to use the [RL
 Currently, both standard soccer and hoops are supported.
 
 ![image](https://github.com/VirxEC/rlviser/assets/35614515/6543f8d8-8cfd-430c-8009-1435e649d9cb)
-
