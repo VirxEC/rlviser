@@ -5,11 +5,13 @@ use bevy::{
 };
 use byteorder::{LittleEndian, ReadBytesExt};
 use once_cell::sync::Lazy;
+use rust_search::{similarity_sort, SearchBuilder};
 use std::{
     collections::HashMap,
     ffi::OsStr,
     fs,
     io::{self, Read, Write},
+    panic,
     path::{Path, MAIN_SEPARATOR},
     process::{Command, Stdio},
     sync::Mutex,
@@ -669,14 +671,88 @@ impl AssetLoader for PskxLoader {
     }
 }
 
+const CANT_FIND_FOLDER: &str = "Couldn't find 'RocketLeague.exe' on your system! Please manually create the file 'assets.path' and add the path in plain text to your 'rocketleague/TAGame/CookedPCConsole' folder. This is needed for UModel to work.";
 const UMODEL: &str = if cfg!(windows) { ".\\umodel.exe" } else { "./umodel" };
 const OUT_DIR: &str = "./assets/";
 const OUT_DIR_VER: &str = "./assets/files.txt";
 
+fn find_input_dir() -> String {
+    println!("Couldn't find 'assets.path' file in your base folder!");
+    print!("Try to automatically find the path? (y/n): ");
+
+    io::stdout().flush().unwrap();
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap();
+
+    if input.trim().to_lowercase() != "y" {
+        panic!("{CANT_FIND_FOLDER}");
+    }
+
+    println!("Searching system for 'RocketLeague.exe'...");
+
+    let search_input = "RocketLeague";
+    let start_dir = if cfg!(windows) { "C:\\" } else { "~" };
+
+    let mut search: Vec<String> = SearchBuilder::default()
+        .location(start_dir)
+        .search_input(search_input)
+        .ext("exe")
+        .strict()
+        .hidden()
+        .build()
+        .collect();
+
+    similarity_sort(&mut search, search_input);
+
+    if search.is_empty() {
+        panic!("{CANT_FIND_FOLDER}");
+    }
+
+    let mut input = String::new();
+
+    let mut game_path = None;
+
+    if search.len() == 1 {
+        println!("Found (1) result!");
+    } else {
+        println!("Found ({}) results!", search.len());
+    }
+
+    for path in &search {
+        print!("{path} - use this path? (y/n): ");
+        io::stdout().flush().unwrap();
+        io::stdin().read_line(&mut input).unwrap();
+
+        if input.trim().to_lowercase() == "y" {
+            game_path = Some(path);
+            break;
+        }
+    }
+
+    let input_dir = Path::new(game_path.expect(CANT_FIND_FOLDER))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("TAGame/CookedPCConsole");
+
+    assert!(
+        input_dir.exists() && input_dir.is_dir(),
+        "Couldn't find 'rocketleague/TAGame/CookedPCConsole' folder! Make sure you select the correct path to a Windows version of Rocket League."
+    );
+    let input_dir = input_dir.to_string_lossy().to_string();
+
+    println!("Writing '{input_dir}' to 'assets.path'...");
+    fs::write("assets.path", &input_dir).expect("Couldn't write to 'assets.path'!");
+
+    input_dir
+}
+
 fn get_input_dir() -> String {
-    let Ok(input_file) = fs::read_to_string("assets.path") else {
-        panic!("Couldn't find 'assets.path' file in your base folder! Create the file with the path to your 'rocketleague/TAGame/CookedPCConsole' folder.");
-    };
+    let input_file = fs::read_to_string("assets.path").unwrap_or_else(|_| find_input_dir());
 
     let Some(assets_dir) = input_file.lines().next() else {
         panic!("Your 'assets.path' file is empty! Create the file with the path to your 'rocketleague/TAGame/CookedPCConsole' folder.");
@@ -717,10 +793,6 @@ pub fn uncook() -> io::Result<()> {
         return Ok(());
     }
 
-    let input_dir = get_input_dir();
-
-    info!("Uncooking assets from Rocket League...");
-
     // let upk_files = fs::read_dir(&input_dir)?
     //     .filter_map(|entry| {
     //         let entry = entry.unwrap();
@@ -735,8 +807,12 @@ pub fn uncook() -> io::Result<()> {
 
     assert!(
         Path::new(UMODEL).exists(),
-        "Couldn't find umodel.exe! Make sure it's in the same folder as the executable."
+        "Couldn't find UModel! Make sure it's in the same folder as the executable."
     );
+
+    let input_dir = get_input_dir();
+
+    info!("Uncooking assets from Rocket League...");
 
     let num_files = UPK_FILES.len();
     // let num_files = upk_files.len();

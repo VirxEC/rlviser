@@ -1,5 +1,5 @@
 [package]
-version = "0.7.1"
+version = "0.7.2"
 name = "rlviser"
 edition = "2021"
 publish = false
@@ -22,6 +22,7 @@ walkdir = "2.3.3"
 thiserror = "1.0.50"
 ahash = "0.8.6"
 radsort = "0.1.0"
+rust_search = "2.1.0"
 
 [dependencies.bevy]
 version = "0.13.0"
