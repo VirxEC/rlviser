@@ -2,12 +2,14 @@ use crate::{
     assets::*,
     bytes::ToBytes,
     camera::{HighlightedEntity, PrimaryCamera},
+    default_field::{get_hoops_floor, get_standard_floor, load_hoops, load_standard},
     gui::{EnableBallInfo, EnableCarInfo, EnablePadInfo, UserCarStates, UserPadStates},
     rocketsim::{GameMode, GameState},
     udp::{Ball, BoostPadI, Car, Connection, ToBevyVec, ToBevyVecFlat, UdpPacketTypes},
-    LoadState,
+    GameLoadState,
 };
 use bevy::{
+    asset::LoadState,
     math::Vec3A,
     pbr::{NotShadowCaster, NotShadowReceiver},
     prelude::*,
@@ -23,6 +25,7 @@ use include_flate::flate;
 use serde::Deserialize;
 use std::{
     io::{self, Read},
+    path::Path,
     rc::Rc,
     str::Utf8Error,
     time::Duration,
@@ -49,9 +52,9 @@ impl Plugin for FieldLoaderPlugin {
             .add_systems(
                 Update,
                 (
-                    despawn_old_field.run_if(in_state(LoadState::Despawn)),
-                    load_field.run_if(in_state(LoadState::Field)),
-                    load_extra_field.run_if(in_state(LoadState::FieldExtra)),
+                    despawn_old_field.run_if(in_state(GameLoadState::Despawn)),
+                    load_field.run_if(in_state(GameLoadState::Field)),
+                    load_extra_field.run_if(in_state(GameLoadState::FieldExtra)),
                     handle_ball_clicked.run_if(on_event::<BallClicked>()),
                     handle_car_clicked.run_if(on_event::<CarClicked>()),
                     handle_boost_pad_clicked.run_if(on_event::<BoostPadClicked>()),
@@ -273,15 +276,23 @@ fn handle_boost_pad_clicked(
 
 fn load_extra_field(
     mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut state: ResMut<NextState<LoadState>>,
+    mut state: ResMut<NextState<GameLoadState>>,
     ball_assets: Res<BallAssets>,
+    assets: Res<AssetServer>,
 ) {
     // load a glowing ball
     let initial_ball_color = Color::rgb(0.3, 0.3, 0.3);
 
+    let (ball_color, ball_texture) = match assets.get_load_state(&ball_assets.ball_diffuse) {
+        Some(LoadState::Failed) | None => (Color::DARK_GRAY, None),
+        _ => (Color::WHITE, Some(ball_assets.ball_diffuse.clone())),
+    };
+
     let ball_material = StandardMaterial {
-        base_color_texture: Some(ball_assets.ball_diffuse.clone()),
+        base_color: ball_color,
+        base_color_texture: ball_texture,
         // normal_map_texture: Some(ball_assets.ball_normal.clone()),
         // occlusion_texture: Some(ball_assets.ball_occlude.clone()),
         perceptual_roughness: 0.7,
@@ -289,11 +300,16 @@ fn load_extra_field(
         ..default()
     };
 
+    let ball_mesh = match assets.get_load_state(&ball_assets.ball) {
+        Some(LoadState::Failed) | None => meshes.add(Sphere::new(91.25)),
+        _ => ball_assets.ball.clone(),
+    };
+
     commands
         .spawn((
             Ball,
             PbrBundle {
-                mesh: ball_assets.ball.clone(),
+                mesh: ball_mesh,
                 material: materials.add(ball_material),
                 transform: Transform::from_xyz(0., 92., 0.),
                 ..default()
@@ -319,7 +335,7 @@ fn load_extra_field(
             });
         });
 
-    state.set(LoadState::Field);
+    state.set(GameLoadState::Field);
 }
 
 fn rc_string_default() -> Rc<str> {
@@ -434,7 +450,7 @@ flate!(pub static HOOPS_STADIUM_P_LAYOUT: str from "stadiums/HoopsStadium_P_Mesh
 
 fn despawn_old_field(
     mut commands: Commands,
-    mut state: ResMut<NextState<LoadState>>,
+    mut state: ResMut<NextState<GameLoadState>>,
     static_field_entities: Query<Entity, With<StaticFieldEntity>>,
     mut user_pads: ResMut<UserPadStates>,
     mut user_cars: ResMut<UserCarStates>,
@@ -446,7 +462,7 @@ fn despawn_old_field(
         commands.entity(entity).despawn();
     });
 
-    state.set(LoadState::Field);
+    state.set(GameLoadState::Field);
 }
 
 #[cfg(feature = "team_goal_barriers")]
@@ -536,23 +552,79 @@ fn load_goals(
     }
 }
 
+fn load_default_field(
+    commands: &mut Commands,
+    materials: &mut Assets<StandardMaterial>,
+    meshes: &mut Assets<Mesh>,
+    game_mode: GameMode,
+) {
+    let (field, floor) = match game_mode {
+        GameMode::Soccar => (meshes.add(load_standard()), meshes.add(get_standard_floor())),
+        GameMode::Hoops => (meshes.add(load_hoops()), meshes.add(get_hoops_floor())),
+        _ => return,
+    };
+
+    commands.spawn((
+        PbrBundle {
+            mesh: field,
+            material: materials.add(StandardMaterial {
+                base_color: Color::rgba_u8(55, 30, 48, 200),
+                cull_mode: None,
+                double_sided: true,
+                ..default()
+            }),
+            ..default()
+        },
+        #[cfg(debug_assertions)]
+        EntityName::from("default_field"),
+        RaycastPickable,
+        On::<Pointer<Over>>::target_insert(HighlightedEntity),
+        On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
+        StaticFieldEntity,
+    ));
+
+    commands.spawn((
+        PbrBundle {
+            mesh: floor,
+            material: materials.add(StandardMaterial {
+                base_color: Color::rgb_u8(45, 49, 66),
+                cull_mode: None,
+                double_sided: true,
+                ..default()
+            }),
+            ..default()
+        },
+        #[cfg(debug_assertions)]
+        EntityName::from("default_floor"),
+        RaycastPickable,
+        On::<Pointer<Over>>::target_insert(HighlightedEntity),
+        On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
+        StaticFieldEntity,
+    ));
+}
+
 fn load_field(
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut state: ResMut<NextState<LoadState>>,
+    mut state: ResMut<NextState<GameLoadState>>,
     mut large_boost_pad_loc_rots: ResMut<LargeBoostPadLocRots>,
     game_mode: Res<GameMode>,
     asset_server: Res<AssetServer>,
 ) {
     let layout: &str = match *game_mode {
         GameMode::TheVoid => {
-            state.set(LoadState::None);
+            state.set(GameLoadState::None);
             return;
         }
         GameMode::Hoops => &HOOPS_STADIUM_P_LAYOUT,
         _ => &STADIUM_P_LAYOUT,
     };
+
+    if !Path::new("assets").is_dir() {
+        load_default_field(&mut commands, &mut materials, &mut meshes, *game_mode);
+        return;
+    }
 
     let (_pickup_boost, structures, the_world): (Section, Node, Node) = serde_json::from_str(layout).unwrap();
     #[cfg(debug_assertions)]
@@ -605,13 +677,13 @@ fn load_field(
     #[cfg(feature = "team_goal_barriers")]
     load_goals(*game_mode, &mut commands, &mut materials, &mut meshes);
 
-    state.set(LoadState::None);
+    state.set(GameLoadState::None);
 }
 
 fn process_info_node(
     node: &InfoNode,
     asset_server: &AssetServer,
-    meshes: &mut ResMut<'_, Assets<Mesh>>,
+    meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
     large_boost_pad_loc_rots: &mut LargeBoostPadLocRots,
     commands: &mut Commands,
@@ -620,7 +692,7 @@ fn process_info_node(
         return;
     }
 
-    let Some(mesh) = get_mesh_info(&node.static_mesh, meshes.as_mut()) else {
+    let Some(mesh) = get_mesh_info(&node.static_mesh, meshes) else {
         return;
     };
 

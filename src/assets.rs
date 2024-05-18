@@ -149,7 +149,7 @@ pub fn get_mesh_info(name: &str, meshes: &mut Assets<Mesh>) -> Option<Vec<Handle
 
     // read bytes from path
     let Ok(mut file) = fs::File::open(&path) else {
-        error!("Failed to open mesh {path} for {name}");
+        warn!("Failed to open mesh {path} for {name}");
         return None;
     };
 
@@ -694,7 +694,7 @@ fn find_input_dir() -> String {
     let search_input = "RocketLeague";
     let start_dir = if cfg!(windows) { "C:\\" } else { "~" };
 
-    let mut search: Vec<String> = SearchBuilder::default()
+    let mut search = SearchBuilder::default()
         .location(start_dir)
         .search_input(search_input)
         .ext("exe")
@@ -740,7 +740,7 @@ fn find_input_dir() -> String {
         .join("TAGame/CookedPCConsole");
 
     assert!(
-        input_dir.exists() && input_dir.is_dir(),
+        input_dir.is_dir(),
         "Couldn't find 'rocketleague/TAGame/CookedPCConsole' folder! Make sure you select the correct path to a Windows version of Rocket League."
     );
     let input_dir = input_dir.to_string_lossy().to_string();
@@ -805,10 +805,10 @@ pub fn uncook() -> io::Result<()> {
     //     })
     //     .collect::<Vec<_>>();
 
-    assert!(
-        Path::new(UMODEL).exists(),
-        "Couldn't find UModel! Make sure it's in the same folder as the executable."
-    );
+    if !Path::new(UMODEL).exists() {
+        println!("Couldn't find UModel! Make sure it's in the same folder as the executable. Using default assets!");
+        return Ok(());
+    }
 
     let input_dir = get_input_dir();
 

@@ -7,3 +7,4 @@ umodel*
 *.tfc
 *.csv
 settings.txt
+/collision_meshes

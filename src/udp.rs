@@ -7,11 +7,12 @@ use crate::{
     morton::Morton,
     renderer::{RenderGroups, RenderMessage, UdpRendererPlugin},
     rocketsim::{CarInfo, GameMode, GameState, Team},
-    LoadState, ServerPort,
+    GameLoadState, ServerPort,
 };
 use ahash::HashMap;
 use bevy::{
     app::AppExit,
+    asset::LoadState,
     math::{Mat3A, Vec3A},
     pbr::{NotShadowCaster, NotShadowReceiver},
     prelude::*,
@@ -60,13 +61,13 @@ struct DirectorTimer(Timer);
 #[derive(Resource)]
 pub struct Connection(pub UdpSocket, pub SocketAddr);
 
-fn establish_connection(port: Res<ServerPort>, mut commands: Commands, mut state: ResMut<NextState<LoadState>>) {
+fn establish_connection(port: Res<ServerPort>, mut commands: Commands, mut state: ResMut<NextState<GameLoadState>>) {
     let socket_addr = SocketAddr::new(IpAddr::from_str("127.0.0.1").unwrap(), port.primary_port);
     let socket = UdpSocket::bind(("0.0.0.0", port.secondary_port)).unwrap();
     socket.send_to(&[UdpPacketTypes::Connection as u8], socket_addr).unwrap();
     socket.set_nonblocking(true).unwrap();
     commands.insert_resource(Connection(socket, socket_addr));
-    state.set(LoadState::FieldExtra);
+    state.set(GameLoadState::FieldExtra);
 }
 
 pub trait ToBevyVec {
@@ -212,9 +213,8 @@ fn spawn_car(
     let name = CAR_BODY_NAMES[car_index];
     let mesh_id = CAR_BODIES[car_index];
 
-    let Some(mesh_info) = get_mesh_info(mesh_id, meshes) else {
-        return;
-    };
+    let mesh_info = get_mesh_info(mesh_id, meshes)
+        .unwrap_or_else(|| vec![meshes.add(Cuboid::new(hitbox.x * 2., hitbox.y * 2., hitbox.z * 2.))]);
 
     commands
         .spawn((
@@ -814,18 +814,18 @@ fn correct_car_count(
     }
 }
 
-fn update_pads(
+fn update_pads_count(
     state: Res<GameState>,
+    asset_server: Res<AssetServer>,
     pads: Query<(Entity, &BoostPadI)>,
-    query: Query<(&Handle<StandardMaterial>, &BoostPadI)>,
     pad_glows: Res<BoostPickupGlows>,
     large_boost_pad_loc_rots: Res<LargeBoostPadLocRots>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut commands: Commands,
 ) {
-    let morton_generator = Morton::default();
-
     if pads.iter().count() != state.pads.len() && !large_boost_pad_loc_rots.rots.is_empty() {
+        let morton_generator = Morton::default();
+
         // The number of pads shouldn't change often
         // There's also not an easy way to determine
         // if a previous pad a new pad are same pad
@@ -834,6 +834,16 @@ fn update_pads(
             commands.entity(entity).despawn_recursive();
         }
         let hitbox_material = materials.add(Color::NONE);
+
+        let large_pad_mesh = match asset_server.get_load_state(&pad_glows.large) {
+            Some(LoadState::Failed) | None => pad_glows.large_hitbox.clone(),
+            _ => pad_glows.large.clone(),
+        };
+
+        let small_pad_mesh = match asset_server.get_load_state(&pad_glows.small) {
+            Some(LoadState::Failed) | None => pad_glows.small_hitbox.clone(),
+            _ => pad_glows.small.clone(),
+        };
 
         for pad in state.pads.iter() {
             let code = morton_generator.get_code(pad.position);
@@ -853,7 +863,7 @@ fn update_pads(
                     transform.translation.y += 5.2;
                 }
 
-                (pad_glows.large.clone(), pad_glows.large_hitbox.clone())
+                (large_pad_mesh.clone(), pad_glows.large_hitbox.clone())
             } else {
                 if state.game_mode == GameMode::Soccar {
                     if transform.translation.z > 10. {
@@ -901,7 +911,7 @@ fn update_pads(
                     transform.translation.y += 5.7;
                 }
 
-                (pad_glows.small.clone(), pad_glows.small_hitbox.clone())
+                (small_pad_mesh.clone(), pad_glows.small_hitbox.clone())
             };
 
             commands
@@ -937,6 +947,14 @@ fn update_pads(
                 });
         }
     }
+}
+
+fn update_pad_colors(
+    state: Res<GameState>,
+    query: Query<(&Handle<StandardMaterial>, &BoostPadI)>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    let morton_generator = Morton::default();
 
     let mut sorted_pads = state
         .pads
@@ -1078,10 +1096,10 @@ fn update_time(state: Res<GameState>, show_time: Res<ShowTime>, mut text_display
     text_display.single_mut().sections[0].value = time_segments.join(":");
 }
 
-fn update_field(state: Res<GameState>, mut game_mode: ResMut<GameMode>, mut load_state: ResMut<NextState<LoadState>>) {
+fn update_field(state: Res<GameState>, mut game_mode: ResMut<GameMode>, mut load_state: ResMut<NextState<GameLoadState>>) {
     if state.game_mode != *game_mode {
         *game_mode = state.game_mode;
-        load_state.set(LoadState::Despawn);
+        load_state.set(GameLoadState::Despawn);
     }
 }
 
@@ -1154,7 +1172,7 @@ impl Plugin for RocketSimPlugin {
             .add_systems(
                 Update,
                 (
-                    establish_connection.run_if(in_state(LoadState::Connect)),
+                    establish_connection.run_if(in_state(GameLoadState::Connect)),
                     (
                         (
                             handle_udp,
@@ -1167,7 +1185,7 @@ impl Plugin for RocketSimPlugin {
                                         post_update_car,
                                     )
                                         .chain(),
-                                    update_pads,
+                                    (update_pads_count, update_pad_colors).chain(),
                                     update_field,
                                 )
                                     .run_if(|updated: Res<PacketUpdated>| updated.0),
@@ -1183,7 +1201,7 @@ impl Plugin for RocketSimPlugin {
                             .chain(),
                         update_time,
                     )
-                        .run_if(in_state(LoadState::None)),
+                        .run_if(in_state(GameLoadState::None)),
                 ),
             );
     }

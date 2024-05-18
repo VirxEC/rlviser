@@ -3,6 +3,7 @@
 mod assets;
 mod bytes;
 mod camera;
+mod default_field;
 mod gui;
 mod mesh;
 mod morton;
@@ -20,7 +21,7 @@ use bevy::{
 use std::env;
 
 #[derive(Clone, Eq, PartialEq, Debug, Hash, Default, States)]
-enum LoadState {
+enum GameLoadState {
     #[default]
     Connect,
     FieldExtra,
@@ -46,7 +47,7 @@ fn main() {
     assets::uncook().unwrap();
 
     App::new()
-        .init_state::<LoadState>()
+        .init_state::<GameLoadState>()
         .insert_resource(ServerPort {
             primary_port,
             secondary_port,
