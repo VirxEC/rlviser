@@ -623,6 +623,7 @@ fn load_field(
 
     if !Path::new("assets").is_dir() {
         load_default_field(&mut commands, &mut materials, &mut meshes, *game_mode);
+        state.set(GameLoadState::None);
         return;
     }
 
