@@ -67,4 +67,4 @@ jobs:
           body: |
             Remember that you should download `umodel` for RLViser's use if you want more than the minimalist default assets.
 
-            Directions in included README.
+            Directions are included in the README.
