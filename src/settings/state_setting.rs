@@ -1,8 +1,7 @@
 use super::options::MenuFocused;
 use crate::{
     morton::Morton,
-    rocketsim::GameState,
-    udp::{Connection, SendableUdp},
+    udp::{Connection, GameStates, SendableUdp},
 };
 use ahash::AHashMap;
 use bevy::{math::Vec3A, prelude::*};
@@ -110,7 +109,7 @@ impl UserPadStates {
 
 fn update_boost_pad_info(
     mut contexts: EguiContexts,
-    game_state: Res<GameState>,
+    game_states: Res<GameStates>,
     mut enable_menu: ResMut<EnablePadInfo>,
     mut set_user_state: EventWriter<UserSetPadState>,
     mut user_pads: ResMut<UserPadStates>,
@@ -120,7 +119,7 @@ fn update_boost_pad_info(
     let ctx = contexts.ctx_mut();
 
     let morton_generator = Morton::default();
-    for (i, pad) in game_state.pads.iter().enumerate() {
+    for (i, pad) in game_states.current.pads.iter().enumerate() {
         let code = morton_generator.get_code(pad.position);
         let Some(entry) = enable_menu.0.get_mut(&code) else {
             continue;
@@ -168,12 +167,13 @@ fn update_boost_pad_info(
 
 fn set_user_pad_state(
     mut events: EventReader<UserSetPadState>,
-    mut game_state: ResMut<GameState>,
+    mut game_states: ResMut<GameStates>,
     user_pads: Res<UserPadStates>,
     socket: Res<Connection>,
 ) {
     let morton_generator = Morton::default();
-    let mut sorted_pads = game_state
+    let mut sorted_pads = game_states
+        .current
         .pads
         .iter()
         .enumerate()
@@ -189,13 +189,22 @@ fn set_user_pad_state(
         let Ok(index) = sorted_pads.binary_search_by_key(&event.0, |(_, code)| *code) else {
             continue;
         };
-        let pad = &mut game_state.pads[sorted_pads[index].0];
 
-        set_bool_from_usize(&mut pad.state.is_active, user_pad.is_active);
-        set_f32_from_str(&mut pad.state.cooldown, &user_pad.timer);
+        let (is_active, cooldown) = {
+            let pad = &mut game_states.current.pads[sorted_pads[index].0];
+
+            set_bool_from_usize(&mut pad.state.is_active, user_pad.is_active);
+            set_f32_from_str(&mut pad.state.cooldown, &user_pad.timer);
+
+            (pad.state.is_active, pad.state.cooldown)
+        };
+
+        let pad = &mut game_states.next.pads[sorted_pads[index].0];
+        pad.state.is_active = is_active;
+        pad.state.cooldown = cooldown;
     }
 
-    socket.send(SendableUdp::State(game_state.clone())).unwrap();
+    socket.send(SendableUdp::State(game_states.next.clone())).unwrap();
 }
 
 #[derive(Event)]
@@ -226,29 +235,43 @@ enum SetBallStateAmount {
 
 fn set_user_ball_state(
     mut events: EventReader<UserSetBallState>,
-    mut game_state: ResMut<GameState>,
+    mut game_states: ResMut<GameStates>,
     user_ball: Res<UserBallState>,
     socket: Res<Connection>,
 ) {
     for event in events.read() {
         match event.0 {
-            SetBallStateAmount::Pos => set_vec3_from_arr_str(&mut game_state.ball.pos, &user_ball.pos),
-            SetBallStateAmount::Vel => set_vec3_from_arr_str(&mut game_state.ball.vel, &user_ball.vel),
-            SetBallStateAmount::AngVel => set_vec3_from_arr_str(&mut game_state.ball.ang_vel, &user_ball.ang_vel),
+            SetBallStateAmount::Pos => {
+                set_vec3_from_arr_str(&mut game_states.current.ball.pos, &user_ball.pos);
+                game_states.next.ball.pos = game_states.current.ball.pos;
+            }
+            SetBallStateAmount::Vel => {
+                set_vec3_from_arr_str(&mut game_states.current.ball.vel, &user_ball.vel);
+                game_states.next.ball.vel = game_states.current.ball.vel;
+            }
+            SetBallStateAmount::AngVel => {
+                set_vec3_from_arr_str(&mut game_states.current.ball.ang_vel, &user_ball.ang_vel);
+                game_states.next.ball.ang_vel = game_states.current.ball.ang_vel;
+            }
             SetBallStateAmount::All => {
-                set_vec3_from_arr_str(&mut game_state.ball.pos, &user_ball.pos);
-                set_vec3_from_arr_str(&mut game_state.ball.vel, &user_ball.vel);
-                set_vec3_from_arr_str(&mut game_state.ball.ang_vel, &user_ball.ang_vel);
+                set_vec3_from_arr_str(&mut game_states.current.ball.pos, &user_ball.pos);
+                game_states.next.ball.pos = game_states.current.ball.pos;
+
+                set_vec3_from_arr_str(&mut game_states.current.ball.vel, &user_ball.vel);
+                game_states.next.ball.vel = game_states.current.ball.vel;
+
+                set_vec3_from_arr_str(&mut game_states.current.ball.ang_vel, &user_ball.ang_vel);
+                game_states.next.ball.ang_vel = game_states.current.ball.ang_vel;
             }
         }
     }
 
-    socket.send(SendableUdp::State(game_state.clone())).unwrap();
+    socket.send(SendableUdp::State(game_states.next.clone())).unwrap();
 }
 
 fn update_ball_info(
     mut contexts: EguiContexts,
-    game_state: Res<GameState>,
+    game_states: Res<GameStates>,
     mut enable_menu: ResMut<EnableBallInfo>,
     mut set_user_state: EventWriter<UserSetBallState>,
     mut user_ball: ResMut<UserBallState>,
@@ -258,7 +281,7 @@ fn update_ball_info(
         .show(contexts.ctx_mut(), |ui| {
             ui.label(format!(
                 "Position: [{:.1}, {:.1}, {:.1}]",
-                game_state.ball.pos.x, game_state.ball.pos.y, game_state.ball.pos.z
+                game_states.current.ball.pos.x, game_states.current.ball.pos.y, game_states.current.ball.pos.z
             ));
             ui.horizontal(|ui| {
                 ui.label("X: ");
@@ -273,7 +296,7 @@ fn update_ball_info(
             });
             ui.label(format!(
                 "Velocity: [{:.1}, {:.1}, {:.1}]",
-                game_state.ball.vel.x, game_state.ball.vel.y, game_state.ball.vel.z
+                game_states.current.ball.vel.x, game_states.current.ball.vel.y, game_states.current.ball.vel.z
             ));
             ui.horizontal(|ui| {
                 ui.label("X: ");
@@ -288,7 +311,7 @@ fn update_ball_info(
             });
             ui.label(format!(
                 "Angular velocity: [{:.1}, {:.1}, {:.1}]",
-                game_state.ball.ang_vel.x, game_state.ball.ang_vel.y, game_state.ball.ang_vel.z
+                game_states.current.ball.ang_vel.x, game_states.current.ball.ang_vel.y, game_states.current.ball.ang_vel.z
             ));
             ui.horizontal(|ui| {
                 ui.label("X: ");
@@ -380,12 +403,12 @@ enum SetCarStateAmount {
 
 fn set_user_car_state(
     mut events: EventReader<UserSetCarState>,
-    mut game_state: ResMut<GameState>,
+    mut game_states: ResMut<GameStates>,
     user_cars: Res<UserCarStates>,
     socket: Res<Connection>,
 ) {
     for event in events.read() {
-        let Some(car_index) = game_state.cars.iter().position(|car| car.id == event.0) else {
+        let Some(car_index) = game_states.current.cars.iter().position(|car| car.id == event.0) else {
             continue;
         };
         let Some(user_car) = user_cars.0.get(&event.0) else {
@@ -393,51 +416,94 @@ fn set_user_car_state(
         };
 
         match event.1 {
-            SetCarStateAmount::Pos => set_vec3_from_arr_str(&mut game_state.cars[car_index].state.pos, &user_car.pos),
-            SetCarStateAmount::Vel => set_vec3_from_arr_str(&mut game_state.cars[car_index].state.vel, &user_car.vel),
+            SetCarStateAmount::Pos => {
+                set_vec3_from_arr_str(&mut game_states.current.cars[car_index].state.pos, &user_car.pos);
+                game_states.next.cars[car_index].state.pos = game_states.current.cars[car_index].state.pos;
+            }
+            SetCarStateAmount::Vel => {
+                set_vec3_from_arr_str(&mut game_states.current.cars[car_index].state.vel, &user_car.vel);
+                game_states.next.cars[car_index].state.vel = game_states.current.cars[car_index].state.vel;
+            }
             SetCarStateAmount::AngVel => {
-                set_vec3_from_arr_str(&mut game_state.cars[car_index].state.ang_vel, &user_car.ang_vel);
+                set_vec3_from_arr_str(&mut game_states.current.cars[car_index].state.ang_vel, &user_car.ang_vel);
+                game_states.next.cars[car_index].state.ang_vel = game_states.current.cars[car_index].state.ang_vel;
             }
             SetCarStateAmount::Jumped => {
-                set_half_bool_from_usize(&mut game_state.cars[car_index].state.has_jumped, user_car.has_jumped);
+                set_half_bool_from_usize(&mut game_states.current.cars[car_index].state.has_jumped, user_car.has_jumped);
+                set_half_bool_from_usize(&mut game_states.next.cars[car_index].state.has_jumped, user_car.has_jumped);
             }
-            SetCarStateAmount::DoubleJumped => set_half_bool_from_usize(
-                &mut game_state.cars[car_index].state.has_double_jumped,
-                user_car.has_double_jumped,
-            ),
-            SetCarStateAmount::Flipped => {
-                set_half_bool_from_usize(&mut game_state.cars[car_index].state.has_flipped, user_car.has_flipped);
-            }
-            SetCarStateAmount::Boost => set_f32_from_str(&mut game_state.cars[car_index].state.boost, &user_car.boost),
-            SetCarStateAmount::DemoRespawnTimer => set_f32_from_str(
-                &mut game_state.cars[car_index].state.demo_respawn_timer,
-                &user_car.demo_respawn_timer,
-            ),
-            SetCarStateAmount::All => {
-                set_vec3_from_arr_str(&mut game_state.cars[car_index].state.pos, &user_car.pos);
-                set_vec3_from_arr_str(&mut game_state.cars[car_index].state.vel, &user_car.vel);
-                set_vec3_from_arr_str(&mut game_state.cars[car_index].state.ang_vel, &user_car.ang_vel);
-                set_half_bool_from_usize(&mut game_state.cars[car_index].state.has_jumped, user_car.has_jumped);
+            SetCarStateAmount::DoubleJumped => {
                 set_half_bool_from_usize(
-                    &mut game_state.cars[car_index].state.has_double_jumped,
+                    &mut game_states.current.cars[car_index].state.has_double_jumped,
                     user_car.has_double_jumped,
                 );
-                set_half_bool_from_usize(&mut game_state.cars[car_index].state.has_flipped, user_car.has_flipped);
-                set_f32_from_str(&mut game_state.cars[car_index].state.boost, &user_car.boost);
+                game_states.next.cars[car_index].state.has_double_jumped =
+                    game_states.current.cars[car_index].state.has_double_jumped;
+            }
+            SetCarStateAmount::Flipped => {
+                set_half_bool_from_usize(
+                    &mut game_states.current.cars[car_index].state.has_flipped,
+                    user_car.has_flipped,
+                );
+                game_states.next.cars[car_index].state.has_flipped = game_states.current.cars[car_index].state.has_flipped;
+            }
+            SetCarStateAmount::Boost => {
+                set_f32_from_str(&mut game_states.current.cars[car_index].state.boost, &user_car.boost);
+                game_states.next.cars[car_index].state.boost = game_states.current.cars[car_index].state.boost;
+            }
+            SetCarStateAmount::DemoRespawnTimer => {
                 set_f32_from_str(
-                    &mut game_state.cars[car_index].state.demo_respawn_timer,
+                    &mut game_states.current.cars[car_index].state.demo_respawn_timer,
                     &user_car.demo_respawn_timer,
                 );
+                game_states.next.cars[car_index].state.demo_respawn_timer =
+                    game_states.current.cars[car_index].state.demo_respawn_timer;
+            }
+            SetCarStateAmount::All => {
+                set_vec3_from_arr_str(&mut game_states.current.cars[car_index].state.pos, &user_car.pos);
+                game_states.next.cars[car_index].state.pos = game_states.current.cars[car_index].state.pos;
+
+                set_vec3_from_arr_str(&mut game_states.current.cars[car_index].state.vel, &user_car.vel);
+                game_states.next.cars[car_index].state.vel = game_states.current.cars[car_index].state.vel;
+
+                set_vec3_from_arr_str(&mut game_states.current.cars[car_index].state.ang_vel, &user_car.ang_vel);
+                game_states.next.cars[car_index].state.ang_vel = game_states.current.cars[car_index].state.ang_vel;
+
+                set_half_bool_from_usize(&mut game_states.current.cars[car_index].state.has_jumped, user_car.has_jumped);
+                game_states.next.cars[car_index].state.has_jumped = game_states.current.cars[car_index].state.has_jumped;
+
+                set_half_bool_from_usize(
+                    &mut game_states.current.cars[car_index].state.has_double_jumped,
+                    user_car.has_double_jumped,
+                );
+                game_states.next.cars[car_index].state.has_double_jumped =
+                    game_states.current.cars[car_index].state.has_double_jumped;
+
+                set_half_bool_from_usize(
+                    &mut game_states.current.cars[car_index].state.has_flipped,
+                    user_car.has_flipped,
+                );
+                game_states.next.cars[car_index].state.has_flipped = game_states.current.cars[car_index].state.has_flipped;
+
+                set_f32_from_str(&mut game_states.current.cars[car_index].state.boost, &user_car.boost);
+                game_states.next.cars[car_index].state.boost = game_states.current.cars[car_index].state.boost;
+
+                set_f32_from_str(
+                    &mut game_states.current.cars[car_index].state.demo_respawn_timer,
+                    &user_car.demo_respawn_timer,
+                );
+                game_states.next.cars[car_index].state.demo_respawn_timer =
+                    game_states.current.cars[car_index].state.demo_respawn_timer;
             }
         }
     }
 
-    socket.send(SendableUdp::State(game_state.clone())).unwrap();
+    socket.send(SendableUdp::State(game_states.next.clone())).unwrap();
 }
 
 fn update_car_info(
     mut contexts: EguiContexts,
-    game_state: Res<GameState>,
+    game_states: Res<GameStates>,
     mut enable_menu: ResMut<EnableCarInfo>,
     mut set_user_state: EventWriter<UserSetCarState>,
     mut user_cars: ResMut<UserCarStates>,
@@ -446,7 +512,7 @@ fn update_car_info(
 
     let ctx = contexts.ctx_mut();
 
-    for car in game_state.cars.iter() {
+    for car in game_states.current.cars.iter() {
         let Some(entry) = enable_menu.0.get_mut(&car.id) else {
             continue;
         };

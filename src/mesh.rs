@@ -1,12 +1,12 @@
 use crate::{
     assets::*,
     camera::{HighlightedEntity, PrimaryCamera},
-    rocketsim::{GameMode, GameState},
+    rocketsim::GameMode,
     settings::{
         default_field::{get_hoops_floor, get_standard_floor, load_hoops, load_standard},
         state_setting::{EnableBallInfo, EnableCarInfo, EnablePadInfo, UserCarStates, UserPadStates},
     },
-    udp::{Ball, BoostPadI, Car, Connection, SendableUdp, ToBevyVec, ToBevyVecFlat},
+    udp::{Ball, BoostPadI, Car, Connection, GameStates, SendableUdp, ToBevyVec, ToBevyVecFlat},
     GameLoadState,
 };
 use bevy::{
@@ -95,7 +95,7 @@ struct StateSetTime(Stopwatch);
 fn change_ball_pos(
     windows: Query<&Window, With<PrimaryWindow>>,
     socket: Res<Connection>,
-    mut game_state: ResMut<GameState>,
+    mut game_states: ResMut<GameStates>,
     mut events: EventReader<ChangeBallPos>,
     camera: Query<(&Camera, &GlobalTransform), With<PrimaryCamera>>,
     mut last_state_set: ResMut<StateSetTime>,
@@ -111,11 +111,13 @@ fn change_ball_pos(
         return;
     };
 
-    let target = get_move_object_target(cam_pos, cursor_dir, plane_normal, game_state.ball.pos.xzy());
-    game_state.ball.vel = (target.xzy() - game_state.ball.pos).normalize() * 2000.;
+    let target = get_move_object_target(cam_pos, cursor_dir, plane_normal, game_states.current.ball.pos.xzy());
+    let ball_vel = (target.xzy() - game_states.current.ball.pos).normalize() * 2000.;
+    game_states.current.ball.vel = ball_vel;
+    game_states.next.ball.vel = ball_vel;
 
     last_state_set.0.reset();
-    socket.send(SendableUdp::State(game_state.clone())).unwrap();
+    socket.send(SendableUdp::State(game_states.next.clone())).unwrap();
 }
 
 #[derive(Event)]
@@ -131,7 +133,7 @@ fn change_car_pos(
     cars: Query<&Car>,
     windows: Query<&Window, With<PrimaryWindow>>,
     socket: Res<Connection>,
-    mut game_state: ResMut<GameState>,
+    mut game_states: ResMut<GameStates>,
     mut events: EventReader<ChangeCarPos>,
     camera: Query<(&Camera, &GlobalTransform), With<PrimaryCamera>>,
     mut last_state_set: ResMut<StateSetTime>,
@@ -150,17 +152,22 @@ fn change_car_pos(
             return;
         };
 
-        let Some(car) = game_state.cars.iter_mut().find(|car| car.id == car_id) else {
+        let Some(current_car) = game_states.current.cars.iter_mut().find(|car| car.id == car_id) else {
             return;
         };
 
-        let target = get_move_object_target(cam_pos, cursor_dir, plane_normal, car.state.pos.xzy());
-        car.state.vel = (target.xzy() - car.state.pos).normalize() * 2000.;
+        let target = get_move_object_target(cam_pos, cursor_dir, plane_normal, current_car.state.pos.xzy());
+        let car_vel = (target.xzy() - current_car.state.pos).normalize() * 2000.;
+        current_car.state.vel = car_vel;
+
+        if let Some(next_car) = game_states.next.cars.iter_mut().find(|car| car.id == car_id) {
+            next_car.state.vel = car_vel;
+        };
 
         last_state_set.0.reset();
     }
 
-    socket.send(SendableUdp::State(game_state.clone())).unwrap();
+    socket.send(SendableUdp::State(game_states.next.clone())).unwrap();
 }
 
 #[derive(Event)]

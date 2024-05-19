@@ -15,7 +15,7 @@ impl Plugin for GameOptions {
     }
 }
 
-#[derive(Resource, Default)]
+#[derive(Clone, Copy, Resource, Default)]
 pub enum PacketSmoothing {
     None,
     #[default]

@@ -24,6 +24,7 @@ ahash = "0.8.6"
 radsort = "0.1.0"
 rust_search = "2.1.0"
 crossbeam-channel = "0.5.12"
+itertools = "0.13.0"
 
 [dependencies.bevy]
 version = "0.13.0"

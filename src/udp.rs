@@ -19,15 +19,18 @@ use bevy::{
     math::{Mat3A, Vec3A},
     pbr::{NotShadowCaster, NotShadowReceiver},
     prelude::*,
+    time::Stopwatch,
     window::PrimaryWindow,
 };
 use bevy_mod_picking::{backends::raycast::RaycastPickable, prelude::*};
 use bevy_vector_shapes::prelude::*;
 use crossbeam_channel::{Receiver, Sender};
+use itertools::izip;
 use std::{
     cmp::Ordering,
     f32::consts::PI,
     fs,
+    mem::{replace, swap},
     net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket},
     thread,
     time::Duration,
@@ -580,14 +583,16 @@ fn apply_udp_updates(
     udp_updates: Res<UdpUpdateStream>,
     game_speed: Res<GameSpeed>,
     calc_ball_rot: Res<CalcBallRot>,
-    mut game_state: ResMut<GameState>,
+    packet_smoothing: Res<PacketSmoothing>,
+    mut game_states: ResMut<GameStates>,
     mut exit: EventWriter<AppExit>,
     mut packet_updated: ResMut<PacketUpdated>,
     mut render_groups: ResMut<RenderGroups>,
+    mut packet_time_elapsed: ResMut<PacketTimeElapsed>,
     mut speed_update: EventWriter<SpeedUpdate>,
     mut paused_update: EventWriter<PausedUpdate>,
 ) {
-    packet_updated.0 = false;
+    let mut new_game_state = None;
 
     for update in udp_updates.try_iter() {
         match update {
@@ -595,13 +600,8 @@ fn apply_udp_updates(
                 exit.send(AppExit);
                 return;
             }
-            UdpUpdate::State(mut new_game_state) => {
-                if calc_ball_rot.0 {
-                    new_game_state.ball.rot_mat = game_state.ball.rot_mat;
-                };
-
-                *game_state = new_game_state;
-                packet_updated.0 = true;
+            UdpUpdate::State(new_state) => {
+                new_game_state = Some(new_state);
             }
             UdpUpdate::Render(render_message) => match render_message {
                 RenderMessage::AddRender(group_id, renders) => {
@@ -623,10 +623,21 @@ fn apply_udp_updates(
             }
         }
     }
+
+    match new_game_state {
+        Some(new_state) => {
+            game_states.advance(*packet_smoothing, new_state, calc_ball_rot.0);
+            packet_updated.0 = true;
+            packet_time_elapsed.reset();
+        }
+        None => {
+            packet_updated.0 = false;
+        }
+    }
 }
 
 fn update_ball(
-    state: Res<GameState>,
+    states: Res<GameStates>,
     mut ball: Query<(&mut Transform, &Children), With<Ball>>,
     mut point_light: Query<&mut PointLight>,
 ) {
@@ -634,7 +645,7 @@ fn update_ball(
         return;
     };
 
-    let new_pos = state.ball.pos.to_bevy();
+    let new_pos = states.current.ball.pos.to_bevy();
     transform.translation = new_pos;
 
     let mut point_light = point_light.get_mut(children.first().copied().unwrap()).unwrap();
@@ -646,7 +657,7 @@ fn update_ball(
         Color::rgb(0.5, 0.5, amount.max(0.5))
     };
 
-    transform.rotation = state.ball.rot_mat.to_bevy();
+    transform.rotation = states.current.ball.rot_mat.to_bevy();
 }
 
 const MIN_DIST_FROM_BALL: f32 = 200.;
@@ -654,9 +665,9 @@ const MIN_DIST_FROM_BALL_SQ: f32 = MIN_DIST_FROM_BALL * MIN_DIST_FROM_BALL;
 
 const MIN_CAMERA_BALLCAM_HEIGHT: f32 = 20.;
 
-fn update_car(state: Res<GameState>, mut cars: Query<(&mut Transform, &Car)>) {
+fn update_car(states: Res<GameStates>, mut cars: Query<(&mut Transform, &Car)>) {
     for (mut car_transform, car) in &mut cars {
-        let Some(target_car) = state.cars.iter().find(|car_info| car.0 == car_info.id) else {
+        let Some(target_car) = states.current.cars.iter().find(|car_info| car.0 == car_info.id) else {
             continue;
         };
 
@@ -666,7 +677,7 @@ fn update_car(state: Res<GameState>, mut cars: Query<(&mut Transform, &Car)>) {
 }
 
 fn update_car_extra(
-    state: Res<GameState>,
+    states: Res<GameStates>,
     car_entities: Query<(Entity, &Car)>,
     mut cars: Query<(&Car, &Children)>,
     mut car_boosts: Query<&Handle<StandardMaterial>, With<CarBoost>>,
@@ -677,7 +688,7 @@ fn update_car_extra(
     mut last_boost_amounts: Local<HashMap<u32, f32>>,
 ) {
     for (car, children) in &mut cars {
-        let Some(target_car) = state.cars.iter().find(|car_info| car.0 == car_info.id) else {
+        let Some(target_car) = states.current.cars.iter().find(|car_info| car.0 == car_info.id) else {
             continue;
         };
 
@@ -728,7 +739,7 @@ fn update_car_extra(
 }
 
 fn update_car_wheels(
-    state: Res<GameState>,
+    states: Res<GameStates>,
     cars: Query<(&Transform, &Car, &Children)>,
     car_wheels: Query<(&mut Transform, &CarWheel), Without<Car>>,
     game_speed: Res<GameSpeed>,
@@ -740,12 +751,12 @@ fn update_car_wheels(
     }
 
     let delta_time = if key.pressed(KeyCode::KeyI) {
-        game_speed.speed / state.tick_rate
+        game_speed.speed / states.current.tick_rate
     } else {
         time.delta_seconds() * game_speed.speed
     };
 
-    calc_car_wheel_update(&state, cars, car_wheels, delta_time);
+    calc_car_wheel_update(&states.current, cars, car_wheels, delta_time);
 }
 
 fn calc_car_wheel_update(
@@ -795,7 +806,7 @@ fn calc_car_wheel_update(
 
 fn pre_update_car(
     cars: Query<&Car>,
-    state: Res<GameState>,
+    states: Res<GameStates>,
     asset_server: Res<AssetServer>,
     car_entities: Query<(Entity, &Car)>,
     commands: Commands,
@@ -806,7 +817,7 @@ fn pre_update_car(
 ) {
     correct_car_count(
         &cars,
-        &state,
+        &states.current,
         &car_entities,
         &mut user_cars,
         commands,
@@ -819,7 +830,7 @@ fn pre_update_car(
 
 fn update_camera(
     time: Res<Time>,
-    state: Res<GameState>,
+    states: Res<GameStates>,
     ballcam: Res<BallCam>,
     mut cars: Query<(&mut Transform, &Car)>,
     mut camera_query: Query<(&mut PrimaryCamera, &mut Transform), Without<Car>>,
@@ -836,8 +847,8 @@ fn update_camera(
                 // get the car closest to the ball
                 let mut min_dist = f32::MAX;
                 let mut new_id = *id;
-                for car in &*state.cars {
-                    let dist = car.state.pos.distance_squared(state.ball.pos);
+                for car in &*states.current.cars {
+                    let dist = car.state.pos.distance_squared(states.current.ball.pos);
                     if dist < min_dist {
                         new_id = car.id;
                         min_dist = dist;
@@ -853,7 +864,7 @@ fn update_camera(
     };
 
     let (car_transform, _) = cars.iter_mut().find(|(_, car)| car.id() == car_id).unwrap();
-    let Some(target_car) = state.cars.iter().find(|car_info| car_id == car_info.id) else {
+    let Some(target_car) = states.current.cars.iter().find(|car_info| car_id == car_info.id) else {
         return;
     };
 
@@ -861,11 +872,10 @@ fn update_camera(
 
     if ballcam.enabled
         && (!target_car.state.is_on_ground
-            || target_car.state.pos.distance_squared(state.ball.pos) > MIN_DIST_FROM_BALL_SQ)
+            || target_car.state.pos.distance_squared(states.current.ball.pos) > MIN_DIST_FROM_BALL_SQ)
     {
-        let ball_pos = state.ball.pos.to_bevy();
-        camera_transform.translation =
-            car_transform.translation + (car_transform.translation - ball_pos).normalize() * 300.;
+        let ball_pos = states.current.ball.pos.to_bevy();
+        camera_transform.translation = car_transform.translation + (car_transform.translation - ball_pos).normalize() * 300.;
         camera_transform.look_at(ball_pos, Vec3::Y);
         camera_transform.translation += camera_transform.up() * 150.;
         camera_transform.look_at(ball_pos, Vec3::Y);
@@ -918,7 +928,7 @@ fn correct_car_count(
 }
 
 fn update_pads_count(
-    state: Res<GameState>,
+    states: Res<GameStates>,
     asset_server: Res<AssetServer>,
     pads: Query<(Entity, &BoostPadI)>,
     pad_glows: Res<BoostPickupGlows>,
@@ -926,7 +936,7 @@ fn update_pads_count(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut commands: Commands,
 ) {
-    if pads.iter().count() != state.pads.len() && !large_boost_pad_loc_rots.rots.is_empty() {
+    if pads.iter().count() != states.current.pads.len() && !large_boost_pad_loc_rots.rots.is_empty() {
         let morton_generator = Morton::default();
 
         // The number of pads shouldn't change often
@@ -948,7 +958,7 @@ fn update_pads_count(
             _ => pad_glows.small.clone(),
         };
 
-        for pad in state.pads.iter() {
+        for pad in states.current.pads.iter() {
             let code = morton_generator.get_code(pad.position);
             let mut transform = Transform::from_translation(pad.position.to_bevy() - Vec3::Y * 70.);
 
@@ -960,15 +970,15 @@ fn update_pads_count(
                     .find(|(_, loc)| loc.distance_squared(pad.position.xy()) < 25.)
                     .map(|(i, _)| large_boost_pad_loc_rots.rots[i]);
                 transform.rotate_y(rotation.unwrap_or_default().to_radians());
-                if state.game_mode == GameMode::Soccar {
+                if states.current.game_mode == GameMode::Soccar {
                     transform.translation.y += 2.6;
-                } else if state.game_mode == GameMode::Hoops {
+                } else if states.current.game_mode == GameMode::Hoops {
                     transform.translation.y += 5.2;
                 }
 
                 (large_pad_mesh.clone(), pad_glows.large_hitbox.clone())
             } else {
-                if state.game_mode == GameMode::Soccar {
+                if states.current.game_mode == GameMode::Soccar {
                     if transform.translation.z > 10. {
                         transform.rotate_y(PI);
                     }
@@ -990,7 +1000,7 @@ fn update_pads_count(
                     {
                         transform.rotate_y(PI.copysign(transform.translation.x * transform.translation.z) / 4.);
                     }
-                } else if state.game_mode == GameMode::Hoops {
+                } else if states.current.game_mode == GameMode::Hoops {
                     if transform.translation.z > 2810. {
                         transform.rotate_y(PI / 3.);
                     }
@@ -1053,13 +1063,14 @@ fn update_pads_count(
 }
 
 fn update_pad_colors(
-    state: Res<GameState>,
+    states: Res<GameStates>,
     query: Query<(&Handle<StandardMaterial>, &BoostPadI)>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let morton_generator = Morton::default();
 
-    let mut sorted_pads = state
+    let mut sorted_pads = states
+        .current
         .pads
         .iter()
         .enumerate()
@@ -1069,7 +1080,7 @@ fn update_pad_colors(
 
     for (handle, id) in query.iter() {
         let index = sorted_pads.binary_search_by_key(&id.id(), |(_, code)| *code).unwrap();
-        let alpha = if state.pads[sorted_pads[index].0].state.is_active {
+        let alpha = if states.current.pads[sorted_pads[index].0].state.is_active {
             0.6
         } else {
             // make the glow on inactive pads dissapear
@@ -1081,7 +1092,7 @@ fn update_pad_colors(
 }
 
 fn update_boost_meter(
-    state: Res<GameState>,
+    states: Res<GameStates>,
     ui_scale: Res<UiOverlayScale>,
     camera: Query<&PrimaryCamera>,
     windows: Query<&Window, With<PrimaryWindow>>,
@@ -1103,7 +1114,7 @@ fn update_boost_meter(
         return;
     }
 
-    let Some(car_state) = &state.cars.iter().find(|info| id == info.id).map(|info| info.state) else {
+    let Some(car_state) = &states.current.cars.iter().find(|info| id == info.id).map(|info| info.state) else {
         return;
     };
 
@@ -1138,7 +1149,7 @@ fn update_boost_meter(
     *was_last_director = true;
 }
 
-fn update_time(state: Res<GameState>, show_time: Res<ShowTime>, mut text_display: Query<&mut Text, With<TimeDisplay>>) {
+fn update_time(states: Res<GameStates>, show_time: Res<ShowTime>, mut text_display: Query<&mut Text, With<TimeDisplay>>) {
     const MINUTE: u64 = 60;
     const HOUR: u64 = 60 * MINUTE;
     const DAY: u64 = 24 * HOUR;
@@ -1151,12 +1162,12 @@ fn update_time(state: Res<GameState>, show_time: Res<ShowTime>, mut text_display
         return;
     }
 
-    let tick_rate = state.tick_rate.round() as u64;
+    let tick_rate = states.current.tick_rate.round() as u64;
     if tick_rate == 0 {
         return;
     }
 
-    let mut seconds = state.tick_count / tick_rate;
+    let mut seconds = states.current.tick_count / tick_rate;
 
     let mut time_segments = Vec::with_capacity(7);
 
@@ -1199,15 +1210,15 @@ fn update_time(state: Res<GameState>, show_time: Res<ShowTime>, mut text_display
     text_display.single_mut().sections[0].value = time_segments.join(":");
 }
 
-fn update_field(state: Res<GameState>, mut game_mode: ResMut<GameMode>, mut load_state: ResMut<NextState<GameLoadState>>) {
-    if state.game_mode != *game_mode {
-        *game_mode = state.game_mode;
+fn update_field(states: Res<GameStates>, mut game_mode: ResMut<GameMode>, mut load_state: ResMut<NextState<GameLoadState>>) {
+    if states.current.game_mode != *game_mode {
+        *game_mode = states.current.game_mode;
         load_state.set(GameLoadState::Despawn);
     }
 }
 
 fn update_ball_rotation(
-    mut state: ResMut<GameState>,
+    mut states: ResMut<GameStates>,
     packet_smoothing: Res<PacketSmoothing>,
     game_speed: Res<GameSpeed>,
     time: Res<Time>,
@@ -1218,33 +1229,33 @@ fn update_ball_rotation(
     }
 
     let delta_time = if matches!(*packet_smoothing, PacketSmoothing::None) {
-        (state.tick_count - *last_game_tick) as f32 / state.tick_rate
+        (states.current.tick_count - *last_game_tick) as f32 / states.current.tick_rate
     } else {
         time.delta_seconds() * game_speed.speed
     };
 
-    *last_game_tick = state.tick_count;
+    *last_game_tick = states.current.tick_count;
 
-    let ball_ang_vel = state.ball.ang_vel * delta_time;
+    let ball_ang_vel = states.current.ball.ang_vel * delta_time;
     let ang_vel = ball_ang_vel.length();
     if ang_vel > f32::EPSILON {
         let axis = ball_ang_vel / ang_vel;
         let rot = Mat3A::from_axis_angle(axis.into(), ang_vel);
-        state.ball.rot_mat = rot * state.ball.rot_mat;
+        states.current.ball.rot_mat = rot * states.current.ball.rot_mat;
     }
 }
 
-fn extrapolate_packet(mut state: ResMut<GameState>, game_speed: Res<GameSpeed>, time: Res<Time>) {
+fn extrapolate_packet(mut states: ResMut<GameStates>, game_speed: Res<GameSpeed>, time: Res<Time>) {
     if game_speed.paused {
         return;
     }
 
     let delta_time = time.delta_seconds() * game_speed.speed;
 
-    let ball_pos = state.ball.vel * delta_time;
-    state.ball.pos += ball_pos;
+    let ball_pos = states.current.ball.vel * delta_time;
+    states.current.ball.pos += ball_pos;
 
-    for car in state.cars.iter_mut() {
+    for car in states.current.cars.iter_mut() {
         let car_pos = car.state.vel * delta_time;
         car.state.pos += car_pos;
 
@@ -1258,22 +1269,113 @@ fn extrapolate_packet(mut state: ResMut<GameState>, game_speed: Res<GameSpeed>, 
     }
 }
 
-fn listen(socket: Res<Connection>, key: Res<ButtonInput<KeyCode>>, mut game_state: ResMut<GameState>) {
+fn interpolate_calc_next_ball_rot(mut states: ResMut<GameStates>) {
+    states.current.ball.rot_mat = states.last.ball.rot_mat;
+
+    let delta_time = (states.next.tick_count - states.last.tick_count) as f32 / states.next.tick_rate;
+
+    let ball_ang_vel = states.last.ball.ang_vel * delta_time;
+    let ang_vel = ball_ang_vel.length();
+    if ang_vel > f32::EPSILON {
+        let axis = ball_ang_vel / ang_vel;
+        let rot = Mat3A::from_axis_angle(axis.into(), ang_vel);
+        states.next.ball.rot_mat = rot * states.last.ball.rot_mat;
+    }
+}
+
+fn interpolate_packets(
+    mut states: ResMut<GameStates>,
+    game_speed: Res<GameSpeed>,
+    mut packet_time_elapsed: ResMut<PacketTimeElapsed>,
+    time: Res<Time>,
+) {
+    if game_speed.paused {
+        return;
+    }
+
+    packet_time_elapsed.tick(time.delta());
+
+    let total_time_delta = (states.next.tick_count - states.last.tick_count) as f32 / states.next.tick_rate;
+    let delta_time = packet_time_elapsed.elapsed_secs() * game_speed.speed;
+
+    let lerp_amount = delta_time / total_time_delta;
+
+    states.current.ball.pos = states.last.ball.pos.lerp(states.next.ball.pos, lerp_amount);
+
+    let last_ball_quat = Quat::from_mat3a(&states.last.ball.rot_mat);
+    let next_ball_quat = Quat::from_mat3a(&states.next.ball.rot_mat);
+
+    let curr_ball_quat = last_ball_quat.slerp(next_ball_quat, lerp_amount);
+    states.current.ball.rot_mat = Mat3A::from_quat(curr_ball_quat);
+
+    for (last_car, current_car, next_car) in states.iter_current_cars() {
+        current_car.state.pos = last_car.state.pos.lerp(next_car.state.pos, lerp_amount);
+        current_car.state.vel = last_car.state.vel.lerp(next_car.state.vel, lerp_amount);
+
+        let last_car_quat = Quat::from_mat3a(&last_car.state.rot_mat);
+        let next_car_quat = Quat::from_mat3a(&next_car.state.rot_mat);
+
+        let curr_car_quat = last_car_quat.slerp(next_car_quat, lerp_amount);
+        current_car.state.rot_mat = Mat3A::from_quat(curr_car_quat);
+    }
+}
+
+fn listen(socket: Res<Connection>, key: Res<ButtonInput<KeyCode>>, mut game_states: ResMut<GameStates>) {
     let mut changed = false;
     if key.just_pressed(KeyCode::KeyR) {
         changed = true;
 
-        game_state.ball.pos = Vec3A::new(0., -2000., 1500.);
-        game_state.ball.vel = Vec3A::new(50., 1500., 1.);
+        let pos = Vec3A::new(0., -2000., 1500.);
+        let vel = Vec3A::new(50., 1500., 1.);
+
+        game_states.current.ball.pos = pos;
+        game_states.current.ball.vel = vel;
+        game_states.next.ball.pos = pos;
+        game_states.next.ball.vel = vel;
     }
 
     if changed {
-        socket.send(SendableUdp::State(game_state.clone())).unwrap();
+        socket.send(SendableUdp::State(game_states.next.clone())).unwrap();
     }
 }
 
-#[derive(Resource)]
+#[derive(Resource, Default)]
 struct PacketUpdated(bool);
+
+#[derive(Resource, Default)]
+pub struct GameStates {
+    pub last: GameState,
+    pub current: GameState,
+    pub next: GameState,
+}
+
+impl GameStates {
+    pub fn advance(&mut self, packet_smoothing: PacketSmoothing, new_state: GameState, calc_ball_rot: bool) {
+        match packet_smoothing {
+            PacketSmoothing::None | PacketSmoothing::Extrapolate => {
+                self.last = replace(&mut self.next, new_state);
+
+                if calc_ball_rot {
+                    self.next.ball.rot_mat = self.current.ball.rot_mat;
+                }
+
+                self.current = self.next.clone();
+            }
+            PacketSmoothing::Interpolate => {
+                swap(&mut self.last, &mut self.next);
+                self.current = self.last.clone();
+                self.next = new_state;
+            }
+        }
+    }
+
+    pub fn iter_current_cars(&mut self) -> impl Iterator<Item = (&CarInfo, &mut CarInfo, &CarInfo)> {
+        izip!(self.last.cars.iter(), self.current.cars.iter_mut(), self.next.cars.iter())
+    }
+}
+
+#[derive(Resource, Default, DerefMut, Deref)]
+struct PacketTimeElapsed(Stopwatch);
 
 pub struct RocketSimPlugin;
 
@@ -1281,9 +1383,10 @@ impl Plugin for RocketSimPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<PausedUpdate>()
             .add_event::<SpeedUpdate>()
-            .insert_resource(GameState::default())
+            .insert_resource(GameStates::default())
             .insert_resource(DirectorTimer(Timer::new(Duration::from_secs(12), TimerMode::Repeating)))
-            .insert_resource(PacketUpdated(false))
+            .insert_resource(PacketTimeElapsed::default())
+            .insert_resource(PacketUpdated::default())
             .insert_resource(GameMode::default())
             .add_plugins(UdpRendererPlugin)
             .add_systems(
@@ -1296,7 +1399,15 @@ impl Plugin for RocketSimPlugin {
                             (
                                 (
                                     (
-                                        update_ball_rotation.run_if(|calc_ball_rot: Res<CalcBallRot>| calc_ball_rot.0),
+                                        (
+                                            interpolate_calc_next_ball_rot.run_if(|ps: Res<PacketSmoothing>| {
+                                                matches!(*ps, PacketSmoothing::Interpolate)
+                                            }),
+                                            update_ball_rotation.run_if(|ps: Res<PacketSmoothing>| {
+                                                !matches!(*ps, PacketSmoothing::Interpolate)
+                                            }),
+                                        )
+                                            .run_if(|calc_ball_rot: Res<CalcBallRot>| calc_ball_rot.0),
                                         update_ball,
                                     )
                                         .chain(),
@@ -1311,20 +1422,20 @@ impl Plugin for RocketSimPlugin {
                                 )
                                     .run_if(|updated: Res<PacketUpdated>| updated.0),
                                 (
-                                    (extrapolate_packet, update_ball_rotation),
-                                    (update_ball, (update_car, update_camera).chain(), update_car_wheels),
+                                    (
+                                        (extrapolate_packet, update_ball_rotation),
+                                        (update_ball, (update_car, update_camera).chain(), update_car_wheels),
+                                    )
+                                        .chain()
+                                        .run_if(|ps: Res<PacketSmoothing>| matches!(*ps, PacketSmoothing::Extrapolate)),
+                                    (
+                                        interpolate_packets,
+                                        (update_ball, (update_car, update_camera).chain(), update_car_wheels),
+                                    )
+                                        .chain()
+                                        .run_if(|ps: Res<PacketSmoothing>| matches!(*ps, PacketSmoothing::Interpolate)),
                                 )
-                                    .chain()
-                                    .run_if(
-                                        |updated: Res<PacketUpdated>, ps: Res<PacketSmoothing>| {
-                                            !updated.0 && matches!(*ps, PacketSmoothing::Extrapolate)
-                                        },
-                                    ),
-                                ((update_ball_rotation,), (update_ball,)).chain().run_if(
-                                    |updated: Res<PacketUpdated>, ps: Res<PacketSmoothing>| {
-                                        !updated.0 && matches!(*ps, PacketSmoothing::Interpolate)
-                                    },
-                                ),
+                                    .run_if(|updated: Res<PacketUpdated>| !updated.0),
                                 (listen, update_boost_meter),
                             ),
                         )
