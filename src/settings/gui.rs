@@ -1,13 +1,12 @@
 use super::{
-    options::{BallCam, CalcBallRot, Extrapolation, GameOptions, GameSpeed, MenuFocused, ShowTime, UiOverlayScale},
+    options::{BallCam, CalcBallRot, GameOptions, GameSpeed, MenuFocused, PacketSmoothing, ShowTime, UiOverlayScale},
     state_setting::StateSettingInterface,
 };
 use crate::{
-    bytes::ToBytesExact,
     camera::{DaylightOffset, PrimaryCamera, Sun},
     renderer::{DoRendering, RenderGroups},
     spectator::SpectatorSettings,
-    udp::{Connection, PausedUpdate, SpeedUpdate, UdpPacketTypes},
+    udp::{Connection, PausedUpdate, SendableUdp, SpeedUpdate},
 };
 use bevy::{
     pbr::DirectionalLightShadowMap,
@@ -55,7 +54,7 @@ impl Plugin for DebugOverlayPlugin {
                         update_sensitivity,
                         update_allow_rendering,
                         update_render_info,
-                        update_extrapolation,
+                        update_packet_smoothing,
                         update_calc_ball_rot,
                         (
                             update_speed
@@ -104,7 +103,7 @@ struct Options {
     paused: bool,
     mouse_sensitivity: f32,
     allow_rendering: bool,
-    extrapolation: bool,
+    packet_smoothing: usize,
     calc_ball_rot: bool,
 }
 
@@ -129,7 +128,7 @@ impl Default for Options {
             paused: false,
             mouse_sensitivity: 1.,
             allow_rendering: true,
-            extrapolation: false,
+            packet_smoothing: 1,
             calc_ball_rot: true,
         }
     }
@@ -176,7 +175,7 @@ impl Options {
                 "paused" => options.paused = value.parse().unwrap(),
                 "mouse_sensitivity" => options.mouse_sensitivity = value.parse().unwrap(),
                 "allow_rendering" => options.allow_rendering = value.parse().unwrap(),
-                "extrapolation" => options.extrapolation = value.parse().unwrap(),
+                "packet_smoothing" => options.packet_smoothing = serde_json::from_str(value).unwrap(),
                 "calc_ball_rot" => options.calc_ball_rot = value.parse().unwrap(),
                 _ => println!("Unknown key {key} with value {value}"),
             }
@@ -214,7 +213,7 @@ impl Options {
         file.write_fmt(format_args!("paused={}\n", self.paused))?;
         file.write_fmt(format_args!("mouse_sensitivity={}\n", self.mouse_sensitivity))?;
         file.write_fmt(format_args!("allow_rendering={}\n", self.allow_rendering))?;
-        file.write_fmt(format_args!("extrapolation={}\n", self.extrapolation))?;
+        file.write_fmt(format_args!("packet_smoothing={}\n", self.packet_smoothing))?;
         file.write_fmt(format_args!("calc_ball_rot={}\n", self.calc_ball_rot))?;
 
         Ok(())
@@ -239,7 +238,7 @@ impl Options {
             || self.paused != other.paused
             || self.mouse_sensitivity != other.mouse_sensitivity
             || self.allow_rendering != other.allow_rendering
-            || self.extrapolation != other.extrapolation
+            || self.packet_smoothing != other.packet_smoothing
             || self.calc_ball_rot != other.calc_ball_rot
     }
 }
@@ -304,6 +303,8 @@ fn ui_system(
     #[cfg(not(feature = "ssao"))]
     const MSAA_NAMES: [&str; 4] = ["Off", "2x", "4x", "8x"];
     const SHADOW_NAMES: [&str; 4] = ["Off", "0.5x", "1x", "1.5x"];
+    const SMOOTHING_NAMES: [&str; 3] = ["None", "Interpolate", "Extrapolate"];
+
     let ctx = contexts.ctx_mut();
 
     let dt = time.delta_seconds();
@@ -322,7 +323,7 @@ fn ui_system(
 
     egui::Window::new("Menu")
         .auto_sized()
-        .open(&mut menu_focused.0)
+        .open(&mut menu_focused)
         .show(ctx, |ui| {
             ui.label(format!("FPS: {fps:.0}"));
             ui.horizontal(|ui| {
@@ -355,7 +356,12 @@ fn ui_system(
                 ui.checkbox(&mut options.paused, "Paused");
             });
 
-            ui.checkbox(&mut options.extrapolation, "Packet extrapolation");
+            egui::ComboBox::from_label("Packet smoothing").width(100.).show_index(
+                ui,
+                &mut options.packet_smoothing as &mut usize,
+                SMOOTHING_NAMES.len(),
+                |i| SMOOTHING_NAMES[i],
+            );
             ui.checkbox(&mut options.calc_ball_rot, "Ignore packet ball rotation");
 
             ui.menu_button("Open rendering manager", |ui| {
@@ -419,8 +425,8 @@ fn read_paused_update_event(
     }
 }
 
-fn update_extrapolation(options: Res<Options>, mut extrapolation: ResMut<Extrapolation>) {
-    extrapolation.0 = options.extrapolation;
+fn update_packet_smoothing(options: Res<Options>, mut packet_smoothing: ResMut<PacketSmoothing>) {
+    *packet_smoothing = PacketSmoothing::from_usize(options.packet_smoothing);
 }
 
 fn update_speed(
@@ -436,26 +442,12 @@ fn update_speed(
         return;
     }
 
-    if let Err(e) = socket.0.send_to(&[UdpPacketTypes::Speed as u8], socket.1) {
-        error!("Failed to change game speed: {e}");
-    }
-
-    if let Err(e) = socket.0.send_to(&options.game_speed.to_bytes(), socket.1) {
-        error!("Failed to change game speed: {e}");
-    }
-
+    socket.send(SendableUdp::Speed(options.game_speed)).unwrap();
     global.speed = options.game_speed;
 }
 
 fn update_paused(options: Res<Options>, socket: Res<Connection>, mut global: ResMut<GameSpeed>) {
-    if let Err(e) = socket.0.send_to(&[UdpPacketTypes::Paused as u8], socket.1) {
-        error!("Failed to change game speed: {e}");
-    }
-
-    if let Err(e) = socket.0.send_to(&options.paused.to_bytes(), socket.1) {
-        error!("Failed to change game speed: {e}");
-    }
-
+    socket.send(SendableUdp::Paused(options.paused)).unwrap();
     global.paused = options.paused;
 }
 

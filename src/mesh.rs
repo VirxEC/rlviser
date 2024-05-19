@@ -1,13 +1,12 @@
 use crate::{
     assets::*,
-    bytes::ToBytes,
     camera::{HighlightedEntity, PrimaryCamera},
     rocketsim::{GameMode, GameState},
     settings::{
         default_field::{get_hoops_floor, get_standard_floor, load_hoops, load_standard},
         state_setting::{EnableBallInfo, EnableCarInfo, EnablePadInfo, UserCarStates, UserPadStates},
     },
-    udp::{Ball, BoostPadI, Car, Connection, ToBevyVec, ToBevyVecFlat, UdpPacketTypes},
+    udp::{Ball, BoostPadI, Car, Connection, SendableUdp, ToBevyVec, ToBevyVecFlat},
     GameLoadState,
 };
 use bevy::{
@@ -116,14 +115,7 @@ fn change_ball_pos(
     game_state.ball.vel = (target.xzy() - game_state.ball.pos).normalize() * 2000.;
 
     last_state_set.0.reset();
-
-    if let Err(e) = socket.0.send_to(&[UdpPacketTypes::GameState as u8], socket.1) {
-        error!("Failed to send ball position: {e}");
-    }
-
-    if let Err(e) = socket.0.send_to(&game_state.to_bytes(), socket.1) {
-        error!("Failed to send ball position: {e}");
-    }
+    socket.send(SendableUdp::State(game_state.clone())).unwrap();
 }
 
 #[derive(Event)]
@@ -168,13 +160,7 @@ fn change_car_pos(
         last_state_set.0.reset();
     }
 
-    if let Err(e) = socket.0.send_to(&[UdpPacketTypes::GameState as u8], socket.1) {
-        error!("Failed to send car position: {e}");
-    }
-
-    if let Err(e) = socket.0.send_to(&game_state.to_bytes(), socket.1) {
-        error!("Failed to send car position: {e}");
-    }
+    socket.send(SendableUdp::State(game_state.clone())).unwrap();
 }
 
 #[derive(Event)]

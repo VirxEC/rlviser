@@ -3048,6 +3048,7 @@ dependencies = [
  "bevy_mod_picking",
  "bevy_vector_shapes",
  "byteorder",
+ "crossbeam-channel",
  "include-flate",
  "once_cell",
  "radsort",

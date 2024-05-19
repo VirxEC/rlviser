@@ -175,7 +175,7 @@ pub struct BoostPad {
     pub state: BoostPadState,
 }
 
-#[derive(Resource, Default, Debug)]
+#[derive(Clone, Resource, Default, Debug)]
 pub struct GameState {
     pub tick_count: u64,
     pub tick_rate: f32,

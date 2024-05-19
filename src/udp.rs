@@ -7,7 +7,7 @@ use crate::{
     renderer::{RenderGroups, RenderMessage, UdpRendererPlugin},
     rocketsim::{CarInfo, GameMode, GameState, Team},
     settings::{
-        options::{BallCam, CalcBallRot, Extrapolation, GameSpeed, ShowTime, UiOverlayScale},
+        options::{BallCam, CalcBallRot, GameSpeed, PacketSmoothing, ShowTime, UiOverlayScale},
         state_setting::UserCarStates,
     },
     GameLoadState, ServerPort,
@@ -23,12 +23,13 @@ use bevy::{
 };
 use bevy_mod_picking::{backends::raycast::RaycastPickable, prelude::*};
 use bevy_vector_shapes::prelude::*;
+use crossbeam_channel::{Receiver, Sender};
 use std::{
     cmp::Ordering,
     f32::consts::PI,
     fs,
-    net::{IpAddr, SocketAddr, UdpSocket},
-    str::FromStr,
+    net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket},
+    thread,
     time::Duration,
 };
 
@@ -61,15 +62,26 @@ impl Car {
 #[derive(Resource)]
 struct DirectorTimer(Timer);
 
-#[derive(Resource)]
-pub struct Connection(pub UdpSocket, pub SocketAddr);
+#[derive(Resource, Deref)]
+pub struct Connection(Sender<SendableUdp>);
+
+pub enum SendableUdp {
+    Paused(bool),
+    Speed(f32),
+    State(GameState),
+}
 
 fn establish_connection(port: Res<ServerPort>, mut commands: Commands, mut state: ResMut<NextState<GameLoadState>>) {
-    let socket_addr = SocketAddr::new(IpAddr::from_str("127.0.0.1").unwrap(), port.primary_port);
-    let socket = UdpSocket::bind(("0.0.0.0", port.secondary_port)).unwrap();
-    socket.send_to(&[UdpPacketTypes::Connection as u8], socket_addr).unwrap();
-    socket.set_nonblocking(true).unwrap();
-    commands.insert_resource(Connection(socket, socket_addr));
+    let out_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 0)), port.primary_port);
+    let recv_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port.secondary_port);
+    let socket = UdpSocket::bind(recv_addr).unwrap();
+
+    let (tx, rx) = crossbeam_channel::unbounded();
+    commands.insert_resource(Connection(tx));
+
+    start_udp_recv_handler(socket.try_clone().unwrap(), &mut commands);
+    start_udp_send_handler(socket, out_addr, rx);
+
     state.set(GameLoadState::FieldExtra);
 }
 
@@ -382,8 +394,190 @@ pub struct SpeedUpdate(pub f32);
 #[derive(Event)]
 pub struct PausedUpdate(pub bool);
 
-fn handle_udp(
+enum UdpUpdate {
+    State(GameState),
+    Render(RenderMessage),
+    Speed(f32),
+    Paused(bool),
+    Connection,
+    Exit,
+}
+
+#[derive(Resource, Deref)]
+struct UdpUpdateStream(Receiver<UdpUpdate>);
+
+fn start_udp_send_handler(socket: UdpSocket, out_addr: SocketAddr, outgoing: Receiver<SendableUdp>) {
+    socket.send_to(&[UdpPacketTypes::Connection as u8], out_addr).unwrap();
+
+    thread::spawn(move || loop {
+        match outgoing.recv() {
+            Ok(SendableUdp::State(state)) => {
+                let bytes = state.to_bytes();
+
+                if socket.send_to(&[UdpPacketTypes::GameState as u8], out_addr).is_err() {
+                    continue;
+                }
+
+                if socket.send_to(&bytes, out_addr).is_err() {
+                    continue;
+                }
+            }
+            Ok(SendableUdp::Speed(speed)) => {
+                let bytes = speed.to_bytes();
+
+                if socket.send_to(&[UdpPacketTypes::Speed as u8], out_addr).is_err() {
+                    continue;
+                }
+
+                if socket.send_to(&bytes, out_addr).is_err() {
+                    continue;
+                }
+            }
+            Ok(SendableUdp::Paused(paused)) => {
+                let paused = [paused as u8];
+
+                if socket.send_to(&[UdpPacketTypes::Paused as u8], out_addr).is_err() {
+                    continue;
+                }
+
+                if socket.send_to(&paused, out_addr).is_err() {
+                    continue;
+                }
+            }
+            Err(_) => return,
+        }
+    });
+}
+
+fn start_udp_recv_handler(socket: UdpSocket, commands: &mut Commands) {
+    let (tx, rx) = crossbeam_channel::unbounded();
+
+    thread::spawn(move || {
+        let mut packet_type_buffer = [0];
+        let mut initial_state_buffer = [0; GameState::MIN_NUM_BYTES];
+        let mut initial_render_buffer = [0; RenderMessage::MIN_NUM_BYTES];
+        let mut speed_buffer = [0; 4];
+        let mut paused_buffer = [0];
+
+        let mut buf = Vec::new();
+        let mut render_buf = Vec::new();
+        let mut last_game_state = GameState::default();
+
+        loop {
+            if socket.recv_from(&mut packet_type_buffer).is_err() {
+                return;
+            }
+
+            let Some(packet_type) = UdpPacketTypes::new(packet_type_buffer[0]) else {
+                return;
+            };
+
+            match packet_type {
+                UdpPacketTypes::Quit => {
+                    drop(tx.send(UdpUpdate::Exit));
+                    return;
+                }
+                UdpPacketTypes::GameState => {
+                    // wait until we receive the packet
+                    // it should arrive VERY quickly, so a loop with no delay is fine
+                    // if it doesn't, then there are other problems lol
+                    // UPDATE: Windows throws a specific error that we need to look for
+                    // despite the fact that it actually worked
+
+                    #[cfg(windows)]
+                    {
+                        while let Err(e) = socket.0.peek_from(&mut initial_state_buffer) {
+                            if let Some(code) = e.raw_os_error() {
+                                if code == 10040 {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    #[cfg(not(windows))]
+                    {
+                        while socket.peek_from(&mut initial_state_buffer).is_err() {}
+                    }
+
+                    let new_tick_count = GameState::read_tick_count(&initial_state_buffer);
+                    if new_tick_count > 1 && last_game_state.tick_count > new_tick_count {
+                        drop(socket.recv_from(&mut [0]));
+                        return;
+                    }
+
+                    buf.resize(GameState::get_num_bytes(&initial_state_buffer), 0);
+                    if socket.recv_from(&mut buf).is_err() {
+                        return;
+                    }
+
+                    last_game_state = GameState::from_bytes(&buf);
+                    if tx.send(UdpUpdate::State(last_game_state.clone())).is_err() {
+                        return;
+                    }
+                }
+                UdpPacketTypes::Render => {
+                    #[cfg(windows)]
+                    {
+                        while let Err(e) = socket.0.peek_from(&mut initial_state_buffer) {
+                            if let Some(code) = e.raw_os_error() {
+                                if code == 10040 {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    #[cfg(not(windows))]
+                    {
+                        while socket.peek_from(&mut initial_render_buffer).is_err() {}
+                    }
+
+                    render_buf.resize(RenderMessage::get_num_bytes(&initial_render_buffer), 0);
+                    if socket.recv_from(&mut render_buf).is_err() {
+                        return;
+                    }
+
+                    let render_message = RenderMessage::from_bytes(&render_buf);
+                    if tx.send(UdpUpdate::Render(render_message)).is_err() {
+                        return;
+                    }
+                }
+                UdpPacketTypes::Speed => {
+                    if socket.recv_from(&mut speed_buffer).is_err() {
+                        return;
+                    }
+
+                    let speed = f32::from_le_bytes(speed_buffer);
+                    if tx.send(UdpUpdate::Speed(speed)).is_err() {
+                        return;
+                    }
+                }
+                UdpPacketTypes::Paused => {
+                    if socket.recv_from(&mut paused_buffer).is_err() {
+                        return;
+                    }
+
+                    let paused = paused_buffer[0] != 0;
+                    if tx.send(UdpUpdate::Paused(paused)).is_err() {
+                        return;
+                    }
+                }
+                UdpPacketTypes::Connection => {
+                    if tx.send(UdpUpdate::Connection).is_err() {
+                        return;
+                    }
+                }
+            }
+        }
+    });
+
+    commands.insert_resource(UdpUpdateStream(rx));
+}
+
+fn apply_udp_updates(
     socket: Res<Connection>,
+    udp_updates: Res<UdpUpdateStream>,
     game_speed: Res<GameSpeed>,
     calc_ball_rot: Res<CalcBallRot>,
     mut game_state: ResMut<GameState>,
@@ -393,141 +587,42 @@ fn handle_udp(
     mut speed_update: EventWriter<SpeedUpdate>,
     mut paused_update: EventWriter<PausedUpdate>,
 ) {
-    const BYTE_BUFFER: [u8; 1] = [0];
-
-    let mut packet_type = BYTE_BUFFER;
-
     packet_updated.0 = false;
-    let mut buf = Vec::new();
-    let mut render_buf = Vec::new();
 
-    while socket.0.recv_from(&mut packet_type).is_ok() {
-        let Some(packet_type) = UdpPacketTypes::new(packet_type[0]) else {
-            return;
-        };
-
-        match packet_type {
-            UdpPacketTypes::Quit => {
+    for update in udp_updates.try_iter() {
+        match update {
+            UdpUpdate::Exit => {
                 exit.send(AppExit);
                 return;
             }
-            UdpPacketTypes::GameState => {
-                const INITIAL_BUFFER: [u8; GameState::MIN_NUM_BYTES] = [0; GameState::MIN_NUM_BYTES];
-                let mut initial_buffer = INITIAL_BUFFER;
+            UdpUpdate::State(mut new_game_state) => {
+                if calc_ball_rot.0 {
+                    new_game_state.ball.rot_mat = game_state.ball.rot_mat;
+                };
 
-                // wait until we receive the packet
-                // it should arrive VERY quickly, so a loop with no delay is fine
-                // if it doesn't, then there are other problems lol
-                // UPDATE: Windows throws a specific error that we need to look for
-                // despite the fact that it actually worked
-
-                #[cfg(windows)]
-                {
-                    while let Err(e) = socket.0.peek_from(&mut initial_buffer) {
-                        if let Some(code) = e.raw_os_error() {
-                            if code == 10040 {
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                #[cfg(not(windows))]
-                {
-                    while socket.0.peek_from(&mut initial_buffer).is_err() {}
-                }
-
-                let new_tick_count = GameState::read_tick_count(&initial_buffer);
-                if new_tick_count > 1 && game_state.tick_count > new_tick_count {
-                    drop(socket.0.recv_from(&mut [0]));
-                    return;
-                }
-
-                buf.resize(GameState::get_num_bytes(&initial_buffer), 0);
-                if socket.0.recv_from(&mut buf).is_err() {
-                    return;
-                }
+                *game_state = new_game_state;
+                packet_updated.0 = true;
             }
-            UdpPacketTypes::Render => {
-                const INITIAL_BUFFER: [u8; RenderMessage::MIN_NUM_BYTES] = [0; RenderMessage::MIN_NUM_BYTES];
-                let mut initial_buffer = INITIAL_BUFFER;
-
-                #[cfg(windows)]
-                {
-                    while let Err(e) = socket.0.peek_from(&mut initial_buffer) {
-                        if let Some(code) = e.raw_os_error() {
-                            if code == 10040 {
-                                break;
-                            }
-                        }
-                    }
+            UdpUpdate::Render(render_message) => match render_message {
+                RenderMessage::AddRender(group_id, renders) => {
+                    render_groups.groups.insert(group_id, renders);
                 }
-
-                #[cfg(not(windows))]
-                {
-                    while socket.0.peek_from(&mut initial_buffer).is_err() {}
+                RenderMessage::RemoveRender(group_id) => {
+                    render_groups.groups.remove(&group_id);
                 }
-
-                render_buf.resize(RenderMessage::get_num_bytes(&initial_buffer), 0);
-                if socket.0.recv_from(&mut render_buf).is_err() {
-                    return;
-                }
-
-                let render_message = RenderMessage::from_bytes(&render_buf);
-
-                match render_message {
-                    RenderMessage::AddRender(group_id, renders) => {
-                        render_groups.groups.insert(group_id, renders);
-                    }
-                    RenderMessage::RemoveRender(group_id) => {
-                        render_groups.groups.remove(&group_id);
-                    }
-                }
-            }
-            UdpPacketTypes::Speed => {
-                const SPEED_BUFFER: [u8; 4] = [0; 4];
-                let mut speed_buffer = SPEED_BUFFER;
-                if socket.0.recv_from(&mut speed_buffer).is_err() {
-                    return;
-                }
-
-                let speed = f32::from_le_bytes(speed_buffer);
+            },
+            UdpUpdate::Speed(speed) => {
                 speed_update.send(SpeedUpdate(speed));
             }
-            UdpPacketTypes::Paused => {
-                let mut paused_buffer = BYTE_BUFFER;
-                if socket.0.recv_from(&mut paused_buffer).is_err() {
-                    return;
-                }
-
-                let paused = paused_buffer[0] != 0;
+            UdpUpdate::Paused(paused) => {
                 paused_update.send(PausedUpdate(paused));
             }
-            UdpPacketTypes::Connection => {
-                let paused = [game_speed.paused as u8];
-                socket.0.send_to(&[UdpPacketTypes::Paused as u8], socket.1).unwrap();
-                socket.0.send_to(&paused, socket.1).unwrap();
-
-                let speed = game_speed.speed.to_bytes();
-                socket.0.send_to(&[UdpPacketTypes::Speed as u8], socket.1).unwrap();
-                socket.0.send_to(&speed, socket.1).unwrap();
+            UdpUpdate::Connection => {
+                socket.send(SendableUdp::Paused(game_speed.paused)).unwrap();
+                socket.send(SendableUdp::Speed(game_speed.speed)).unwrap();
             }
         }
     }
-
-    if buf.is_empty() {
-        return;
-    }
-
-    packet_updated.0 = true;
-
-    let mut new_game_state = GameState::from_bytes(&buf);
-
-    if calc_ball_rot.0 {
-        new_game_state.ball.rot_mat = game_state.ball.rot_mat;
-    };
-
-    *game_state = new_game_state;
 }
 
 fn update_ball(
@@ -1116,7 +1211,7 @@ fn update_field(state: Res<GameState>, mut game_mode: ResMut<GameMode>, mut load
 
 fn update_ball_rotation(
     mut state: ResMut<GameState>,
-    extrapolation: Res<Extrapolation>,
+    packet_smoothing: Res<PacketSmoothing>,
     game_speed: Res<GameSpeed>,
     time: Res<Time>,
     mut last_game_tick: Local<u64>,
@@ -1125,10 +1220,10 @@ fn update_ball_rotation(
         return;
     }
 
-    let delta_time = if extrapolation.0 {
-        time.delta_seconds() * game_speed.speed
-    } else {
+    let delta_time = if matches!(*packet_smoothing, PacketSmoothing::None) {
         (state.tick_count - *last_game_tick) as f32 / state.tick_rate
+    } else {
+        time.delta_seconds() * game_speed.speed
     };
 
     *last_game_tick = state.tick_count;
@@ -1142,7 +1237,7 @@ fn update_ball_rotation(
     }
 }
 
-fn interpolate_packet(mut state: ResMut<GameState>, game_speed: Res<GameSpeed>, time: Res<Time>) {
+fn extrapolate_packet(mut state: ResMut<GameState>, game_speed: Res<GameSpeed>, time: Res<Time>) {
     if game_speed.paused {
         return;
     }
@@ -1176,9 +1271,7 @@ fn listen(socket: Res<Connection>, key: Res<ButtonInput<KeyCode>>, mut game_stat
     }
 
     if changed {
-        if let Err(e) = socket.0.send_to(&game_state.to_bytes(), socket.1) {
-            error!("Failed to send state setting packet: {e}");
-        }
+        socket.send(SendableUdp::State(game_state.clone())).unwrap();
     }
 }
 
@@ -1202,7 +1295,7 @@ impl Plugin for RocketSimPlugin {
                     establish_connection.run_if(in_state(GameLoadState::Connect)),
                     (
                         (
-                            handle_udp,
+                            apply_udp_updates,
                             (
                                 (
                                     (
@@ -1221,11 +1314,20 @@ impl Plugin for RocketSimPlugin {
                                 )
                                     .run_if(|updated: Res<PacketUpdated>| updated.0),
                                 (
-                                    (interpolate_packet, update_ball_rotation),
+                                    (extrapolate_packet, update_ball_rotation),
                                     (update_ball, (update_car, post_update_car).chain(), update_car_wheels),
                                 )
                                     .chain()
-                                    .run_if(|updated: Res<PacketUpdated>, ip: Res<Extrapolation>| !updated.0 && ip.0),
+                                    .run_if(
+                                        |updated: Res<PacketUpdated>, ps: Res<PacketSmoothing>| {
+                                            !updated.0 && matches!(*ps, PacketSmoothing::Extrapolate)
+                                        },
+                                    ),
+                                ((update_ball_rotation,), (update_ball,)).chain().run_if(
+                                    |updated: Res<PacketUpdated>, ps: Res<PacketSmoothing>| {
+                                        !updated.0 && matches!(*ps, PacketSmoothing::Interpolate)
+                                    },
+                                ),
                                 (listen, update_boost_meter),
                             ),
                         )

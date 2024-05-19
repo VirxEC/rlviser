@@ -11,14 +11,30 @@ impl Plugin for GameOptions {
             .insert_resource(GameSpeed::default())
             .insert_resource(MenuFocused::default())
             .insert_resource(CalcBallRot::default())
-            .insert_resource(Extrapolation::default());
+            .insert_resource(PacketSmoothing::default());
     }
 }
 
 #[derive(Resource, Default)]
-pub struct Extrapolation(pub bool);
+pub enum PacketSmoothing {
+    None,
+    #[default]
+    Interpolate,
+    Extrapolate,
+}
 
-#[derive(Resource, PartialEq, Eq)]
+impl PacketSmoothing {
+    pub fn from_usize(value: usize) -> Self {
+        match value {
+            0 => Self::None,
+            1 => Self::Interpolate,
+            2 => Self::Extrapolate,
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[derive(Resource, PartialEq, Eq, DerefMut, Deref)]
 pub struct MenuFocused(pub bool);
 
 impl Default for MenuFocused {

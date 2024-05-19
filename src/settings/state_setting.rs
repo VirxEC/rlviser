@@ -1,9 +1,8 @@
 use super::options::MenuFocused;
 use crate::{
-    bytes::ToBytes,
     morton::Morton,
     rocketsim::GameState,
-    udp::{Connection, UdpPacketTypes},
+    udp::{Connection, SendableUdp},
 };
 use ahash::AHashMap;
 use bevy::{math::Vec3A, prelude::*};
@@ -196,13 +195,7 @@ fn set_user_pad_state(
         set_f32_from_str(&mut pad.state.cooldown, &user_pad.timer);
     }
 
-    if let Err(e) = socket.0.send_to(&[UdpPacketTypes::GameState as u8], socket.1) {
-        error!("Failed to send boost pad information: {e}");
-    }
-
-    if let Err(e) = socket.0.send_to(&game_state.to_bytes(), socket.1) {
-        error!("Failed to send boost pad information: {e}");
-    }
+    socket.send(SendableUdp::State(game_state.clone())).unwrap();
 }
 
 #[derive(Event)]
@@ -250,13 +243,7 @@ fn set_user_ball_state(
         }
     }
 
-    if let Err(e) = socket.0.send_to(&[UdpPacketTypes::GameState as u8], socket.1) {
-        error!("Failed to send ball information: {e}");
-    }
-
-    if let Err(e) = socket.0.send_to(&game_state.to_bytes(), socket.1) {
-        error!("Failed to send ball information: {e}");
-    }
+    socket.send(SendableUdp::State(game_state.clone())).unwrap();
 }
 
 fn update_ball_info(
@@ -445,13 +432,7 @@ fn set_user_car_state(
         }
     }
 
-    if let Err(e) = socket.0.send_to(&[UdpPacketTypes::GameState as u8], socket.1) {
-        error!("Failed to send car information: {e}");
-    }
-
-    if let Err(e) = socket.0.send_to(&game_state.to_bytes(), socket.1) {
-        error!("Failed to send car information: {e}");
-    }
+    socket.send(SendableUdp::State(game_state.clone())).unwrap();
 }
 
 fn update_car_info(
