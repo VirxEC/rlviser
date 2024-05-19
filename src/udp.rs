@@ -817,7 +817,7 @@ fn pre_update_car(
     );
 }
 
-fn post_update_car(
+fn update_camera(
     time: Res<Time>,
     state: Res<GameState>,
     ballcam: Res<BallCam>,
@@ -849,40 +849,37 @@ fn post_update_car(
 
             *id
         }
-        PrimaryCamera::Spectator => 0,
+        PrimaryCamera::Spectator => return,
     };
 
-    for (car_transform, car) in &mut cars {
-        let Some(target_car) = state.cars.iter().find(|car_info| car.0 == car_info.id) else {
-            continue;
-        };
+    let (car_transform, _) = cars.iter_mut().find(|(_, car)| car.id() == car_id).unwrap();
+    let Some(target_car) = state.cars.iter().find(|car_info| car_id == car_info.id) else {
+        return;
+    };
 
-        if car_id == car.id() {
-            let camera_transform = camera_transform.as_mut();
+    let camera_transform = camera_transform.as_mut();
 
-            if ballcam.enabled
-                && (!target_car.state.is_on_ground
-                    || target_car.state.pos.distance_squared(state.ball.pos) > MIN_DIST_FROM_BALL_SQ)
-            {
-                let ball_pos = state.ball.pos.to_bevy();
-                camera_transform.translation =
-                    car_transform.translation + (car_transform.translation - ball_pos).normalize() * 300.;
-                camera_transform.look_at(ball_pos, Vec3::Y);
-                camera_transform.translation += camera_transform.up() * 150.;
-                camera_transform.look_at(ball_pos, Vec3::Y);
+    if ballcam.enabled
+        && (!target_car.state.is_on_ground
+            || target_car.state.pos.distance_squared(state.ball.pos) > MIN_DIST_FROM_BALL_SQ)
+    {
+        let ball_pos = state.ball.pos.to_bevy();
+        camera_transform.translation =
+            car_transform.translation + (car_transform.translation - ball_pos).normalize() * 300.;
+        camera_transform.look_at(ball_pos, Vec3::Y);
+        camera_transform.translation += camera_transform.up() * 150.;
+        camera_transform.look_at(ball_pos, Vec3::Y);
 
-                if camera_transform.translation.y < MIN_CAMERA_BALLCAM_HEIGHT {
-                    camera_transform.translation.y = MIN_CAMERA_BALLCAM_HEIGHT;
-                }
-            } else {
-                let car_look = Vec3::new(target_car.state.vel.x, 0., target_car.state.vel.y)
-                    .try_normalize()
-                    .unwrap_or_else(|| car_transform.forward().into());
-                camera_transform.translation = car_transform.translation - car_look * 280. + Vec3::Y * 110.;
-                camera_transform.look_to(car_look, Vec3::Y);
-                camera_transform.rotation *= Quat::from_rotation_x(-PI / 30.);
-            }
+        if camera_transform.translation.y < MIN_CAMERA_BALLCAM_HEIGHT {
+            camera_transform.translation.y = MIN_CAMERA_BALLCAM_HEIGHT;
         }
+    } else {
+        let car_look = Vec3::new(target_car.state.vel.x, 0., target_car.state.vel.y)
+            .try_normalize()
+            .unwrap_or_else(|| car_transform.forward().into());
+        camera_transform.translation = car_transform.translation - car_look * 280. + Vec3::Y * 110.;
+        camera_transform.look_to(car_look, Vec3::Y);
+        camera_transform.rotation *= Quat::from_rotation_x(-PI / 30.);
     }
 }
 
@@ -1306,7 +1303,7 @@ impl Plugin for RocketSimPlugin {
                                     (
                                         pre_update_car,
                                         (update_car, update_car_extra, update_car_wheels),
-                                        post_update_car,
+                                        update_camera,
                                     )
                                         .chain(),
                                     (update_pads_count, update_pad_colors).chain(),
@@ -1315,7 +1312,7 @@ impl Plugin for RocketSimPlugin {
                                     .run_if(|updated: Res<PacketUpdated>| updated.0),
                                 (
                                     (extrapolate_packet, update_ball_rotation),
-                                    (update_ball, (update_car, post_update_car).chain(), update_car_wheels),
+                                    (update_ball, (update_car, update_camera).chain(), update_car_wheels),
                                 )
                                     .chain()
                                     .run_if(
