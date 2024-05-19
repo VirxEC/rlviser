@@ -97,6 +97,7 @@ impl Plugin for DebugOverlayPlugin {
             .insert_resource(PacketSendTime::default())
             .insert_resource(RenderInfo::default())
             .insert_resource(UpdateRenderInfoTime::default())
+            .insert_resource(CalcBallRot::default())
             .add_event::<UserSetBallState>()
             .add_event::<UserSetCarState>()
             .add_event::<UserSetPadState>()
@@ -120,6 +121,7 @@ impl Plugin for DebugOverlayPlugin {
                         update_allow_rendering,
                         update_render_info,
                         update_interpolation,
+                        update_calc_ball_rot,
                         update_ball_info.run_if(resource_equals(EnableBallInfo(true))),
                         update_car_info.run_if(|enable_menu: Res<EnableCarInfo>| !enable_menu.0.is_empty()),
                         update_boost_pad_info.run_if(|enable_menu: Res<EnablePadInfo>| !enable_menu.0.is_empty()),
@@ -143,6 +145,16 @@ impl Plugin for DebugOverlayPlugin {
 
         #[cfg(debug_assertions)]
         app.add_systems(Update, debug_ui);
+    }
+}
+
+#[derive(Resource)]
+pub struct CalcBallRot(pub bool);
+
+impl Default for CalcBallRot {
+    #[inline]
+    fn default() -> Self {
+        Self(true)
     }
 }
 
@@ -776,6 +788,7 @@ struct Options {
     mouse_sensitivity: f32,
     allow_rendering: bool,
     interpolation: bool,
+    calc_ball_rot: bool,
 }
 
 impl Default for Options {
@@ -800,6 +813,7 @@ impl Default for Options {
             mouse_sensitivity: 1.,
             allow_rendering: true,
             interpolation: false,
+            calc_ball_rot: true,
         }
     }
 }
@@ -846,6 +860,7 @@ impl Options {
                 "mouse_sensitivity" => options.mouse_sensitivity = value.parse().unwrap(),
                 "allow_rendering" => options.allow_rendering = value.parse().unwrap(),
                 "interpolation" => options.interpolation = value.parse().unwrap(),
+                "calc_ball_rot" => options.calc_ball_rot = value.parse().unwrap(),
                 _ => println!("Unknown key {key} with value {value}"),
             }
         }
@@ -883,6 +898,7 @@ impl Options {
         file.write_fmt(format_args!("mouse_sensitivity={}\n", self.mouse_sensitivity))?;
         file.write_fmt(format_args!("allow_rendering={}\n", self.allow_rendering))?;
         file.write_fmt(format_args!("interpolation={}\n", self.interpolation))?;
+        file.write_fmt(format_args!("calc_ball_rot={}\n", self.calc_ball_rot))?;
 
         Ok(())
     }
@@ -907,6 +923,7 @@ impl Options {
             || self.mouse_sensitivity != other.mouse_sensitivity
             || self.allow_rendering != other.allow_rendering
             || self.interpolation != other.interpolation
+            || self.calc_ball_rot != other.calc_ball_rot
     }
 }
 
@@ -1022,6 +1039,7 @@ fn ui_system(
             });
 
             ui.checkbox(&mut options.interpolation, "Packet Interpolation");
+            ui.checkbox(&mut options.calc_ball_rot, "Ignore packet ball rotation");
 
             ui.menu_button("Open rendering manager", |ui| {
                 ui.checkbox(&mut options.allow_rendering, "Allow rendering");
@@ -1150,6 +1168,10 @@ fn toggle_vsync(options: Res<Options>, mut framepace: ResMut<FramepaceSettings>)
     } else {
         Limiter::from_framerate(options.fps_limit)
     };
+}
+
+fn update_calc_ball_rot(options: Res<Options>, mut calc_ball_rot: ResMut<CalcBallRot>) {
+    calc_ball_rot.0 = options.calc_ball_rot;
 }
 
 #[cfg(not(feature = "ssao"))]

@@ -2,7 +2,7 @@ use crate::{
     assets::{get_material, get_mesh_info, BoostPickupGlows, CarWheelMesh},
     bytes::{FromBytes, ToBytes, ToBytesExact},
     camera::{BoostAmount, HighlightedEntity, PrimaryCamera, TimeDisplay, BOOST_INDICATOR_FONT_SIZE, BOOST_INDICATOR_POS},
-    gui::{BallCam, GameSpeed, ShowTime, UiScale, UserCarStates},
+    gui::{BallCam, CalcBallRot, GameSpeed, ShowTime, UiScale, UserCarStates},
     mesh::{BoostPadClicked, CarClicked, ChangeCarPos, LargeBoostPadLocRots},
     morton::Morton,
     renderer::{RenderGroups, RenderMessage, UdpRendererPlugin},
@@ -382,6 +382,7 @@ pub struct PausedUpdate(pub bool);
 fn handle_udp(
     socket: Res<Connection>,
     game_speed: Res<GameSpeed>,
+    calc_ball_rot: Res<CalcBallRot>,
     mut game_state: ResMut<GameState>,
     mut exit: EventWriter<AppExit>,
     mut packet_updated: ResMut<PacketUpdated>,
@@ -516,7 +517,14 @@ fn handle_udp(
     }
 
     packet_updated.0 = true;
-    *game_state = GameState::from_bytes(&buf);
+
+    let mut new_game_state = GameState::from_bytes(&buf);
+
+    if calc_ball_rot.0 {
+        new_game_state.ball.rot_mat = game_state.ball.rot_mat;
+    };
+
+    *game_state = new_game_state;
 }
 
 fn update_ball(
@@ -1103,6 +1111,34 @@ fn update_field(state: Res<GameState>, mut game_mode: ResMut<GameMode>, mut load
     }
 }
 
+fn update_ball_rotation(
+    mut state: ResMut<GameState>,
+    interpolation: Res<Interpolation>,
+    game_speed: Res<GameSpeed>,
+    time: Res<Time>,
+    mut last_game_tick: Local<u64>,
+) {
+    if game_speed.paused {
+        return;
+    }
+
+    let delta_time = if interpolation.0 {
+        time.delta_seconds() * game_speed.speed
+    } else {
+        (state.tick_count - *last_game_tick) as f32 / state.tick_rate
+    };
+
+    *last_game_tick = state.tick_count;
+
+    let ball_ang_vel = state.ball.ang_vel * delta_time;
+    let ang_vel = ball_ang_vel.length();
+    if ang_vel > f32::EPSILON {
+        let axis = ball_ang_vel / ang_vel;
+        let rot = Mat3A::from_axis_angle(axis.into(), ang_vel);
+        state.ball.rot_mat = rot * state.ball.rot_mat;
+    }
+}
+
 fn interpolate_packet(mut state: ResMut<GameState>, game_speed: Res<GameSpeed>, time: Res<Time>) {
     if game_speed.paused {
         return;
@@ -1112,14 +1148,6 @@ fn interpolate_packet(mut state: ResMut<GameState>, game_speed: Res<GameSpeed>, 
 
     let ball_pos = state.ball.vel * delta_time;
     state.ball.pos += ball_pos;
-
-    let ball_ang_vel = state.ball.ang_vel * delta_time;
-    let ang_vel = ball_ang_vel.length();
-    if ang_vel > f32::EPSILON {
-        let axis = ball_ang_vel / ang_vel;
-        let rot = Mat3A::from_axis_angle(axis.into(), ang_vel);
-        state.ball.rot_mat = rot * state.ball.rot_mat;
-    }
 
     for car in state.cars.iter_mut() {
         let car_pos = car.state.vel * delta_time;
@@ -1178,7 +1206,11 @@ impl Plugin for RocketSimPlugin {
                             handle_udp,
                             (
                                 (
-                                    update_ball,
+                                    (
+                                        update_ball_rotation.run_if(|calc_ball_rot: Res<CalcBallRot>| calc_ball_rot.0),
+                                        update_ball,
+                                    )
+                                        .chain(),
                                     (
                                         pre_update_car,
                                         (update_car, update_car_extra, update_car_wheels),
@@ -1190,7 +1222,7 @@ impl Plugin for RocketSimPlugin {
                                 )
                                     .run_if(|updated: Res<PacketUpdated>| updated.0),
                                 (
-                                    interpolate_packet,
+                                    (interpolate_packet, update_ball_rotation),
                                     (update_ball, (update_car, post_update_car).chain(), update_car_wheels),
                                 )
                                     .chain()
