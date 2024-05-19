@@ -3,12 +3,11 @@
 mod assets;
 mod bytes;
 mod camera;
-mod default_field;
-mod gui;
 mod mesh;
 mod morton;
 mod renderer;
 mod rocketsim;
+mod settings;
 mod spectator;
 mod udp;
 
@@ -18,6 +17,7 @@ use bevy::{
     render::texture::{ImageAddressMode, ImageSamplerDescriptor},
     window::PresentMode,
 };
+use settings::gui;
 use std::env;
 
 #[derive(Clone, Eq, PartialEq, Debug, Hash, Default, States)]

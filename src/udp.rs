@@ -2,11 +2,14 @@ use crate::{
     assets::{get_material, get_mesh_info, BoostPickupGlows, CarWheelMesh},
     bytes::{FromBytes, ToBytes, ToBytesExact},
     camera::{BoostAmount, HighlightedEntity, PrimaryCamera, TimeDisplay, BOOST_INDICATOR_FONT_SIZE, BOOST_INDICATOR_POS},
-    gui::{BallCam, CalcBallRot, GameSpeed, ShowTime, UiScale, UserCarStates},
     mesh::{BoostPadClicked, CarClicked, ChangeCarPos, LargeBoostPadLocRots},
     morton::Morton,
     renderer::{RenderGroups, RenderMessage, UdpRendererPlugin},
     rocketsim::{CarInfo, GameMode, GameState, Team},
+    settings::{
+        options::{BallCam, CalcBallRot, Extrapolation, GameSpeed, ShowTime, UiOverlayScale},
+        state_setting::UserCarStates,
+    },
     GameLoadState, ServerPort,
 };
 use ahash::HashMap;
@@ -987,7 +990,7 @@ fn update_pad_colors(
 
 fn update_boost_meter(
     state: Res<GameState>,
-    ui_scale: Res<UiScale>,
+    ui_scale: Res<UiOverlayScale>,
     camera: Query<&PrimaryCamera>,
     windows: Query<&Window, With<PrimaryWindow>>,
     mut painter: ShapePainter,
@@ -1113,7 +1116,7 @@ fn update_field(state: Res<GameState>, mut game_mode: ResMut<GameMode>, mut load
 
 fn update_ball_rotation(
     mut state: ResMut<GameState>,
-    interpolation: Res<Interpolation>,
+    extrapolation: Res<Extrapolation>,
     game_speed: Res<GameSpeed>,
     time: Res<Time>,
     mut last_game_tick: Local<u64>,
@@ -1122,7 +1125,7 @@ fn update_ball_rotation(
         return;
     }
 
-    let delta_time = if interpolation.0 {
+    let delta_time = if extrapolation.0 {
         time.delta_seconds() * game_speed.speed
     } else {
         (state.tick_count - *last_game_tick) as f32 / state.tick_rate
@@ -1180,9 +1183,6 @@ fn listen(socket: Res<Connection>, key: Res<ButtonInput<KeyCode>>, mut game_stat
 }
 
 #[derive(Resource)]
-pub struct Interpolation(pub bool);
-
-#[derive(Resource)]
 struct PacketUpdated(bool);
 
 pub struct RocketSimPlugin;
@@ -1193,7 +1193,6 @@ impl Plugin for RocketSimPlugin {
             .add_event::<SpeedUpdate>()
             .insert_resource(GameState::default())
             .insert_resource(DirectorTimer(Timer::new(Duration::from_secs(12), TimerMode::Repeating)))
-            .insert_resource(Interpolation(false))
             .insert_resource(PacketUpdated(false))
             .insert_resource(GameMode::default())
             .add_plugins(UdpRendererPlugin)
@@ -1226,7 +1225,7 @@ impl Plugin for RocketSimPlugin {
                                     (update_ball, (update_car, post_update_car).chain(), update_car_wheels),
                                 )
                                     .chain()
-                                    .run_if(|updated: Res<PacketUpdated>, ip: Res<Interpolation>| !updated.0 && ip.0),
+                                    .run_if(|updated: Res<PacketUpdated>, ip: Res<Extrapolation>| !updated.0 && ip.0),
                                 (listen, update_boost_meter),
                             ),
                         )

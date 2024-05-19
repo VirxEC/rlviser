@@ -2,9 +2,11 @@ use crate::{
     assets::*,
     bytes::ToBytes,
     camera::{HighlightedEntity, PrimaryCamera},
-    default_field::{get_hoops_floor, get_standard_floor, load_hoops, load_standard},
-    gui::{EnableBallInfo, EnableCarInfo, EnablePadInfo, UserCarStates, UserPadStates},
     rocketsim::{GameMode, GameState},
+    settings::{
+        default_field::{get_hoops_floor, get_standard_floor, load_hoops, load_standard},
+        state_setting::{EnableBallInfo, EnableCarInfo, EnablePadInfo, UserCarStates, UserPadStates},
+    },
     udp::{Ball, BoostPadI, Car, Connection, ToBevyVec, ToBevyVecFlat, UdpPacketTypes},
     GameLoadState,
 };
