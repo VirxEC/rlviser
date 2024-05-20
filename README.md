@@ -40,9 +40,13 @@ You can also choose to use the integrated support in [RLGym 2.0](https://github.
 | `Space` | Move up |
 | `Left Shift` | Move down |
 | `R` | State set ball towards goal |
+| `P` | Toggle pause/play |
+| `+` | Increase game speed +0.5x |
+| `-` | Decrease game speed -0.5x |
+| `=` | Set game speed to 1x |
 | `Left click`<sup>1</sup> | Drag cars and ball |
 
- <sup>1</sup> - Requires the menu toggled ON to free the cursor, you can drag cars and the ball to move them in the world. Requires the agent on the other side to support state setting.
+<sup>1</sup> - Requires the menu toggled ON to free the cursor, you can drag cars and the ball to move them in the world. Requires the agent on the other side to support state setting.
 
 ## Modes
 

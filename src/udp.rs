@@ -7,6 +7,7 @@ use crate::{
     renderer::{RenderGroups, RenderMessage, UdpRendererPlugin},
     rocketsim::{CarInfo, GameMode, GameState, Team},
     settings::{
+        gui::Options,
         options::{BallCam, CalcBallRot, GameSpeed, PacketSmoothing, ShowTime, UiOverlayScale},
         state_setting::UserCarStates,
     },
@@ -586,6 +587,7 @@ fn start_udp_recv_handler(socket: UdpSocket, commands: &mut Commands) {
 }
 
 fn apply_udp_updates(
+    time: Res<Time>,
     socket: Res<Connection>,
     udp_updates: Res<UdpUpdateStream>,
     game_speed: Res<GameSpeed>,
@@ -596,9 +598,12 @@ fn apply_udp_updates(
     mut packet_updated: ResMut<PacketUpdated>,
     mut render_groups: ResMut<RenderGroups>,
     mut packet_time_elapsed: ResMut<PacketTimeElapsed>,
+    mut last_packet_time_elapsed: ResMut<LastPacketTimesElapsed>,
     mut speed_update: EventWriter<SpeedUpdate>,
     mut paused_update: EventWriter<PausedUpdate>,
 ) {
+    packet_time_elapsed.tick(time.delta());
+
     let mut new_game_state = None;
 
     for update in udp_updates.try_iter() {
@@ -633,9 +638,11 @@ fn apply_udp_updates(
 
     match new_game_state {
         Some(new_state) => {
+            last_packet_time_elapsed.push(packet_time_elapsed.0.elapsed_secs());
+            packet_time_elapsed.reset();
+
             game_states.advance(*packet_smoothing, new_state, calc_ball_rot.0);
             packet_updated.0 = true;
-            packet_time_elapsed.reset();
         }
         None => {
             packet_updated.0 = false;
@@ -1294,10 +1301,11 @@ fn interpolate_calc_next_ball_rot(mut states: ResMut<GameStates>) {
 }
 
 fn interpolate_packets(
-    mut states: ResMut<GameStates>,
-    game_speed: Res<GameSpeed>,
-    mut packet_time_elapsed: ResMut<PacketTimeElapsed>,
     time: Res<Time>,
+    game_speed: Res<GameSpeed>,
+    last_packet_time_elapsed: Res<LastPacketTimesElapsed>,
+    mut states: ResMut<GameStates>,
+    mut packet_time_elapsed: ResMut<PacketTimeElapsed>,
 ) {
     if game_speed.paused {
         return;
@@ -1305,10 +1313,8 @@ fn interpolate_packets(
 
     packet_time_elapsed.tick(time.delta());
 
-    let total_time_delta = (states.next.tick_count - states.last.tick_count) as f32 / states.next.tick_rate;
-    let delta_time = packet_time_elapsed.elapsed_secs() * game_speed.speed;
-
-    let lerp_amount = delta_time / total_time_delta;
+    let delta_time = packet_time_elapsed.elapsed_secs();
+    let lerp_amount = delta_time / last_packet_time_elapsed.avg();
 
     states.current.ball.pos = states.last.ball.pos.lerp(states.next.ball.pos, lerp_amount);
 
@@ -1330,7 +1336,12 @@ fn interpolate_packets(
     }
 }
 
-fn listen(socket: Res<Connection>, key: Res<ButtonInput<KeyCode>>, mut game_states: ResMut<GameStates>) {
+fn listen(
+    socket: Res<Connection>,
+    key: Res<ButtonInput<KeyCode>>,
+    mut game_states: ResMut<GameStates>,
+    mut options: ResMut<Options>,
+) {
     let mut changed = false;
     if key.just_pressed(KeyCode::KeyR) {
         changed = true;
@@ -1342,6 +1353,28 @@ fn listen(socket: Res<Connection>, key: Res<ButtonInput<KeyCode>>, mut game_stat
         game_states.current.ball.vel = vel;
         game_states.next.ball.pos = pos;
         game_states.next.ball.vel = vel;
+    }
+
+    if key.just_pressed(KeyCode::KeyP) {
+        options.paused = !options.paused;
+    }
+
+    let shift_pressed = key.pressed(KeyCode::ShiftLeft) || key.pressed(KeyCode::ShiftRight);
+
+    if key.just_pressed(KeyCode::NumpadAdd) || (shift_pressed && key.just_pressed(KeyCode::Equal)) {
+        options.game_speed = if options.game_speed < 0.5 {
+            0.5
+        } else {
+            (options.game_speed + 0.5).min(10.)
+        };
+    }
+
+    if key.just_pressed(KeyCode::NumpadSubtract) || (!shift_pressed && key.just_pressed(KeyCode::Minus)) {
+        options.game_speed = (options.game_speed - 0.5).max(0.1);
+    }
+
+    if key.just_pressed(KeyCode::NumpadEqual) || (!shift_pressed && key.just_pressed(KeyCode::Equal)) {
+        options.game_speed = 1.;
     }
 
     if changed {
@@ -1387,6 +1420,28 @@ impl GameStates {
 #[derive(Resource, Default, DerefMut, Deref)]
 struct PacketTimeElapsed(Stopwatch);
 
+#[derive(Resource, Default)]
+struct LastPacketTimesElapsed {
+    times: [f32; 15],
+    len: usize,
+}
+
+impl LastPacketTimesElapsed {
+    fn push(&mut self, time: f32) {
+        if self.len == self.times.len() {
+            self.times.rotate_left(1);
+            self.times[self.len - 1] = time;
+        } else {
+            self.times[self.len] = time;
+            self.len += 1;
+        }
+    }
+
+    fn avg(&self) -> f32 {
+        self.times.iter().take(self.len).sum::<f32>() / self.len as f32
+    }
+}
+
 pub struct RocketSimPlugin;
 
 impl Plugin for RocketSimPlugin {
@@ -1396,6 +1451,7 @@ impl Plugin for RocketSimPlugin {
             .insert_resource(GameStates::default())
             .insert_resource(DirectorTimer(Timer::new(Duration::from_secs(12), TimerMode::Repeating)))
             .insert_resource(PacketTimeElapsed::default())
+            .insert_resource(LastPacketTimesElapsed::default())
             .insert_resource(PacketUpdated::default())
             .insert_resource(GameMode::default())
             .add_plugins(UdpRendererPlugin)

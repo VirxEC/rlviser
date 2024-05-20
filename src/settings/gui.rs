@@ -85,26 +85,26 @@ fn advance_time(mut last_packet_send: ResMut<PacketSendTime>, time: Res<Time>) {
 
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Resource)]
-struct Options {
-    vsync: bool,
-    uncap_fps: bool,
-    fps_limit: f64,
-    fps: (usize, [f32; 120]),
-    ball_cam: bool,
-    stop_day: bool,
-    daytime: f32,
-    day_speed: f32,
-    msaa: usize,
-    camera_state: PrimaryCamera,
-    show_time: bool,
-    ui_scale: f32,
-    shadows: usize,
-    game_speed: f32,
-    paused: bool,
-    mouse_sensitivity: f32,
-    allow_rendering: bool,
-    packet_smoothing: usize,
-    calc_ball_rot: bool,
+pub struct Options {
+    pub vsync: bool,
+    pub uncap_fps: bool,
+    pub fps_limit: f64,
+    pub fps: (usize, [f32; 120]),
+    pub ball_cam: bool,
+    pub stop_day: bool,
+    pub daytime: f32,
+    pub day_speed: f32,
+    pub msaa: usize,
+    pub camera_state: PrimaryCamera,
+    pub show_time: bool,
+    pub ui_scale: f32,
+    pub shadows: usize,
+    pub game_speed: f32,
+    pub paused: bool,
+    pub mouse_sensitivity: f32,
+    pub allow_rendering: bool,
+    pub packet_smoothing: usize,
+    pub calc_ball_rot: bool,
 }
 
 impl Default for Options {
