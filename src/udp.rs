@@ -76,7 +76,7 @@ pub enum SendableUdp {
 }
 
 fn establish_connection(port: Res<ServerPort>, mut commands: Commands, mut state: ResMut<NextState<GameLoadState>>) {
-    let out_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 0)), port.primary_port);
+    let out_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), port.primary_port);
     let recv_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port.secondary_port);
     let socket = UdpSocket::bind(recv_addr).unwrap();
 
