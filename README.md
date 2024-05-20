@@ -38,7 +38,8 @@ You can also choose to use the integrated support in [RLGym 2.0](https://github.
 | `S` | Move backward |
 | `D` | Move right |
 | `Space` | Move up |
-| `Left Shift` | Move down |
+| `Left Ctrl` | Move down |
+| `Left Shift` | Slow |
 | `R` | State set ball towards goal |
 | `P` | Toggle pause/play |
 | `+` | Increase game speed +0.5x |
