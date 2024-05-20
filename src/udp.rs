@@ -489,7 +489,7 @@ fn start_udp_recv_handler(socket: UdpSocket, commands: &mut Commands) {
 
                     #[cfg(windows)]
                     {
-                        while let Err(e) = socket.0.peek_from(&mut initial_state_buffer) {
+                        while let Err(e) = socket.peek_from(&mut initial_state_buffer) {
                             if let Some(code) = e.raw_os_error() {
                                 if code == 10040 {
                                     break;
@@ -522,7 +522,7 @@ fn start_udp_recv_handler(socket: UdpSocket, commands: &mut Commands) {
                 UdpPacketTypes::Render => {
                     #[cfg(windows)]
                     {
-                        while let Err(e) = socket.0.peek_from(&mut initial_state_buffer) {
+                        while let Err(e) = socket.peek_from(&mut initial_state_buffer) {
                             if let Some(code) = e.raw_os_error() {
                                 if code == 10040 {
                                     break;
