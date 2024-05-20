@@ -69,7 +69,7 @@ impl Default for BallState {
 }
 
 #[repr(u8)]
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, Hash)]
 pub enum Team {
     #[default]
     Blue,

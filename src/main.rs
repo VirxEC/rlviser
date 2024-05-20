@@ -71,7 +71,7 @@ fn main() {
             }),))
         .add_plugins((
             LogDiagnosticsPlugin {
-                debug: cfg!(debug_assertions),
+                debug: cfg!(feature = "debug"),
                 ..default()
             },
             camera::CameraPlugin,

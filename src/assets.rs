@@ -1,4 +1,7 @@
-use crate::mesh::{MeshBuilder, MeshBuilderError};
+use crate::{
+    mesh::{MeshBuilder, MeshBuilderError},
+    rocketsim::Team,
+};
 use bevy::{
     asset::{io::Reader, AssetLoader, AsyncReadExt},
     prelude::*,
@@ -251,14 +254,19 @@ fn is_in_whitelist(_name: &str) -> bool {
     true
 }
 
-fn retreive_material(name: &str, asset_server: &AssetServer, base_color: Color) -> Option<StandardMaterial> {
+fn retreive_material(
+    name: &str,
+    asset_server: &AssetServer,
+    base_color: Color,
+    side: Option<Team>,
+) -> Option<StandardMaterial> {
     if name.is_empty() {
         return None;
     }
 
     if !is_in_whitelist(name) {
         // load custom material instead
-        return get_default_material(name);
+        return get_default_material(name, side);
     }
 
     debug!("Retreiving material {name}");
@@ -400,25 +408,31 @@ fn retreive_material(name: &str, asset_server: &AssetServer, base_color: Color) 
     Some(material)
 }
 
-fn get_default_material(name: &str) -> Option<StandardMaterial> {
-    let mut material = if [
+fn get_default_material(name: &str, side: Option<Team>) -> Option<StandardMaterial> {
+    let color = if [
         "Stadium_Assets.Materials.Grass_Base_Team1_MIC",
         "Proto_BBall.Materials.WoodFloor_Corrected_Mat_INST",
     ]
     .contains(&name)
     {
         // primary
-        StandardMaterial::from(Color::rgb_u8(45, 49, 66))
+        Color::rgb_u8(45, 49, 66)
     } else if [
         "FutureTech.Materials.Reflective_Floor_V2_Mat",
-        "Proto_BBall.Materials.BBall_Rubber_MIC",
         "Proto_BBall.SM.BackBoard_Teams_MIC",
+        "Proto_BBall.Materials.BBall_Rubber_MIC",
         "Proto_BBall.Materials.MIC_DarkGlass",
     ]
     .contains(&name)
     {
         // secondary
-        StandardMaterial::from(Color::rgb_u8(79, 93, 117))
+        match side {
+            Some(Team::Blue) => Color::rgb_u8(86, 136, 199),
+            Some(Team::Orange) => Color::rgb_u8(222, 145, 81),
+            None => Color::rgb_u8(131, 144, 115),
+        }
+    } else if name == "OOBFloor_MAT_CUSTOM" {
+        Color::rgb_u8(41, 2, 0)
     } else if [
         "FutureTech.Materials.Frame_01_MIC",
         "FutureTech.Materials.Frame_01_V2_Mat",
@@ -434,29 +448,31 @@ fn get_default_material(name: &str) -> Option<StandardMaterial> {
         || name.contains("PaintedLine_MIC")
     {
         // tertiary
-        StandardMaterial::from(Color::rgb_u8(55, 30, 48))
+        Color::rgb_u8(55, 30, 48)
     } else if [
         "FutureTech.Materials.Frame_01_White_MIC",
         "Graybox_Assets.Materials.ForceFieldCage_Solid_Mat",
     ]
     .contains(&name)
     {
-        StandardMaterial::from(Color::SILVER)
+        Color::SILVER
     } else if name == "FutureTech.Materials.CrossHatched_Grate_MIC" {
-        StandardMaterial::from(Color::TOMATO)
+        Color::TOMATO
     } else if [
         "Pickup_Boost.Materials.BoostPad_Small_MIC",
         "Pickup_Boost.Materials.BoostPad_Large_MIC",
     ]
     .contains(&name)
     {
-        StandardMaterial::from(Color::rgb_u8(152, 29, 23))
+        Color::rgb_u8(152, 29, 23)
     } else if name.contains("Advert") || name.contains("DarkMetal") {
-        StandardMaterial::from(Color::rgb_u8(191, 192, 192))
+        Color::rgb_u8(191, 192, 192)
     } else {
         println!("Unknown material {name}");
         return None;
     };
+
+    let mut material = StandardMaterial::from(color);
 
     if TRANSPARENT_MATS.contains(&name) {
         material.alpha_mode = AlphaMode::Blend;
@@ -475,32 +491,39 @@ fn get_default_material(name: &str) -> Option<StandardMaterial> {
     Some(material)
 }
 
-static MATERIALS: Mutex<Lazy<HashMap<Box<str>, Handle<StandardMaterial>>>> = Mutex::new(Lazy::new(HashMap::new));
+type MaterialsKey = (&'static str, Option<Team>);
+static MATERIALS: Mutex<Lazy<HashMap<MaterialsKey, Handle<StandardMaterial>>>> = Mutex::new(Lazy::new(HashMap::new));
 
 pub fn get_material(
     name: &str,
     materials: &mut Assets<StandardMaterial>,
     asset_server: &AssetServer,
     base_color: Option<Color>,
+    side: Option<Team>,
 ) -> Handle<StandardMaterial> {
     let mut material_names = MATERIALS.lock().unwrap();
 
-    if let Some(material) = material_names.get(name) {
+    let name: &'static str = Box::leak(Box::from(name));
+    let key = (name, side);
+
+    if let Some(material) = material_names.get(&key) {
         return material.clone();
     }
 
     let base_color = base_color.unwrap_or(Color::rgb(0.3, 0.3, 0.3));
 
     material_names
-        .entry(Box::from(name))
+        .entry(key)
         .or_insert_with(|| {
-            materials.add(retreive_material(name, asset_server, base_color).unwrap_or(StandardMaterial {
-                base_color,
-                metallic: 0.1,
-                cull_mode: None,
-                double_sided: true,
-                ..default()
-            }))
+            materials.add(
+                retreive_material(name, asset_server, base_color, side).unwrap_or(StandardMaterial {
+                    base_color,
+                    metallic: 0.1,
+                    cull_mode: None,
+                    double_sided: true,
+                    ..default()
+                }),
+            )
         })
         .clone()
 }

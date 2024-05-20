@@ -1,7 +1,7 @@
 use crate::{
     assets::*,
     camera::{HighlightedEntity, PrimaryCamera},
-    rocketsim::GameMode,
+    rocketsim::{GameMode, Team},
     settings::{
         default_field::{get_hoops_floor, get_standard_floor, load_hoops, load_standard},
         state_setting::{EnableBallInfo, EnableCarInfo, EnablePadInfo, UserCarStates, UserPadStates},
@@ -25,6 +25,7 @@ use bevy_mod_picking::{backends::raycast::RaycastPickable, prelude::*};
 use include_flate::flate;
 use serde::Deserialize;
 use std::{
+    cmp::Ordering,
     io::{self, Read},
     path::Path,
     rc::Rc,
@@ -707,7 +708,29 @@ fn process_info_node(
             continue;
         }
 
-        let material = get_material(mat, materials, asset_server, None);
+        let side_signum = if node.static_mesh.contains("BBall_HoopBackBoard_02") {
+            if node.rotation.is_some() {
+                -1
+            } else {
+                1
+            }
+        } else {
+            node.translation.map(|t| (t[1] as i16).signum()).unwrap_or_default()
+        };
+
+        let side = match side_signum.cmp(&0) {
+            Ordering::Greater => Some(Team::Orange),
+            Ordering::Less => Some(Team::Blue),
+            _ => None,
+        };
+
+        let mat_name = if !cfg!(features = "full_load") && node.static_mesh.ends_with("OOBFloor") {
+            "OOBFloor_MAT_CUSTOM"
+        } else {
+            mat.as_ref()
+        };
+
+        let material = get_material(mat_name, materials, asset_server, None, side);
 
         let mut transform = node.get_transform();
 

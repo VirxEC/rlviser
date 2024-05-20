@@ -179,7 +179,7 @@ fn daylight_cycle(
         atmosphere.sun_position = sun_position;
 
         if let Some((mut light_trans, mut directional)) = query.single_mut().into() {
-            light_trans.translation = sun_position * 10_000_000.;
+            light_trans.translation = sun_position * 100_000.;
             light_trans.look_at(Vec3::ZERO, Vec3::Y);
             directional.illuminance = t.sin().max(0.0).powi(2) * 10000.;
         }

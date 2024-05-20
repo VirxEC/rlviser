@@ -1,5 +1,5 @@
 [package]
-version = "0.7.4"
+version = "0.7.5"
 name = "rlviser"
 edition = "2021"
 publish = false
@@ -35,6 +35,7 @@ features = ["bevy_core_pipeline", "bevy_pbr", "bevy_ui", "wayland", "x11", "tga"
 full_load = []
 ssao = []
 team_goal_barriers = []
+debug = []
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]

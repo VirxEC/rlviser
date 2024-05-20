@@ -259,7 +259,7 @@ fn spawn_car(
             const CAR_BOOST_LENGTH: f32 = 50.;
 
             if cfg!(feature = "full_load") {
-                let mesh_materials = get_car_mesh_materials(mesh_id, materials, asset_server, base_color);
+                let mesh_materials = get_car_mesh_materials(mesh_id, materials, asset_server, base_color, car_info.team);
 
                 mesh_info
                     .into_iter()
@@ -338,6 +338,7 @@ fn get_car_mesh_materials(
     materials: &mut Assets<StandardMaterial>,
     asset_server: &AssetServer,
     base_color: Color,
+    side: Team,
 ) -> Vec<Handle<StandardMaterial>> {
     let mesh_path = mesh_id.replace('.', "/");
     let props = fs::read_to_string(format!("./assets/{mesh_path}.props.txt")).unwrap();
@@ -362,7 +363,13 @@ fn get_car_mesh_materials(
 
         let material_name = line.split('\'').nth(1).unwrap();
 
-        mesh_materials.push(get_material(material_name, materials, asset_server, Some(base_color)));
+        mesh_materials.push(get_material(
+            material_name,
+            materials,
+            asset_server,
+            Some(base_color),
+            Some(side),
+        ));
     }
     mesh_materials
 }
@@ -863,7 +870,10 @@ fn update_camera(
         PrimaryCamera::Spectator => return,
     };
 
-    let (car_transform, _) = cars.iter_mut().find(|(_, car)| car.id() == car_id).unwrap();
+    let Some((car_transform, _)) = cars.iter_mut().find(|(_, car)| car.id() == car_id) else {
+        return;
+    };
+
     let Some(target_car) = states.current.cars.iter().find(|car_info| car_id == car_info.id) else {
         return;
     };
