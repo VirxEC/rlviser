@@ -59,7 +59,7 @@ struct DirectorTimer(Timer);
 pub struct Connection(pub UdpSocket, pub SocketAddr);
 
 fn establish_connection(port: Res<ServerPort>, mut commands: Commands, mut state: ResMut<NextState<LoadState>>) {
-    let socket_addr = SocketAddr::new(IpAddr::from_str("0.0.0.0").unwrap(), port.primary_port);
+    let socket_addr = SocketAddr::new(IpAddr::from_str("127.0.0.1").unwrap(), port.primary_port);
     let socket = UdpSocket::bind(("0.0.0.0", port.secondary_port)).unwrap();
     socket.send_to(&[1], socket_addr).unwrap();
     socket.set_nonblocking(true).unwrap();
