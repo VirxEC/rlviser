@@ -28,7 +28,6 @@ use bevy_vector_shapes::prelude::*;
 use crossbeam_channel::{Receiver, Sender};
 use itertools::izip;
 use std::{
-    cmp::Ordering,
     f32::consts::PI,
     fs,
     mem::{replace, swap},
@@ -921,26 +920,22 @@ fn correct_car_count(
     asset_server: &AssetServer,
     car_wheel_mesh: &CarWheelMesh,
 ) {
-    match cars.iter().count().cmp(&state.cars.len()) {
-        Ordering::Greater => {
-            for (entity, car) in car_entities {
-                if !state.cars.iter().any(|car_info| car.0 == car_info.id) {
-                    user_cars.remove(car.0);
-                    commands.entity(entity).despawn_recursive();
-                }
-            }
+    // remove cars that no longer exist
+    for (entity, car) in car_entities {
+        if !state.cars.iter().any(|car_info| car.0 == car_info.id) {
+            user_cars.remove(car.0);
+            commands.entity(entity).despawn_recursive();
         }
-        Ordering::Less => {
-            let non_existant_cars = state
-                .cars
-                .iter()
-                .filter(|car_info| !cars.iter().any(|id| id.0 == car_info.id));
+    }
 
-            for car_info in non_existant_cars {
-                spawn_car(car_info, &mut commands, meshes, materials, asset_server, car_wheel_mesh);
-            }
-        }
-        Ordering::Equal => {}
+    // add new cars
+    let non_existant_cars = state
+        .cars
+        .iter()
+        .filter(|car_info| !cars.iter().any(|id| id.0 == car_info.id));
+
+    for car_info in non_existant_cars {
+        spawn_car(car_info, &mut commands, meshes, materials, asset_server, car_wheel_mesh);
     }
 }
 
