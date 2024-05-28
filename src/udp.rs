@@ -854,7 +854,21 @@ fn update_camera(
     let (mut primary_camera, mut camera_transform) = camera_query.single_mut();
 
     let car_id = match primary_camera.as_mut() {
-        PrimaryCamera::TrackCar(id) => *id,
+        PrimaryCamera::TrackCar(id) => {
+            if states.current.cars.is_empty() {
+                return;
+            }
+
+            let mut ids = states.current.cars.iter().map(|car_info| car_info.id).collect::<Vec<_>>();
+            radsort::sort(&mut ids);
+
+            let index = *id as usize - 1;
+            if index >= ids.len() {
+                return;
+            } else {
+                ids[index]
+            }
+        },
         PrimaryCamera::Director(id) => {
             if *id == 0 || timer.0.finished() {
                 // get the car closest to the ball

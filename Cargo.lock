@@ -3095,7 +3095,7 @@ checksum = "3582f63211428f83597b51b2ddb88e2a91a9d52d12831f9d08f5e624e8977422"
 
 [[package]]
 name = "rlviser"
-version = "0.7.8"
+version = "0.7.9"
 dependencies = [
  "ahash",
  "bevy",
