@@ -868,7 +868,7 @@ fn update_camera(
             } else {
                 ids[index]
             }
-        },
+        }
         PrimaryCamera::Director(id) => {
             if *id == 0 || timer.0.finished() {
                 // get the car closest to the ball
@@ -1127,7 +1127,22 @@ fn update_boost_meter(
     mut was_last_director: Local<bool>,
 ) {
     let id = match camera.single() {
-        PrimaryCamera::Director(id) | PrimaryCamera::TrackCar(id) => *id,
+        PrimaryCamera::TrackCar(id) => {
+            if states.current.cars.is_empty() {
+                return;
+            }
+
+            let mut ids = states.current.cars.iter().map(|car_info| car_info.id).collect::<Vec<_>>();
+            radsort::sort(&mut ids);
+
+            let index = *id as usize - 1;
+            if index >= ids.len() {
+                0
+            } else {
+                ids[index]
+            }
+        }
+        PrimaryCamera::Director(id) => *id,
         PrimaryCamera::Spectator => 0,
     };
 
