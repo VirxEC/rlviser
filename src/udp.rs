@@ -1,16 +1,12 @@
 use crate::{
     assets::{get_material, get_mesh_info, BoostPickupGlows, CarWheelMesh},
     bytes::{FromBytes, ToBytes, ToBytesExact},
-    camera::{BoostAmount, HighlightedEntity, PrimaryCamera, TimeDisplay, BOOST_INDICATOR_FONT_SIZE, BOOST_INDICATOR_POS},
-    mesh::{BoostPadClicked, CarClicked, ChangeCarPos, LargeBoostPadLocRots},
+    camera::{PrimaryCamera, TimeDisplay},
+    mesh::LargeBoostPadLocRots,
     morton::Morton,
     renderer::{RenderGroups, RenderMessage, UdpRendererPlugin},
     rocketsim::{CarInfo, GameMode, GameState, Team},
-    settings::{
-        gui::Options,
-        options::{BallCam, CalcBallRot, GameSpeed, PacketSmoothing, ShowTime, UiOverlayScale},
-        state_setting::UserCarStates,
-    },
+    settings::options::{BallCam, CalcBallRot, GameSpeed, Options, PacketSmoothing, ShowTime},
     GameLoadState, ServerPort,
 };
 use ahash::HashMap;
@@ -21,10 +17,7 @@ use bevy::{
     pbr::{NotShadowCaster, NotShadowReceiver},
     prelude::*,
     time::Stopwatch,
-    window::PrimaryWindow,
 };
-use bevy_mod_picking::{backends::raycast::RaycastPickable, prelude::*};
-use bevy_vector_shapes::prelude::*;
 use crossbeam_channel::{Receiver, Sender};
 use itertools::izip;
 use std::{
@@ -35,6 +28,16 @@ use std::{
     thread,
     time::Duration,
 };
+
+use crate::{
+    camera::{BoostAmount, HighlightedEntity, BOOST_INDICATOR_FONT_SIZE, BOOST_INDICATOR_POS},
+    mesh::{BoostPadClicked, CarClicked, ChangeCarPos},
+    settings::{options::UiOverlayScale, state_setting::UserCarStates},
+};
+
+use bevy::window::PrimaryWindow;
+use bevy_mod_picking::{backends::raycast::RaycastPickable, prelude::*};
+use bevy_vector_shapes::prelude::*;
 
 #[cfg(debug_assertions)]
 use crate::camera::EntityName;
@@ -148,6 +151,7 @@ const CAR_BODIES: [&str; NUM_CAR_BODIES] = [
 ];
 
 #[cfg(debug_assertions)]
+
 const CAR_BODY_NAMES: [&str; NUM_CAR_BODIES] = [
     "octane_body",
     "dominus_body",
@@ -157,24 +161,24 @@ const CAR_BODY_NAMES: [&str; NUM_CAR_BODIES] = [
     "merc_body",
 ];
 
-pub const BLUE_COLOR: Color = if cfg!(feature = "full_load") {
-    Color::rgb(0.03, 0.09, 0.79)
+pub const BLUE_COLOR: Srgba = if cfg!(feature = "full_load") {
+    Srgba::rgb(0.03, 0.09, 0.79)
 } else {
-    Color::rgb(0.01, 0.03, 0.39)
+    Srgba::rgb(0.01, 0.03, 0.39)
 };
 
-pub const ORANGE_COLOR: Color = if cfg!(feature = "full_load") {
-    Color::rgb(0.41, 0.21, 0.01)
+pub const ORANGE_COLOR: Srgba = if cfg!(feature = "full_load") {
+    Srgba::rgb(0.41, 0.21, 0.01)
 } else {
-    Color::rgb(0.82, 0.42, 0.02)
+    Srgba::rgb(0.82, 0.42, 0.02)
 };
 
 #[inline]
 /// Use colors that are a bit darker if we don't have the `full_load` feature
 const fn get_color_from_team(team: Team) -> Color {
     match team {
-        Team::Blue => BLUE_COLOR,
-        Team::Orange => ORANGE_COLOR,
+        Team::Blue => Color::Srgba(BLUE_COLOR),
+        Team::Orange => Color::Srgba(ORANGE_COLOR),
     }
 }
 
@@ -291,7 +295,7 @@ fn spawn_car(
                 PbrBundle {
                     mesh: meshes.add(Cylinder::new(10., CAR_BOOST_LENGTH)),
                     material: materials.add(StandardMaterial {
-                        base_color: Color::rgba(1., 1., 0., 0.),
+                        base_color: Color::srgba(1., 1., 0., 0.),
                         alpha_mode: AlphaMode::Add,
                         cull_mode: None,
                         ..default()
@@ -608,7 +612,7 @@ fn apply_udp_updates(
     for update in udp_updates.try_iter() {
         match update {
             UdpUpdate::Exit => {
-                exit.send(AppExit);
+                exit.send(AppExit::Success);
                 return;
             }
             UdpUpdate::State(new_state) => {
@@ -665,9 +669,9 @@ fn update_ball(
 
     let amount = (transform.translation.z.abs() + 500.) / 3500.;
     point_light.color = if new_pos.z > 0. {
-        Color::rgb(amount.max(0.5), (amount * (2. / 3.)).max(0.5), 0.5)
+        Color::srgb(amount.max(0.5), (amount * (2. / 3.)).max(0.5), 0.5)
     } else {
-        Color::rgb(0.5, 0.5, amount.max(0.5))
+        Color::srgb(0.5, 0.5, amount.max(0.5))
     };
 
     transform.rotation = states.current.ball.rot_mat.to_bevy();
@@ -713,10 +717,10 @@ fn update_car_extra(
                     let material_handle = car_materials.get_mut(entity).unwrap();
                     let material = materials.get_mut(material_handle).unwrap();
                     if target_car.state.is_demoed {
-                        material.base_color.set_a(0.);
+                        material.base_color.set_alpha(0.);
                         last_demoed_states.push(car.id());
                     } else {
-                        material.base_color.set_a(1.);
+                        material.base_color.set_alpha(1.);
                         last_demoed_states.retain(|&id| id != car.id());
                     }
                 }
@@ -740,10 +744,10 @@ fn update_car_extra(
 
                 let material = materials.get_mut(material_handle).unwrap();
                 if is_boosting {
-                    material.base_color.set_a(0.7);
+                    material.base_color.set_alpha(0.7);
                     last_boost_states.push(car.id());
                 } else {
-                    material.base_color.set_a(0.0);
+                    material.base_color.set_alpha(0.0);
                     last_boost_states.retain(|&id| id != car.id());
                 }
             }
@@ -975,12 +979,12 @@ fn update_pads_count(
         let hitbox_material = materials.add(Color::NONE);
 
         let large_pad_mesh = match asset_server.get_load_state(&pad_glows.large) {
-            Some(LoadState::Failed) | None => pad_glows.large_hitbox.clone(),
+            Some(LoadState::Failed(_)) | None => pad_glows.large_hitbox.clone(),
             _ => pad_glows.large.clone(),
         };
 
         let small_pad_mesh = match asset_server.get_load_state(&pad_glows.small) {
-            Some(LoadState::Failed) | None => pad_glows.small_hitbox.clone(),
+            Some(LoadState::Failed(_)) | None => pad_glows.small_hitbox.clone(),
             _ => pad_glows.small.clone(),
         };
 
@@ -1060,7 +1064,7 @@ fn update_pads_count(
                         mesh: visual_mesh,
                         transform,
                         material: materials.add(StandardMaterial {
-                            base_color: Color::rgba(0.9, 0.9, 0.1, 0.6),
+                            base_color: Color::srgba(0.9, 0.9, 0.1, 0.6),
                             alpha_mode: AlphaMode::Add,
                             double_sided: true,
                             cull_mode: None,
@@ -1113,7 +1117,7 @@ fn update_pad_colors(
             0.0
         };
 
-        materials.get_mut(handle).unwrap().base_color.set_a(alpha);
+        materials.get_mut(handle).unwrap().base_color.set_alpha(alpha);
     }
 }
 
@@ -1164,7 +1168,7 @@ fn update_boost_meter(
     let painter_pos = (window_res / 2. - (BOOST_INDICATOR_POS + 25.) * ui_scale.scale) * Vec2::new(1., -1.);
 
     painter.set_translation(painter_pos.extend(0.));
-    painter.color = Color::rgb(0.075, 0.075, 0.15);
+    painter.color = Color::srgb(0.075, 0.075, 0.15);
     painter.circle(100.0 * ui_scale.scale);
 
     let scale = car_state.boost / 100.;
@@ -1173,7 +1177,7 @@ fn update_boost_meter(
     let full_angle = 11. * PI / 6.;
     let end_angle = (full_angle - start_angle).mul_add(scale, start_angle);
 
-    painter.color = Color::rgb(1., 0.84 * scale, 0.);
+    painter.color = Color::srgb(1., 0.84 * scale, 0.);
     painter.hollow = true;
     painter.thickness = 4.;
     painter.arc(80. * ui_scale.scale, start_angle, end_angle);

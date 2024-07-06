@@ -1,8 +1,13 @@
 use crate::spectator::{Spectator, SpectatorPlugin, SpectatorSettings};
 use bevy::{
-    pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap},
+    color::palettes::css,
+    core_pipeline::tonemapping::Tonemapping,
+    pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap, ShadowFilteringMethod},
     prelude::*,
 };
+use serde::{Deserialize, Serialize};
+use std::f32::consts::PI;
+
 use bevy_atmosphere::prelude::*;
 use bevy_framepace::{FramepacePlugin, FramepaceSettings};
 use bevy_mod_picking::{
@@ -10,8 +15,7 @@ use bevy_mod_picking::{
     prelude::*,
 };
 use bevy_vector_shapes::prelude::*;
-use serde::{Deserialize, Serialize};
-use std::{f32::consts::PI, time::Duration};
+use std::time::Duration;
 
 #[cfg(feature = "ssao")]
 use bevy::{
@@ -81,8 +85,10 @@ fn setup(mut commands: Commands) {
             .into(),
             transform: Transform::from_translation(Vec3::new(-3000., 1000., 0.)).looking_to(Vec3::X, Vec3::Y),
             camera: Camera { hdr: true, ..default() },
+            tonemapping: Tonemapping::ReinhardLuminance,
             ..default()
         },
+        ShadowFilteringMethod::Gaussian,
         AtmosphereCamera::default(),
         RaycastPickable,
         Spectator,
@@ -111,7 +117,7 @@ fn setup(mut commands: Commands) {
             "",
             TextStyle {
                 font_size: BOOST_INDICATOR_FONT_SIZE,
-                color: Color::SILVER,
+                color: Color::from(css::SILVER),
                 ..default()
             },
         )
@@ -141,7 +147,7 @@ fn setup(mut commands: Commands) {
                     "00m:00s",
                     TextStyle {
                         font_size: 40.0,
-                        color: Color::DARK_GRAY,
+                        color: Color::from(css::DARK_GRAY),
                         ..default()
                     },
                 )
@@ -193,6 +199,7 @@ pub struct EntityName {
 }
 
 #[cfg(debug_assertions)]
+
 impl EntityName {
     #[inline]
     pub const fn new(name: Box<str>) -> Self {
@@ -201,6 +208,7 @@ impl EntityName {
 }
 
 #[cfg(debug_assertions)]
+
 impl From<&str> for EntityName {
     #[inline]
     fn from(name: &str) -> Self {
@@ -209,6 +217,7 @@ impl From<&str> for EntityName {
 }
 
 #[cfg(debug_assertions)]
+
 impl From<String> for EntityName {
     #[inline]
     fn from(name: String) -> Self {
@@ -217,37 +226,43 @@ impl From<String> for EntityName {
 }
 
 #[derive(Component, Clone, Copy)]
+
 pub struct HighlightedEntity;
 
 pub struct CameraPlugin;
 
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(SpectatorSettings::default())
-            .insert_resource(FramepaceSettings {
+        {
+            app.insert_resource(FramepaceSettings {
                 limiter: bevy_framepace::Limiter::from_framerate(60.),
             })
-            .insert_resource(AtmosphereModel::default())
             .insert_resource(CycleTimer(Timer::new(
                 Duration::from_secs_f32(1. / 60.),
                 TimerMode::Repeating,
             )))
-            .insert_resource(DaylightOffset::default())
+            .insert_resource(AtmosphereModel::default())
             .insert_resource(RaycastBackendSettings {
                 require_markers: true,
                 ..default()
             })
-            .insert_resource(DirectionalLightShadowMap::default())
             .add_plugins((
                 FramepacePlugin,
-                SpectatorPlugin,
                 DefaultPickingPlugins,
                 AtmospherePlugin,
                 Shape2dPlugin::default(),
+            ))
+            .add_systems(Update, daylight_cycle);
+        }
+
+        app.insert_resource(SpectatorSettings::default())
+            .insert_resource(DaylightOffset::default())
+            .insert_resource(DirectionalLightShadowMap::default())
+            .add_plugins((
+                SpectatorPlugin,
                 #[cfg(feature = "ssao")]
                 TemporalAntiAliasPlugin,
             ))
-            .add_systems(Update, daylight_cycle)
             .add_systems(Startup, setup);
     }
 }

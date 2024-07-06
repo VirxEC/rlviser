@@ -1,5 +1,5 @@
 [package]
-version = "0.7.10"
+version = "0.7.11"
 name = "rlviser"
 edition = "2021"
 publish = false
@@ -7,12 +7,13 @@ publish = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bevy_atmosphere = "0.9.1"
-bevy_egui = "0.27.0"
-bevy_eventlistener = "0.7.0"
-bevy_framepace = { version = "0.15.0", default-features = false }
-bevy_mod_picking = { version = "0.18.0", default-features = false, features = ["backend_raycast"] }
-bevy_vector_shapes = "0.7.0"
+bevy_atmosphere = "0.10"
+bevy_egui = "0.28"
+bevy_eventlistener = "0.8"
+bevy_vector_shapes = "0.8"
+bevy_framepace = { version = "0.17", default-features = false }
+# bevy_mod_picking = { version = "0.20", default-features = false, features = ["backend_raycast"] }
+bevy_mod_picking = { git = "https://github.com/aevyrie/bevy_mod_picking", branch = "v0.20-release", default-features = false, features = ["backend_raycast"] }
 byteorder = "1.4.3"
 include-flate = "0.3.0"
 once_cell = "1.17.1"
@@ -27,11 +28,12 @@ crossbeam-channel = "0.5.12"
 itertools = "0.13.0"
 
 [dependencies.bevy]
-version = "0.13.0"
+version = "0.14"
 default-features = false
-features = ["bevy_core_pipeline", "bevy_pbr", "bevy_ui", "wayland", "x11", "tga", "tonemapping_luts", "default_font", "bevy_gizmos"]
+features = ["bevy_core_pipeline", "bevy_pbr", "bevy_ui", "wayland", "x11", "tga", "default_font", "bevy_gizmos", "bevy_state"]
 
 [features]
+default = []
 full_load = []
 ssao = []
 team_goal_barriers = []

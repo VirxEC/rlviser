@@ -11,7 +11,7 @@ pub struct CustomColor {
 
 impl From<CustomColor> for Color {
     fn from(color: CustomColor) -> Self {
-        Self::rgba(color.r, color.g, color.b, color.a)
+        Self::srgba(color.r, color.g, color.b, color.a)
     }
 }
 
@@ -45,13 +45,13 @@ fn render_gizmos(mut renders: ResMut<RenderGroups>, mut gizmos: Gizmos) {
         for render in renders.iter() {
             match render {
                 Render::Line2D { start, end, color } => {
-                    gizmos.line_2d(*start, *end, (*color).into());
+                    gizmos.line_2d(*start, *end, *color);
                 }
                 Render::Line { start, end, color } => {
-                    gizmos.line(start.to_bevy(), end.to_bevy(), (*color).into());
+                    gizmos.line(start.to_bevy(), end.to_bevy(), *color);
                 }
                 Render::LineStrip { positions, color } => {
-                    gizmos.linestrip(positions.iter().copied().map(ToBevyVec::to_bevy), (*color).into());
+                    gizmos.linestrip(positions.iter().copied().map(ToBevyVec::to_bevy), *color);
                 }
             }
         }

@@ -47,29 +47,28 @@ fn main() {
     assets::uncook().unwrap();
 
     App::new()
-        .init_state::<GameLoadState>()
         .insert_resource(ServerPort {
             primary_port,
             secondary_port,
         })
-        .add_plugins((DefaultPlugins
-            .set(ImagePlugin {
-                default_sampler: ImageSamplerDescriptor {
-                    address_mode_u: ImageAddressMode::Repeat,
-                    address_mode_v: ImageAddressMode::Repeat,
-                    address_mode_w: ImageAddressMode::Repeat,
-                    ..default()
-                },
-            })
-            .set(WindowPlugin {
-                primary_window: Some(Window {
-                    title: "RLViser-rs".into(),
-                    present_mode: PresentMode::AutoNoVsync,
+        .add_plugins((
+            DefaultPlugins
+                .set(ImagePlugin {
+                    default_sampler: ImageSamplerDescriptor {
+                        address_mode_u: ImageAddressMode::Repeat,
+                        address_mode_v: ImageAddressMode::Repeat,
+                        address_mode_w: ImageAddressMode::Repeat,
+                        ..default()
+                    },
+                })
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        title: "RLViser-rs".into(),
+                        present_mode: PresentMode::AutoNoVsync,
+                        ..default()
+                    }),
                     ..default()
                 }),
-                ..default()
-            }),))
-        .add_plugins((
             LogDiagnosticsPlugin {
                 debug: cfg!(feature = "debug"),
                 ..default()
@@ -80,5 +79,6 @@ fn main() {
             udp::RocketSimPlugin,
             assets::AssetsLoaderPlugin,
         ))
+        .init_state::<GameLoadState>()
         .run();
 }

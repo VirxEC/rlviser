@@ -257,7 +257,7 @@ impl<const N: usize> ByteWriter<N> {
 
 impl ToBytesExact<{ bool::NUM_BYTES * 4 }> for [bool; 4] {
     fn to_bytes(&self) -> [u8; bool::NUM_BYTES * 4] {
-        let mut writer = ByteWriter::<{ bool::NUM_BYTES * 4 }>::new();
+        let mut writer = const { ByteWriter::<{ bool::NUM_BYTES * 4 }>::new() };
         for item in self {
             writer.write(item);
         }
@@ -293,7 +293,7 @@ macro_rules! impl_to_bytes_exact {
     ($t:ty, $($p:ident),+) => {
         impl ToBytesExact<{ Self::NUM_BYTES }> for $t {
             fn to_bytes(&self) -> [u8; Self::NUM_BYTES] {
-                let mut writer = ByteWriter::<{ Self::NUM_BYTES }>::new();
+                let mut writer = const { ByteWriter::<{ Self::NUM_BYTES }>::new() };
                 $(writer.write(&self.$p);)+
                 writer.inner()
             }

@@ -1,16 +1,13 @@
 use crate::{
     assets::*,
-    camera::{HighlightedEntity, PrimaryCamera},
     rocketsim::{GameMode, Team},
-    settings::{
-        default_field::{get_hoops_floor, get_standard_floor, load_hoops, load_standard},
-        state_setting::{EnableBallInfo, EnableCarInfo, EnablePadInfo, UserCarStates, UserPadStates},
-    },
-    udp::{Ball, BoostPadI, Car, Connection, GameStates, SendableUdp, ToBevyVec, ToBevyVecFlat},
+    settings::default_field::{get_hoops_floor, get_standard_floor, load_hoops, load_standard},
+    udp::{Ball, ToBevyVec, ToBevyVecFlat},
     GameLoadState,
 };
 use bevy::{
     asset::LoadState,
+    color::palettes::css,
     math::Vec3A,
     pbr::{NotShadowCaster, NotShadowReceiver},
     prelude::*,
@@ -21,7 +18,6 @@ use bevy::{
     time::Stopwatch,
     window::PrimaryWindow,
 };
-use bevy_mod_picking::{backends::raycast::RaycastPickable, prelude::*};
 use include_flate::flate;
 use serde::Deserialize;
 use std::{
@@ -30,9 +26,16 @@ use std::{
     path::Path,
     rc::Rc,
     str::Utf8Error,
-    time::Duration,
 };
 use thiserror::Error;
+
+use crate::{
+    camera::{HighlightedEntity, PrimaryCamera},
+    settings::state_setting::{EnableBallInfo, EnableCarInfo, EnablePadInfo, UserCarStates, UserPadStates},
+    udp::{BoostPadI, Car, Connection, GameStates, SendableUdp},
+};
+use bevy_mod_picking::{backends::raycast::RaycastPickable, prelude::*};
+use std::time::Duration;
 
 #[cfg(feature = "team_goal_barriers")]
 use crate::udp::{BLUE_COLOR, ORANGE_COLOR};
@@ -44,36 +47,43 @@ pub struct FieldLoaderPlugin;
 
 impl Plugin for FieldLoaderPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(LargeBoostPadLocRots::default())
-            .insert_resource(StateSetTime::default())
-            .add_event::<ChangeBallPos>()
-            .add_event::<ChangeCarPos>()
-            .add_event::<BallClicked>()
-            .add_event::<CarClicked>()
-            .add_event::<BoostPadClicked>()
-            .add_systems(
-                Update,
-                (
-                    despawn_old_field.run_if(in_state(GameLoadState::Despawn)),
-                    load_field.run_if(in_state(GameLoadState::Field)),
-                    load_extra_field.run_if(in_state(GameLoadState::FieldExtra)),
-                    handle_ball_clicked.run_if(on_event::<BallClicked>()),
-                    handle_car_clicked.run_if(on_event::<CarClicked>()),
-                    handle_boost_pad_clicked.run_if(on_event::<BoostPadClicked>()),
+        {
+            app.add_event::<ChangeBallPos>()
+                .add_event::<ChangeCarPos>()
+                .add_event::<BallClicked>()
+                .add_event::<CarClicked>()
+                .add_event::<BoostPadClicked>()
+                .insert_resource(StateSetTime::default())
+                .add_systems(
+                    Update,
                     (
-                        advance_stopwatch,
+                        handle_ball_clicked.run_if(on_event::<BallClicked>()),
+                        handle_car_clicked.run_if(on_event::<CarClicked>()),
+                        handle_boost_pad_clicked.run_if(on_event::<BoostPadClicked>()),
                         (
-                            change_ball_pos.run_if(on_event::<ChangeBallPos>()),
-                            change_car_pos.run_if(on_event::<ChangeCarPos>()),
+                            advance_stopwatch,
+                            (
+                                change_ball_pos.run_if(on_event::<ChangeBallPos>()),
+                                change_car_pos.run_if(on_event::<ChangeCarPos>()),
+                            )
+                                .run_if(|last_state_set: Res<StateSetTime>| {
+                                    // Limit state setting to avoid bogging down the simulation with state setting requests
+                                    last_state_set.0.elapsed() >= Duration::from_secs_f32(1. / 60.)
+                                }),
                         )
-                            .run_if(|last_state_set: Res<StateSetTime>| {
-                                // Limit state setting to avoid bogging down the simulation with state setting requests
-                                last_state_set.0.elapsed() >= Duration::from_secs_f32(1. / 60.)
-                            }),
-                    )
-                        .chain(),
-                ),
-            );
+                            .chain(),
+                    ),
+                );
+        }
+
+        app.insert_resource(LargeBoostPadLocRots::default()).add_systems(
+            Update,
+            (
+                despawn_old_field.run_if(in_state(GameLoadState::Despawn)),
+                load_field.run_if(in_state(GameLoadState::Field)),
+                load_extra_field.run_if(in_state(GameLoadState::FieldExtra)),
+            ),
+        );
     }
 }
 
@@ -279,10 +289,10 @@ fn load_extra_field(
     assets: Res<AssetServer>,
 ) {
     // load a glowing ball
-    let initial_ball_color = Color::rgb(0.3, 0.3, 0.3);
+    let initial_ball_color = Color::srgb(0.3, 0.3, 0.3);
 
     let (ball_color, ball_texture) = match assets.get_load_state(&ball_assets.ball_diffuse) {
-        Some(LoadState::Failed) | None => (Color::DARK_GRAY, None),
+        Some(LoadState::Failed(_)) | None => (Color::from(css::DARK_GRAY), None),
         _ => (Color::WHITE, Some(ball_assets.ball_diffuse.clone())),
     };
 
@@ -297,7 +307,7 @@ fn load_extra_field(
     };
 
     let ball_mesh = match assets.get_load_state(&ball_assets.ball) {
-        Some(LoadState::Failed) | None => meshes.add(Sphere::new(91.25)),
+        Some(LoadState::Failed(_)) | None => meshes.add(Sphere::new(91.25)),
         _ => ball_assets.ball.clone(),
     };
 
@@ -475,16 +485,11 @@ fn load_goals(
                     mesh: meshes.add(Rectangle::from_size(Vec2::splat(1000.))),
                     material: materials.add(StandardMaterial {
                         base_color: {
-                            let mut color = BLUE_COLOR;
-                            color.set_b(color.b() * 2.);
-                            color.set_a(0.8);
-                            color
+                            let mut color = BLUE_COLOR.with_alpha(0.8);
+                            color.blue *= 2.;
+                            Color::Srgba(color)
                         },
-                        emissive: {
-                            let mut color = BLUE_COLOR;
-                            color.set_a(0.5);
-                            color
-                        },
+                        emissive: LinearRgba::from(BLUE_COLOR.with_alpha(0.5)),
                         double_sided: true,
                         cull_mode: None,
                         alpha_mode: AlphaMode::Add,
@@ -511,16 +516,8 @@ fn load_goals(
                 PbrBundle {
                     mesh: meshes.add(Rectangle::from_size(Vec2::splat(1000.))),
                     material: materials.add(StandardMaterial {
-                        base_color: {
-                            let mut color = ORANGE_COLOR;
-                            color.set_a(0.8);
-                            color
-                        },
-                        emissive: {
-                            let mut color = ORANGE_COLOR;
-                            color.set_a(0.5);
-                            color
-                        },
+                        base_color: Color::Srgba(ORANGE_COLOR.with_alpha(0.8)),
+                        emissive: LinearRgba::from(ORANGE_COLOR.with_alpha(0.5)),
                         double_sided: true,
                         cull_mode: None,
                         alpha_mode: AlphaMode::Add,
@@ -564,7 +561,7 @@ fn load_default_field(
         PbrBundle {
             mesh: field,
             material: materials.add(StandardMaterial {
-                base_color: Color::rgba_u8(55, 30, 48, 200),
+                base_color: Color::srgba_u8(55, 30, 48, 200),
                 cull_mode: None,
                 double_sided: true,
                 ..default()
@@ -583,7 +580,7 @@ fn load_default_field(
         PbrBundle {
             mesh: floor,
             material: materials.add(StandardMaterial {
-                base_color: Color::rgb_u8(45, 49, 66),
+                base_color: Color::srgb_u8(45, 49, 66),
                 cull_mode: None,
                 double_sided: true,
                 ..default()
@@ -724,7 +721,7 @@ fn process_info_node(
             _ => None,
         };
 
-        let mat_name = if !cfg!(features = "full_load") && node.static_mesh.ends_with("OOBFloor") {
+        let mat_name = if !cfg!(feature = "full_load") && node.static_mesh.ends_with("OOBFloor") {
             "OOBFloor_MAT_CUSTOM"
         } else {
             mat.as_ref()

@@ -4,7 +4,9 @@ use crate::{
 };
 use bevy::{
     asset::{io::Reader, AssetLoader, AsyncReadExt},
+    color::palettes::css,
     prelude::*,
+    utils::ConditionalSendFuture,
 };
 use byteorder::{LittleEndian, ReadBytesExt};
 use once_cell::sync::Lazy;
@@ -389,7 +391,7 @@ fn retreive_material(
     if let Some(texture_name) = diffuse {
         debug!("Found texture for {name}");
         if texture_name == "ForcefieldHex" {
-            material.base_color = Color::rgba(0.3, 0.3, 0.3, 0.3);
+            material.base_color = Color::srgba(0.3, 0.3, 0.3, 0.3);
         }
         material.base_color_texture = Some(load_texture(texture_name, asset_server));
     }
@@ -416,7 +418,7 @@ fn get_default_material(name: &str, side: Option<Team>) -> Option<StandardMateri
     .contains(&name)
     {
         // primary
-        Color::rgb_u8(45, 49, 66)
+        Color::srgb_u8(45, 49, 66)
     } else if [
         "FutureTech.Materials.Reflective_Floor_V2_Mat",
         "Proto_BBall.SM.BackBoard_Teams_MIC",
@@ -427,12 +429,12 @@ fn get_default_material(name: &str, side: Option<Team>) -> Option<StandardMateri
     {
         // secondary
         match side {
-            Some(Team::Blue) => Color::rgb_u8(86, 136, 199),
-            Some(Team::Orange) => Color::rgb_u8(222, 145, 81),
-            None => Color::rgb_u8(131, 144, 115),
+            Some(Team::Blue) => Color::srgb_u8(86, 136, 199),
+            Some(Team::Orange) => Color::srgb_u8(222, 145, 81),
+            None => Color::srgb_u8(131, 144, 115),
         }
     } else if name == "OOBFloor_MAT_CUSTOM" {
-        Color::rgb_u8(41, 2, 0)
+        Color::srgb_u8(41, 2, 0)
     } else if [
         "FutureTech.Materials.Frame_01_MIC",
         "FutureTech.Materials.Frame_01_V2_Mat",
@@ -448,25 +450,25 @@ fn get_default_material(name: &str, side: Option<Team>) -> Option<StandardMateri
         || name.contains("PaintedLine_MIC")
     {
         // tertiary
-        Color::rgb_u8(55, 30, 48)
+        Color::srgb_u8(55, 30, 48)
     } else if [
         "FutureTech.Materials.Frame_01_White_MIC",
         "Graybox_Assets.Materials.ForceFieldCage_Solid_Mat",
     ]
     .contains(&name)
     {
-        Color::SILVER
+        Color::from(css::SILVER)
     } else if name == "FutureTech.Materials.CrossHatched_Grate_MIC" {
-        Color::TOMATO
+        Color::from(css::TOMATO)
     } else if [
         "Pickup_Boost.Materials.BoostPad_Small_MIC",
         "Pickup_Boost.Materials.BoostPad_Large_MIC",
     ]
     .contains(&name)
     {
-        Color::rgb_u8(152, 29, 23)
+        Color::srgb_u8(152, 29, 23)
     } else if name.contains("Advert") || name.contains("DarkMetal") {
-        Color::rgb_u8(191, 192, 192)
+        Color::srgb_u8(191, 192, 192)
     } else {
         println!("Unknown material {name}");
         return None;
@@ -510,7 +512,7 @@ pub fn get_material(
         return material.clone();
     }
 
-    let base_color = base_color.unwrap_or(Color::rgb(0.3, 0.3, 0.3));
+    let base_color = base_color.unwrap_or(Color::srgb(0.3, 0.3, 0.3));
 
     material_names
         .entry(key)
@@ -679,7 +681,7 @@ impl AssetLoader for PskxLoader {
         reader: &'a mut Reader,
         _settings: &'a Self::Settings,
         load_context: &'a mut bevy::asset::LoadContext,
-    ) -> bevy::utils::BoxedFuture<'a, Result<Self::Asset, Self::Error>> {
+    ) -> impl ConditionalSendFuture<Output = Result<Self::Asset, Self::Error>> {
         Box::pin(async move {
             let mut bytes = Vec::new();
             reader.read_to_end(&mut bytes).await?;
