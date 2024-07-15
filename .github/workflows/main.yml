@@ -65,6 +65,4 @@ jobs:
           files: ./**/target/**
           generate_release_notes: true
           body: |
-            Remember that you should download `umodel` for RLViser's use if you want more than the minimalist default assets.
-
-            Directions are included in the README.
+            Extra keybinds for RLViser are included in the README
