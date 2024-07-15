@@ -677,10 +677,7 @@ fn update_ball(
     transform.rotation = states.current.ball.rot_mat.to_bevy();
 }
 
-const MIN_DIST_FROM_BALL: f32 = 200.;
-const MIN_DIST_FROM_BALL_SQ: f32 = MIN_DIST_FROM_BALL * MIN_DIST_FROM_BALL;
-
-const MIN_CAMERA_BALLCAM_HEIGHT: f32 = 20.;
+const MIN_CAMERA_BALLCAM_HEIGHT: f32 = 30.;
 
 fn update_car(states: Res<GameStates>, mut cars: Query<(&mut Transform, &Car)>) {
     for (mut car_transform, car) in &mut cars {
@@ -709,14 +706,15 @@ fn update_car_extra(
             continue;
         };
 
+        let is_demoed = target_car.state.is_demoed || target_car.state.demo_respawn_timer > 0.;
         let last_demoed = last_demoed_states.iter().any(|&id| id == car.id());
 
-        if target_car.state.is_demoed != last_demoed {
+        if is_demoed != last_demoed {
             for (entity, car) in &car_entities {
                 if car.0 == target_car.id {
                     let material_handle = car_materials.get_mut(entity).unwrap();
                     let material = materials.get_mut(material_handle).unwrap();
-                    if target_car.state.is_demoed {
+                    if is_demoed {
                         material.base_color.set_alpha(0.);
                         last_demoed_states.push(car.id());
                     } else {
@@ -731,7 +729,7 @@ fn update_car_extra(
             .insert(car.id(), target_car.state.boost)
             .unwrap_or_default();
 
-        let is_boosting = !target_car.state.is_demoed
+        let is_boosting = !is_demoed
             && target_car.state.boost > f32::EPSILON
             && (target_car.state.last_controls.boost || last_boost_amount > target_car.state.boost);
         let last_boosted = last_boost_states.iter().any(|&id| id == car.id());
@@ -904,19 +902,13 @@ fn update_camera(
 
     let camera_transform = camera_transform.as_mut();
 
-    if ballcam.enabled
-        && (!target_car.state.is_on_ground
-            || target_car.state.pos.distance_squared(states.current.ball.pos) > MIN_DIST_FROM_BALL_SQ)
-    {
+    if ballcam.enabled {
         let ball_pos = states.current.ball.pos.to_bevy();
         camera_transform.translation = car_transform.translation + (car_transform.translation - ball_pos).normalize() * 300.;
         camera_transform.look_at(ball_pos, Vec3::Y);
         camera_transform.translation += camera_transform.up() * 150.;
         camera_transform.look_at(ball_pos, Vec3::Y);
-
-        if camera_transform.translation.y < MIN_CAMERA_BALLCAM_HEIGHT {
-            camera_transform.translation.y = MIN_CAMERA_BALLCAM_HEIGHT;
-        }
+        camera_transform.translation.y = camera_transform.translation.y.max(MIN_CAMERA_BALLCAM_HEIGHT);
     } else {
         let car_look = Vec3::new(target_car.state.vel.x, 0., target_car.state.vel.y)
             .try_normalize()

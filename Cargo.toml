@@ -1,5 +1,5 @@
 [package]
-version = "0.7.11"
+version = "0.7.12"
 name = "rlviser"
 edition = "2021"
 publish = false
@@ -12,8 +12,7 @@ bevy_egui = "0.28"
 bevy_eventlistener = "0.8"
 bevy_vector_shapes = "0.8"
 bevy_framepace = { version = "0.17", default-features = false }
-# bevy_mod_picking = { version = "0.20", default-features = false, features = ["backend_raycast"] }
-bevy_mod_picking = { git = "https://github.com/aevyrie/bevy_mod_picking", branch = "v0.20-release", default-features = false, features = ["backend_raycast"] }
+bevy_mod_picking = { version = "0.20", default-features = false, features = ["backend_raycast"] }
 byteorder = "1.4.3"
 include-flate = "0.3.0"
 once_cell = "1.17.1"
