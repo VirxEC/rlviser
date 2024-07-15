@@ -1,7 +1,6 @@
 use crate::{
     assets::*,
     rocketsim::{GameMode, Team},
-    settings::default_field::{get_hoops_floor, get_standard_floor, load_hoops, load_standard},
     udp::{Ball, ToBevyVec, ToBevyVecFlat},
     GameLoadState,
 };
@@ -14,14 +13,16 @@ use bevy::{
     render::{
         mesh::{self, VertexAttributeValues},
         render_asset::RenderAssetUsages,
+        renderer::RenderDevice,
     },
     time::Stopwatch,
     window::PrimaryWindow,
 };
 use include_flate::flate;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,
+    fs::{create_dir_all, File},
     io::{self, Read},
     path::Path,
     rc::Rc,
@@ -292,7 +293,7 @@ fn load_extra_field(
     let initial_ball_color = Color::srgb(0.3, 0.3, 0.3);
 
     let (ball_color, ball_texture) = match assets.get_load_state(&ball_assets.ball_diffuse) {
-        Some(LoadState::Failed(_)) | None => (Color::from(css::DARK_GRAY), None),
+        Some(LoadState::Failed(_)) => (Color::from(css::DARK_GRAY), None),
         _ => (Color::WHITE, Some(ball_assets.ball_diffuse.clone())),
     };
 
@@ -307,7 +308,7 @@ fn load_extra_field(
     };
 
     let ball_mesh = match assets.get_load_state(&ball_assets.ball) {
-        Some(LoadState::Failed(_)) | None => meshes.add(Sphere::new(91.25)),
+        Some(LoadState::Failed(_)) => meshes.add(Sphere::new(91.25)),
         _ => ball_assets.ball.clone(),
     };
 
@@ -545,64 +546,15 @@ fn load_goals(
     }
 }
 
-fn load_default_field(
-    commands: &mut Commands,
-    materials: &mut Assets<StandardMaterial>,
-    meshes: &mut Assets<Mesh>,
-    game_mode: GameMode,
-) {
-    let (field, floor) = match game_mode {
-        GameMode::Soccar => (meshes.add(load_standard()), meshes.add(get_standard_floor())),
-        GameMode::Hoops => (meshes.add(load_hoops()), meshes.add(get_hoops_floor())),
-        _ => return,
-    };
-
-    commands.spawn((
-        PbrBundle {
-            mesh: field,
-            material: materials.add(StandardMaterial {
-                base_color: Color::srgba_u8(55, 30, 48, 200),
-                cull_mode: None,
-                double_sided: true,
-                ..default()
-            }),
-            ..default()
-        },
-        #[cfg(debug_assertions)]
-        EntityName::from("default_field"),
-        RaycastPickable,
-        On::<Pointer<Over>>::target_insert(HighlightedEntity),
-        On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
-        StaticFieldEntity,
-    ));
-
-    commands.spawn((
-        PbrBundle {
-            mesh: floor,
-            material: materials.add(StandardMaterial {
-                base_color: Color::srgb_u8(45, 49, 66),
-                cull_mode: None,
-                double_sided: true,
-                ..default()
-            }),
-            ..default()
-        },
-        #[cfg(debug_assertions)]
-        EntityName::from("default_floor"),
-        RaycastPickable,
-        On::<Pointer<Over>>::target_insert(HighlightedEntity),
-        On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
-        StaticFieldEntity,
-    ));
-}
-
 fn load_field(
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
+    mut images: ResMut<Assets<Image>>,
     mut state: ResMut<NextState<GameLoadState>>,
     mut large_boost_pad_loc_rots: ResMut<LargeBoostPadLocRots>,
     game_mode: Res<GameMode>,
+    render_device: Option<Res<RenderDevice>>,
     asset_server: Res<AssetServer>,
 ) {
     let layout: &str = match *game_mode {
@@ -613,12 +565,6 @@ fn load_field(
         GameMode::Hoops => &HOOPS_STADIUM_P_LAYOUT,
         _ => &STADIUM_P_LAYOUT,
     };
-
-    if !Path::new("assets").is_dir() {
-        load_default_field(&mut commands, &mut materials, &mut meshes, *game_mode);
-        state.set(GameLoadState::None);
-        return;
-    }
 
     let (_pickup_boost, structures, the_world): (Section, Node, Node) = serde_json::from_str(layout).unwrap();
     #[cfg(debug_assertions)]
@@ -652,6 +598,8 @@ fn load_field(
                 &mut materials,
                 &mut large_boost_pad_loc_rots,
                 &mut commands,
+                &mut images,
+                render_device.as_deref(),
             );
             continue;
         }
@@ -664,6 +612,8 @@ fn load_field(
                 &mut materials,
                 &mut large_boost_pad_loc_rots,
                 &mut commands,
+                &mut images,
+                render_device.as_deref(),
             );
         }
     }
@@ -681,6 +631,8 @@ fn process_info_node(
     materials: &mut Assets<StandardMaterial>,
     large_boost_pad_loc_rots: &mut LargeBoostPadLocRots,
     commands: &mut Commands,
+    images: &mut Assets<Image>,
+    render_device: Option<&RenderDevice>,
 ) {
     if node.static_mesh.trim().is_empty() {
         return;
@@ -727,7 +679,7 @@ fn process_info_node(
             mat.as_ref()
         };
 
-        let material = get_material(mat_name, materials, asset_server, None, side);
+        let material = get_material(mat_name, materials, asset_server, None, side, images, render_device);
 
         let mut transform = node.get_transform();
 
@@ -775,7 +727,7 @@ pub enum MeshBuilderError {
 }
 
 /// A collection of inter-connected triangles.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct MeshBuilder {
     ids: Vec<usize>,
     verts: Vec<f32>,
@@ -786,17 +738,27 @@ pub struct MeshBuilder {
 }
 
 impl MeshBuilder {
+    pub fn create_cache(&self, path: &Path) {
+        create_dir_all(path.parent().unwrap()).unwrap();
+        let mut file = File::create(path).unwrap();
+        bincode::serialize_into(&mut file, self).unwrap();
+    }
+
+    pub fn from_cache<R: Read>(reader: R) -> Self {
+        bincode::deserialize_from(reader).unwrap()
+    }
+
     #[must_use]
     // Build the Bevy Mesh
-    pub fn build_meshes(self, scale: f32) -> Vec<Mesh> {
+    pub fn build_meshes(self) -> Vec<Mesh> {
         let num_materials = self.num_materials;
 
         if num_materials < 2 {
-            return vec![self.build_mesh(scale)];
+            return vec![self.build_mesh()];
         }
 
         let all_mat_ids = self.ids.iter().map(|&id| self.mat_ids[id]).collect::<Vec<_>>();
-        let initial_mesh = self.build_mesh(scale);
+        let initial_mesh = self.build_mesh();
 
         let all_verts = initial_mesh.attribute(Mesh::ATTRIBUTE_POSITION).unwrap().as_float3().unwrap();
         let VertexAttributeValues::Float32x2(all_uvs) = initial_mesh.attribute(Mesh::ATTRIBUTE_UV_0).unwrap() else {
@@ -894,13 +856,13 @@ impl MeshBuilder {
 
     #[must_use]
     // Build the Bevy Mesh
-    pub fn build_mesh(self, scale: f32) -> Mesh {
+    pub fn build_mesh(self) -> Mesh {
         let mut mesh = Mesh::new(mesh::PrimitiveTopology::TriangleList, RenderAssetUsages::default());
 
         let verts = self
             .verts
             .chunks_exact(3)
-            .map(|chunk| [chunk[0] * scale, chunk[1] * scale, chunk[2] * scale])
+            .map(|chunk| [chunk[0], chunk[1], chunk[2]])
             .collect::<Vec<_>>();
 
         let ids = self.ids.iter().map(|&id| verts[id]).collect::<Vec<_>>();

@@ -1,36 +1,31 @@
 use crate::{
     mesh::{MeshBuilder, MeshBuilderError},
     rocketsim::Team,
+    settings::cache_handler::{get_default_mesh_cache, get_material_cache, get_mesh_cache, get_texture_cache},
 };
 use bevy::{
     asset::{io::Reader, AssetLoader, AsyncReadExt},
     color::palettes::css,
     prelude::*,
+    render::renderer::RenderDevice,
     utils::ConditionalSendFuture,
 };
 use byteorder::{LittleEndian, ReadBytesExt};
 use once_cell::sync::Lazy;
-use rust_search::{similarity_sort, SearchBuilder};
 use std::{
     collections::HashMap,
     ffi::OsStr,
-    fs,
-    io::{self, Read, Write},
-    panic,
-    path::{Path, MAIN_SEPARATOR},
-    process::{Command, Stdio},
+    io::{self, Read},
+    path::Path,
     sync::Mutex,
 };
 use thiserror::Error;
-use walkdir::WalkDir;
 
 pub struct AssetsLoaderPlugin;
 
 impl Plugin for AssetsLoaderPlugin {
     fn build(&self, app: &mut App) {
-        app.register_asset_loader(PskxLoader)
-            .init_asset::<Mesh>()
-            .add_systems(Startup, load_assets);
+        app.register_asset_loader(PskxLoader).init_asset::<Mesh>();
     }
 }
 
@@ -39,23 +34,29 @@ pub struct CarWheelMesh {
     pub mesh: Handle<Mesh>,
 }
 
-fn load_assets(mut commands: Commands, assets: Res<AssetServer>, mut meshes: ResMut<Assets<Mesh>>) {
+pub fn load_assets(
+    mut commands: Commands,
+    assets: Res<AssetServer>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut images: ResMut<Assets<Image>>,
+    render_device: Option<Res<RenderDevice>>,
+) {
     commands.insert_resource(CarWheelMesh {
-        mesh: assets.load("WHEEL_Star/StaticMesh3/WHEEL_Star_SM.pskx"),
+        mesh: get_default_mesh_cache("WHEEL_Star/StaticMesh3/WHEEL_Star_SM.pskx", &assets, &mut meshes),
     });
 
     commands.insert_resource(BoostPickupGlows {
-        small: assets.load("Pickup_Boost/StaticMesh3/BoostPad_Small_02_SM.pskx"),
+        small: get_default_mesh_cache("Pickup_Boost/StaticMesh3/BoostPad_Small_02_SM.pskx", &assets, &mut meshes),
         small_hitbox: meshes.add(Cylinder::new(144. / 2., 165.)),
-        large: assets.load("Pickup_Boost/StaticMesh3/BoostPad_Large_Glow.pskx"),
+        large: get_default_mesh_cache("Pickup_Boost/StaticMesh3/BoostPad_Large_Glow.pskx", &assets, &mut meshes),
         large_hitbox: meshes.add(Cylinder::new(208. / 2., 168.)),
     });
 
     commands.insert_resource(BallAssets {
-        ball_diffuse: assets.load("Ball_Default_Textures/Texture2D/Ball_Default00_D.tga"),
-        // ball_normal: assets.load("Ball_Default_Textures/Texture2D/Ball_Default00_N.tga"),
-        // ball_occlude: assets.load("Ball_Default_Textures/Texture2D/Ball_Default00_RGB.tga"),
-        ball: assets.load("Ball_Default/StaticMesh3/Ball_DefaultBall00.pskx"),
+        ball_diffuse: get_texture_cache("Ball_Default00_D", &assets, &mut images, render_device.as_deref()),
+        // ball_normal: get_texture_cache("Ball_Default00_N", &assets),
+        // ball_occlude: get_texture_cache("Ball_Default00_RGB", &assets),
+        ball: get_default_mesh_cache("Ball_Default/StaticMesh3/Ball_DefaultBall00.pskx", &assets, &mut meshes),
     });
 }
 
@@ -149,37 +150,13 @@ pub fn get_mesh_info(name: &str, meshes: &mut Assets<Mesh>) -> Option<Vec<Handle
         }
     }
 
+    let file_name = local_path.split('/').last().unwrap();
+    let cache_path = format!("./cache/mesh/{file_name}.bin");
+
     let extension = if name.contains(".SkeletalMesh3") { "psk" } else { "pskx" };
-    let path = format!("./assets/{local_path}.{extension}");
+    let asset_path = format!("./assets/{local_path}.{extension}");
 
-    // read bytes from path
-    let Ok(mut file) = fs::File::open(&path) else {
-        warn!("Failed to open mesh {path} for {name}");
-        return None;
-    };
-
-    let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes).ok()?;
-
-    let builder = MeshBuilder::from_pskx(name, &bytes).ok()?;
-    Some(builder.build_meshes(1.).into_iter().map(|mesh| meshes.add(mesh)).collect())
-}
-
-fn load_texture(name: &str, asset_server: &AssetServer) -> Handle<Image> {
-    let mut assets_path = String::from("assets");
-    assets_path.push(MAIN_SEPARATOR);
-
-    let path = WalkDir::new("assets")
-        .into_iter()
-        .flatten()
-        .find(|x| x.file_name().to_string_lossy() == format!("{name}.tga"))
-        .unwrap()
-        .path()
-        .to_string_lossy()
-        .to_string()
-        .replace(&assets_path, "");
-
-    asset_server.load(path)
+    get_mesh_cache(cache_path, asset_path, name, meshes)
 }
 
 const DOUBLE_SIDED_MATS: [&str; 28] = [
@@ -261,6 +238,8 @@ fn retreive_material(
     asset_server: &AssetServer,
     base_color: Color,
     side: Option<Team>,
+    images: &mut Assets<Image>,
+    render_device: Option<&RenderDevice>,
 ) -> Option<StandardMaterial> {
     if name.is_empty() {
         return None;
@@ -291,47 +270,9 @@ fn retreive_material(
         }
     }
 
-    let path = format!("./assets/{pre_path}.mat");
-    let Ok(mat_file) = fs::read_to_string(&path) else {
-        error!("Failed to read {path} ({name})");
-        return None;
-    };
-
-    let props = format!("./assets/{pre_path}.props.txt");
-    let Ok(props_file) = fs::read_to_string(props) else {
-        error!("Failed to read {path} ({name})");
-        return None;
-    };
-
-    let mut diffuse = None;
-    let mut normal = None;
-    let mut other = Vec::new();
-
-    for line in mat_file.lines() {
-        // split at the first "="
-        let mut split = line.split('=');
-        if let Some(key) = split.next() {
-            let Some(value) = split.next() else {
-                error!("No value for {key} in {path}");
-                continue;
-            };
-
-            match key {
-                "Diffuse" => {
-                    diffuse = Some(value);
-                }
-                "Normal" => {
-                    normal = Some(value);
-                }
-                "Other[0]" => {
-                    other.push(value);
-                }
-                x => {
-                    warn!("Unknown key {x} is {value} in {path} ({name})");
-                }
-            }
-        }
-    }
+    let file_name = pre_path.split('/').last().unwrap();
+    let cache_path = format!("./cache/material/{file_name}.bin");
+    let mesh_material = get_material_cache(cache_path, pre_path, name)?;
 
     let mut material = StandardMaterial {
         base_color,
@@ -339,72 +280,36 @@ fn retreive_material(
         ..default()
     };
 
-    let mut alpha_mode = None;
-    let mut mask_clip_value = 0.333;
-    let mut double_sided = None;
-
-    for line in props_file.lines() {
-        let mut split = line.split(" = ");
-        if let Some(key) = split.next() {
-            let Some(value) = split.next() else {
-                continue;
-            };
-
-            if key == "TwoSided" {
-                double_sided = Some(value == "true");
-            } else if key == "BlendMode" {
-                alpha_mode = match value {
-                    "BLEND_Opaque (0)" => Some(AlphaMode::Opaque),
-                    "BLEND_Masked (1)" => Some(AlphaMode::Mask(mask_clip_value)),
-                    "BLEND_Translucent (2)" => Some(AlphaMode::Blend),
-                    "BLEND_Additive (3)" => Some(AlphaMode::Add),
-                    _ => {
-                        error!("Unknown blend mode {value} in {path} ({name})");
-                        None
-                    }
-                };
-            } else if key == "OpacityMaskClipValue" {
-                if let Ok(mask_value) = value.parse() {
-                    mask_clip_value = mask_value;
-
-                    if let Some(AlphaMode::Mask(_)) = alpha_mode {
-                        alpha_mode = Some(AlphaMode::Mask(mask_clip_value));
-                    }
-                }
-            }
-        }
-    }
-
-    if let Some(alpha_mode) = alpha_mode {
-        material.alpha_mode = alpha_mode;
+    if let Some(alpha_mode) = mesh_material.alpha_mode {
+        material.alpha_mode = alpha_mode.into();
     } else if TRANSPARENT_MATS.contains(&name) {
         material.alpha_mode = AlphaMode::Blend;
     } else if ADD_MATS.contains(&name) {
         material.alpha_mode = AlphaMode::Add;
     }
 
-    if double_sided.unwrap_or_default() || DOUBLE_SIDED_MATS.contains(&name) {
+    if mesh_material.double_sided || DOUBLE_SIDED_MATS.contains(&name) {
         material.cull_mode = None;
         material.double_sided = true;
     }
 
-    if let Some(texture_name) = diffuse {
+    if let Some(texture_name) = &mesh_material.diffuse {
         debug!("Found texture for {name}");
         if texture_name == "ForcefieldHex" {
             material.base_color = Color::srgba(0.3, 0.3, 0.3, 0.3);
         }
-        material.base_color_texture = Some(load_texture(texture_name, asset_server));
+        material.base_color_texture = Some(get_texture_cache(texture_name, asset_server, images, render_device));
     }
 
-    for texture_name in other {
+    for texture_name in mesh_material.other {
         // idealy, the textures would be combined
-        if diffuse.is_none() {
-            material.base_color_texture = Some(load_texture(texture_name, asset_server));
+        if mesh_material.diffuse.is_none() {
+            material.base_color_texture = Some(get_texture_cache(&texture_name, asset_server, images, render_device));
         }
     }
 
-    if let Some(texture_name) = normal {
-        material.normal_map_texture = Some(load_texture(texture_name, asset_server));
+    if let Some(texture_name) = mesh_material.normal {
+        material.normal_map_texture = Some(get_texture_cache(&texture_name, asset_server, images, render_device));
     }
 
     Some(material)
@@ -502,6 +407,8 @@ pub fn get_material(
     asset_server: &AssetServer,
     base_color: Option<Color>,
     side: Option<Team>,
+    images: &mut Assets<Image>,
+    render_device: Option<&RenderDevice>,
 ) -> Handle<StandardMaterial> {
     let mut material_names = MATERIALS.lock().unwrap();
 
@@ -518,7 +425,7 @@ pub fn get_material(
         .entry(key)
         .or_insert_with(|| {
             materials.add(
-                retreive_material(name, asset_server, base_color, side).unwrap_or(StandardMaterial {
+                retreive_material(name, asset_server, base_color, side, images, render_device).unwrap_or(StandardMaterial {
                     base_color,
                     metallic: 0.1,
                     cull_mode: None,
@@ -687,7 +594,12 @@ impl AssetLoader for PskxLoader {
             reader.read_to_end(&mut bytes).await?;
 
             let asset_name = load_context.path().file_name().and_then(OsStr::to_str).unwrap();
-            Ok(MeshBuilder::from_pskx(asset_name, &bytes)?.build_mesh(1.))
+            let mesh = MeshBuilder::from_pskx(asset_name, &bytes)?;
+
+            let cache_path = format!("./cache/mesh/{}.bin", asset_name.trim_end_matches(".pskx"));
+            mesh.create_cache(Path::new(&cache_path));
+
+            Ok(mesh.build_mesh())
         })
     }
 
@@ -696,178 +608,191 @@ impl AssetLoader for PskxLoader {
     }
 }
 
-const CANT_FIND_FOLDER: &str = "Couldn't find 'RocketLeague.exe' on your system! Please manually create the file 'assets.path' and add the path in plain text to your 'rocketleague/TAGame/CookedPCConsole' folder. This is needed for UModel to work.";
-const UMODEL: &str = if cfg!(windows) { ".\\umodel.exe" } else { "./umodel" };
-const OUT_DIR: &str = "./assets/";
-const OUT_DIR_VER: &str = "./assets/files.txt";
+#[cfg(debug_assertions)]
+pub mod umodel {
+    use bevy::prelude::*;
+    use rust_search::{similarity_sort, SearchBuilder};
+    use std::{
+        fs,
+        io::{self, Write},
+        panic,
+        path::Path,
+        process::{Command, Stdio},
+    };
 
-fn find_input_dir() -> String {
-    println!("Couldn't find 'assets.path' file in your base folder!");
-    print!("Try to automatically find the path? (y/n): ");
+    const CANT_FIND_FOLDER: &str = "Couldn't find 'RocketLeague.exe' on your system! Please manually create the file 'assets.path' and add the path in plain text to your 'rocketleague/TAGame/CookedPCConsole' folder. This is needed for UModel to work.";
+    const UMODEL: &str = if cfg!(windows) { ".\\umodel.exe" } else { "./umodel" };
+    const OUT_DIR: &str = "./assets/";
+    const OUT_DIR_VER: &str = "./assets/files.txt";
 
-    io::stdout().flush().unwrap();
+    fn find_input_dir() -> String {
+        println!("Couldn't find 'assets.path' file in your base folder!");
+        print!("Try to automatically find the path? (y/n): ");
 
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
-
-    if input.trim().to_lowercase() != "y" {
-        panic!("{CANT_FIND_FOLDER}");
-    }
-
-    println!("Searching system for 'RocketLeague.exe'...");
-
-    let search_input = "RocketLeague";
-    let start_dir = if cfg!(windows) { "C:\\" } else { "~" };
-
-    let mut search = SearchBuilder::default()
-        .location(start_dir)
-        .search_input(search_input)
-        .ext("exe")
-        .strict()
-        .hidden()
-        .build()
-        .collect();
-
-    similarity_sort(&mut search, search_input);
-
-    if search.is_empty() {
-        panic!("{CANT_FIND_FOLDER}");
-    }
-
-    let mut input = String::new();
-
-    let mut game_path = None;
-
-    if search.len() == 1 {
-        println!("Found (1) result!");
-    } else {
-        println!("Found ({}) results!", search.len());
-    }
-
-    for path in &search {
-        print!("{path} - use this path? (y/n): ");
         io::stdout().flush().unwrap();
+
+        let mut input = String::new();
         io::stdin().read_line(&mut input).unwrap();
 
-        if input.trim().to_lowercase() == "y" {
-            game_path = Some(path);
-            break;
+        if input.trim().to_lowercase() != "y" {
+            panic!("{CANT_FIND_FOLDER}");
+        }
+
+        println!("Searching system for 'RocketLeague.exe'...");
+
+        let search_input = "RocketLeague";
+        let start_dir = if cfg!(windows) { "C:\\" } else { "~" };
+
+        let mut search = SearchBuilder::default()
+            .location(start_dir)
+            .search_input(search_input)
+            .ext("exe")
+            .strict()
+            .hidden()
+            .build()
+            .collect();
+
+        similarity_sort(&mut search, search_input);
+
+        if search.is_empty() {
+            panic!("{CANT_FIND_FOLDER}");
+        }
+
+        let mut input = String::new();
+
+        let mut game_path = None;
+
+        if search.len() == 1 {
+            println!("Found (1) result!");
+        } else {
+            println!("Found ({}) results!", search.len());
+        }
+
+        for path in &search {
+            print!("{path} - use this path? (y/n): ");
+            io::stdout().flush().unwrap();
+            io::stdin().read_line(&mut input).unwrap();
+
+            if input.trim().to_lowercase() == "y" {
+                game_path = Some(path);
+                break;
+            }
+        }
+
+        let input_dir = Path::new(game_path.expect(CANT_FIND_FOLDER))
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("TAGame/CookedPCConsole");
+
+        assert!(
+            input_dir.is_dir(),
+            "Couldn't find 'rocketleague/TAGame/CookedPCConsole' folder! Make sure you select the correct path to a Windows version of Rocket League."
+        );
+        let input_dir = input_dir.to_string_lossy().to_string();
+
+        println!("Writing '{input_dir}' to 'assets.path'...");
+        fs::write("assets.path", &input_dir).expect("Couldn't write to 'assets.path'!");
+
+        input_dir
+    }
+
+    fn get_input_dir() -> String {
+        let input_file = fs::read_to_string("assets.path").unwrap_or_else(|_| find_input_dir());
+
+        let Some(assets_dir) = input_file.lines().next() else {
+            panic!("Your 'assets.path' file is empty! Create the file with the path to your 'rocketleague/TAGame/CookedPCConsole' folder.");
+        };
+
+        let assets_path = Path::new(assets_dir);
+        if assets_path.is_dir() && assets_path.exists() {
+            assets_dir.to_string()
+        } else {
+            panic!("Couldn't find the directory specified in your 'assets.path'!");
         }
     }
 
-    let input_dir = Path::new(game_path.expect(CANT_FIND_FOLDER))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join("TAGame/CookedPCConsole");
+    const UPK_FILES: [&str; 10] = [
+        "Startup.upk",
+        "MENU_Main_p.upk",
+        "Stadium_P.upk",
+        "HoopsStadium_P.upk",
+        "Body_MuscleCar_SF.upk",
+        "Body_Darkcar_SF.upk",
+        "Body_CarCar_SF.upk",
+        "Body_Venom_SF.upk",
+        "Body_Force_SF.upk",
+        "Body_Vanquish_SF.upk",
+    ];
 
-    assert!(
-        input_dir.is_dir(),
-        "Couldn't find 'rocketleague/TAGame/CookedPCConsole' folder! Make sure you select the correct path to a Windows version of Rocket League."
-    );
-    let input_dir = input_dir.to_string_lossy().to_string();
+    fn has_existing_assets() -> io::Result<bool> {
+        //ensure all upk files are listen in ver_file
+        let ver_file = fs::read_to_string(OUT_DIR_VER)?;
+        let file_count = ver_file.lines().filter(|line| UPK_FILES.contains(line)).count();
 
-    println!("Writing '{input_dir}' to 'assets.path'...");
-    fs::write("assets.path", &input_dir).expect("Couldn't write to 'assets.path'!");
-
-    input_dir
-}
-
-fn get_input_dir() -> String {
-    let input_file = fs::read_to_string("assets.path").unwrap_or_else(|_| find_input_dir());
-
-    let Some(assets_dir) = input_file.lines().next() else {
-        panic!("Your 'assets.path' file is empty! Create the file with the path to your 'rocketleague/TAGame/CookedPCConsole' folder.");
-    };
-
-    let assets_path = Path::new(assets_dir);
-    if assets_path.is_dir() && assets_path.exists() {
-        assets_dir.to_string()
-    } else {
-        panic!("Couldn't find the directory specified in your 'assets.path'!");
-    }
-}
-
-const UPK_FILES: [&str; 10] = [
-    "Startup.upk",
-    "MENU_Main_p.upk",
-    "Stadium_P.upk",
-    "HoopsStadium_P.upk",
-    "Body_MuscleCar_SF.upk",
-    "Body_Darkcar_SF.upk",
-    "Body_CarCar_SF.upk",
-    "Body_Venom_SF.upk",
-    "Body_Force_SF.upk",
-    "Body_Vanquish_SF.upk",
-];
-
-fn has_existing_assets() -> io::Result<bool> {
-    //ensure all upk files are listen in ver_file
-    let ver_file = fs::read_to_string(OUT_DIR_VER)?;
-    let file_count = ver_file.lines().filter(|line| UPK_FILES.contains(line)).count();
-
-    Ok(file_count == UPK_FILES.len())
-}
-
-pub fn uncook() -> io::Result<()> {
-    if has_existing_assets().unwrap_or_default() {
-        info!("Found existing assets");
-        return Ok(());
+        Ok(file_count == UPK_FILES.len())
     }
 
-    // let upk_files = fs::read_dir(&input_dir)?
-    //     .filter_map(|entry| {
-    //         let entry = entry.unwrap();
-    //         let path = entry.path();
-    //         if path.is_file() && path.extension().unwrap_or_default() == "upk" {
-    //             Some(path.file_name().unwrap().to_str().unwrap().to_string())
-    //         } else {
-    //             None
-    //         }
-    //     })
-    //     .collect::<Vec<_>>();
+    pub fn uncook() -> io::Result<()> {
+        if has_existing_assets().unwrap_or_default() {
+            info!("Found existing assets");
+            return Ok(());
+        }
 
-    if !Path::new(UMODEL).exists() {
-        println!("Couldn't find UModel! Make sure it's in the same folder as the executable. Using default assets!");
-        return Ok(());
+        // let upk_files = fs::read_dir(&input_dir)?
+        //     .filter_map(|entry| {
+        //         let entry = entry.unwrap();
+        //         let path = entry.path();
+        //         if path.is_file() && path.extension().unwrap_or_default() == "upk" {
+        //             Some(path.file_name().unwrap().to_str().unwrap().to_string())
+        //         } else {
+        //             None
+        //         }
+        //     })
+        //     .collect::<Vec<_>>();
+
+        if !Path::new(UMODEL).exists() {
+            println!("Couldn't find UModel! Make sure it's in the same folder as the executable. Using default assets!");
+            return Ok(());
+        }
+
+        let input_dir = get_input_dir();
+
+        info!("Uncooking assets from Rocket League...");
+
+        let num_files = UPK_FILES.len();
+        // let num_files = upk_files.len();
+
+        for (i, file) in UPK_FILES.into_iter().enumerate() {
+            print!("Processing file {i}/{num_files} ({file})...                       \r");
+            io::stdout().flush()?;
+
+            // call umodel to uncook all the map files
+            let mut child = Command::new(UMODEL)
+                .args([
+                    format!("-path={input_dir}"),
+                    format!("-out={OUT_DIR}"),
+                    "-game=rocketleague".to_string(),
+                    "-export".to_string(),
+                    "-nooverwrite".to_string(),
+                    "-nolightmap".to_string(),
+                    "-uncook".to_string(),
+                    "-uc".to_string(),
+                    file.to_string(),
+                ])
+                .stdout(Stdio::null())
+                .spawn()?;
+            child.wait()?;
+        }
+
+        // write each item in the list to "OUTDIR/files.txt"
+        fs::write(OUT_DIR_VER, UPK_FILES.join("\n"))?;
+
+        println!("Done processing files                                 ");
+
+        Ok(())
     }
-
-    let input_dir = get_input_dir();
-
-    info!("Uncooking assets from Rocket League...");
-
-    let num_files = UPK_FILES.len();
-    // let num_files = upk_files.len();
-
-    for (i, file) in UPK_FILES.into_iter().enumerate() {
-        print!("Processing file {i}/{num_files} ({file})...                       \r");
-        io::stdout().flush()?;
-
-        // call umodel to uncook all the map files
-        let mut child = Command::new(UMODEL)
-            .args([
-                format!("-path={input_dir}"),
-                format!("-out={OUT_DIR}"),
-                "-game=rocketleague".to_string(),
-                "-export".to_string(),
-                "-nooverwrite".to_string(),
-                "-nolightmap".to_string(),
-                "-uncook".to_string(),
-                "-uc".to_string(),
-                file.to_string(),
-            ])
-            .stdout(Stdio::null())
-            .spawn()?;
-        child.wait()?;
-    }
-
-    // write each item in the list to "OUTDIR/files.txt"
-    fs::write(OUT_DIR_VER, UPK_FILES.join("\n"))?;
-
-    println!("Done processing files                                 ");
-
-    Ok(())
 }

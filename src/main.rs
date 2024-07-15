@@ -17,12 +17,13 @@ use bevy::{
     render::texture::{ImageAddressMode, ImageSamplerDescriptor},
     window::PresentMode,
 };
-use settings::gui;
+use settings::{cache_handler, gui};
 use std::env;
 
 #[derive(Clone, Eq, PartialEq, Debug, Hash, Default, States)]
 enum GameLoadState {
     #[default]
+    Cache,
     Connect,
     FieldExtra,
     Despawn,
@@ -44,7 +45,8 @@ fn main() {
     // read the second argument and treat it as the port to bind the UDP socket to (u16)
     let secondary_port = args.next().and_then(|s| s.parse::<u16>().ok()).unwrap_or(45243);
 
-    assets::uncook().unwrap();
+    #[cfg(debug_assertions)]
+    assets::umodel::uncook().unwrap();
 
     App::new()
         .insert_resource(ServerPort {
@@ -73,6 +75,7 @@ fn main() {
                 debug: cfg!(feature = "debug"),
                 ..default()
             },
+            cache_handler::CachePlugin,
             camera::CameraPlugin,
             gui::DebugOverlayPlugin,
             mesh::FieldLoaderPlugin,

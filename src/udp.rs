@@ -9,14 +9,15 @@ use crate::{
     settings::options::{BallCam, CalcBallRot, GameSpeed, Options, PacketSmoothing, ShowTime},
     GameLoadState, ServerPort,
 };
-use ahash::HashMap;
 use bevy::{
     app::AppExit,
     asset::LoadState,
     math::{Mat3A, Vec3A},
     pbr::{NotShadowCaster, NotShadowReceiver},
     prelude::*,
+    render::renderer::RenderDevice,
     time::Stopwatch,
+    utils::HashMap,
 };
 use crossbeam_channel::{Receiver, Sender};
 use itertools::izip;
@@ -204,6 +205,8 @@ fn spawn_car(
     materials: &mut Assets<StandardMaterial>,
     asset_server: &AssetServer,
     car_wheel_mesh: &CarWheelMesh,
+    images: &mut Assets<Image>,
+    render_device: Option<&RenderDevice>,
 ) {
     let hitbox = car_info.config.hitbox_size.to_bevy();
     let base_color = get_color_from_team(car_info.team);
@@ -263,7 +266,15 @@ fn spawn_car(
             const CAR_BOOST_LENGTH: f32 = 50.;
 
             if cfg!(feature = "full_load") {
-                let mesh_materials = get_car_mesh_materials(mesh_id, materials, asset_server, base_color, car_info.team);
+                let mesh_materials = get_car_mesh_materials(
+                    mesh_id,
+                    materials,
+                    asset_server,
+                    base_color,
+                    car_info.team,
+                    images,
+                    render_device,
+                );
 
                 mesh_info
                     .into_iter()
@@ -343,6 +354,8 @@ fn get_car_mesh_materials(
     asset_server: &AssetServer,
     base_color: Color,
     side: Team,
+    images: &mut Assets<Image>,
+    render_device: Option<&RenderDevice>,
 ) -> Vec<Handle<StandardMaterial>> {
     let mesh_path = mesh_id.replace('.', "/");
     let props = fs::read_to_string(format!("./assets/{mesh_path}.props.txt")).unwrap();
@@ -373,6 +386,8 @@ fn get_car_mesh_materials(
             asset_server,
             Some(base_color),
             Some(side),
+            images,
+            render_device,
         ));
     }
     mesh_materials
@@ -829,6 +844,8 @@ fn pre_update_car(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut user_cars: ResMut<UserCarStates>,
     car_wheel_mesh: Res<CarWheelMesh>,
+    mut images: ResMut<Assets<Image>>,
+    render_device: Option<Res<RenderDevice>>,
 ) {
     correct_car_count(
         &cars,
@@ -840,6 +857,8 @@ fn pre_update_car(
         &mut materials,
         &asset_server,
         &car_wheel_mesh,
+        &mut images,
+        render_device.as_deref(),
     );
 }
 
@@ -929,6 +948,8 @@ fn correct_car_count(
     materials: &mut Assets<StandardMaterial>,
     asset_server: &AssetServer,
     car_wheel_mesh: &CarWheelMesh,
+    images: &mut Assets<Image>,
+    render_device: Option<&RenderDevice>,
 ) {
     // remove cars that no longer exist
     for (entity, car) in car_entities {
@@ -945,7 +966,16 @@ fn correct_car_count(
         .filter(|car_info| !cars.iter().any(|id| id.0 == car_info.id));
 
     for car_info in non_existant_cars {
-        spawn_car(car_info, &mut commands, meshes, materials, asset_server, car_wheel_mesh);
+        spawn_car(
+            car_info,
+            &mut commands,
+            meshes,
+            materials,
+            asset_server,
+            car_wheel_mesh,
+            images,
+            render_device,
+        );
     }
 }
 
@@ -971,12 +1001,12 @@ fn update_pads_count(
         let hitbox_material = materials.add(Color::NONE);
 
         let large_pad_mesh = match asset_server.get_load_state(&pad_glows.large) {
-            Some(LoadState::Failed(_)) | None => pad_glows.large_hitbox.clone(),
+            Some(LoadState::Failed(_)) => pad_glows.large_hitbox.clone(),
             _ => pad_glows.large.clone(),
         };
 
         let small_pad_mesh = match asset_server.get_load_state(&pad_glows.small) {
-            Some(LoadState::Failed(_)) | None => pad_glows.small_hitbox.clone(),
+            Some(LoadState::Failed(_)) => pad_glows.small_hitbox.clone(),
             _ => pad_glows.small.clone(),
         };
 

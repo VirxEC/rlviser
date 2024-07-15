@@ -8,17 +8,6 @@ Any language can communicate with the visualizer by sending UDP packets in the c
 
 ![image](https://github.com/VirxEC/rlviser/assets/35614515/47613661-754a-4549-bcef-13df399645be)
 
-### First-time Launch Setup
-
-On launch, RLViser looks for `umodel.exe` or `umodel` binaries in the same directory - it will pull the assets needed for you.
-
-You should have [UModel](https://www.gildor.org/en/projects/umodel) so the visualizer can uncook the game assets into the `assets/` directory.
-
-Precompiled versions of UModel for Windows and Linux are available on the website linked above, but Linux users may have to compile it themself.
-
-If you don't include UModel, the visualizer will use some minimalist default assets.
-Certain things may not be present due to the lack of assets, but the field, cars, and ball are visible.
-
 ### Usage
 
 To see an example of how to communicate with the visualizer, see the [example](https://github.com/VirxEC/rocketsim-rs/blob/master/examples/rlviser_socket.rs) in the [rocketsim-rs](https://github.com/VirxEC/rocketsim-rs) repository.

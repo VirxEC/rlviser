@@ -8,3 +8,4 @@ umodel*
 *.csv
 settings.txt
 /collision_meshes
+/cache
