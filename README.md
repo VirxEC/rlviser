@@ -10,7 +10,7 @@ Any language can communicate with the visualizer by sending UDP packets in the c
 
 ### First-time Launch Setup
 
-On launch rlviser looks for `ulmodel.exe` or `ulmodel` binaries in the same directory, it will pull the assets needed for you.
+On launch, RLViser looks for `umodel.exe` or `umodel` binaries in the same directory - it will pull the assets needed for you.
 
 You should have [UModel](https://www.gildor.org/en/projects/umodel) so the visualizer can uncook the game assets into the `assets/` directory.
 
