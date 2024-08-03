@@ -66,6 +66,9 @@ impl Car {
     }
 }
 
+#[derive(Component)]
+pub struct CarBody;
+
 #[derive(Resource)]
 struct DirectorTimer(Timer);
 
@@ -276,30 +279,29 @@ fn spawn_car(
                     render_device,
                 );
 
-                mesh_info
-                    .into_iter()
-                    .zip(mesh_materials)
-                    .map(|(mesh, material)| PbrBundle {
-                        mesh,
-                        material,
-                        ..default()
-                    })
-                    .for_each(|bundle| {
-                        parent.spawn(bundle);
-                    });
+                for (mesh, material) in mesh_info.into_iter().zip(mesh_materials) {
+                    parent.spawn((
+                        CarBody,
+                        PbrBundle {
+                            mesh,
+                            material,
+                            ..default()
+                        },
+                    ));
+                }
             } else {
                 let material = materials.add(base_color);
 
-                mesh_info
-                    .into_iter()
-                    .map(|mesh| PbrBundle {
-                        mesh,
-                        material: material.clone(),
-                        ..default()
-                    })
-                    .for_each(|bundle| {
-                        parent.spawn(bundle);
-                    });
+                for mesh in mesh_info {
+                    parent.spawn((
+                        CarBody,
+                        PbrBundle {
+                            mesh,
+                            material: material.clone(),
+                            ..default()
+                        },
+                    ));
+                }
             }
 
             parent.spawn((
@@ -707,10 +709,10 @@ fn update_car(states: Res<GameStates>, mut cars: Query<(&mut Transform, &Car)>) 
 
 fn update_car_extra(
     states: Res<GameStates>,
-    car_entities: Query<(Entity, &Car)>,
     mut cars: Query<(&Car, &Children)>,
     mut car_boosts: Query<&Handle<StandardMaterial>, With<CarBoost>>,
-    mut car_materials: Query<&Handle<StandardMaterial>, (With<Car>, Without<CarBoost>)>,
+    mut car_materials: Query<&Handle<StandardMaterial>, With<CarBody>>,
+    mut car_wheels: Query<&Handle<StandardMaterial>, With<CarWheel>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut last_boost_states: Local<Vec<u32>>,
     mut last_demoed_states: Local<Vec<u32>>,
@@ -721,21 +723,39 @@ fn update_car_extra(
             continue;
         };
 
-        let is_demoed = target_car.state.is_demoed || target_car.state.demo_respawn_timer > 0.;
+        let is_demoed = target_car.state.is_demoed || target_car.state.demo_respawn_timer > f32::EPSILON;
         let last_demoed = last_demoed_states.iter().any(|&id| id == car.id());
 
         if is_demoed != last_demoed {
-            for (entity, car) in &car_entities {
-                if car.0 == target_car.id {
-                    let material_handle = car_materials.get_mut(entity).unwrap();
-                    let material = materials.get_mut(material_handle).unwrap();
-                    if is_demoed {
-                        material.base_color.set_alpha(0.);
-                        last_demoed_states.push(car.id());
-                    } else {
-                        material.base_color.set_alpha(1.);
-                        last_demoed_states.retain(|&id| id != car.id());
-                    }
+            for child in children {
+                let Ok(material_handle) = car_materials.get_mut(*child) else {
+                    continue;
+                };
+
+                let material = materials.get_mut(material_handle).unwrap();
+                if is_demoed {
+                    material.base_color.set_alpha(0.);
+                    material.alpha_mode = AlphaMode::Add;
+                    last_demoed_states.push(car.id());
+                } else {
+                    material.alpha_mode = AlphaMode::Opaque;
+                    last_demoed_states.retain(|&id| id != car.id());
+                }
+            }
+
+            for child in children {
+                let Ok(material_handle) = car_wheels.get_mut(*child) else {
+                    continue;
+                };
+
+                let material = materials.get_mut(material_handle).unwrap();
+                if is_demoed {
+                    material.base_color.set_alpha(0.);
+                    material.alpha_mode = AlphaMode::Add;
+                    last_demoed_states.push(car.id());
+                } else {
+                    material.alpha_mode = AlphaMode::Opaque;
+                    last_demoed_states.retain(|&id| id != car.id());
                 }
             }
         }
@@ -763,6 +783,8 @@ fn update_car_extra(
                     material.base_color.set_alpha(0.0);
                     last_boost_states.retain(|&id| id != car.id());
                 }
+
+                break;
             }
         }
     }

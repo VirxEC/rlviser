@@ -457,6 +457,11 @@ fn set_user_car_state(
                 );
                 game_states.next.cars[car_index].state.demo_respawn_timer =
                     game_states.current.cars[car_index].state.demo_respawn_timer;
+
+                if game_states.current.cars[car_index].state.demo_respawn_timer != 0. {
+                    game_states.current.cars[car_index].state.is_demoed = true;
+                    game_states.next.cars[car_index].state.is_demoed = true;
+                }
             }
             SetCarStateAmount::All => {
                 set_vec3_from_arr_str(&mut game_states.current.cars[car_index].state.pos, &user_car.pos);
@@ -493,6 +498,11 @@ fn set_user_car_state(
                 );
                 game_states.next.cars[car_index].state.demo_respawn_timer =
                     game_states.current.cars[car_index].state.demo_respawn_timer;
+
+                if game_states.current.cars[car_index].state.demo_respawn_timer != 0. {
+                    game_states.current.cars[car_index].state.is_demoed = true;
+                    game_states.next.cars[car_index].state.is_demoed = true;
+                }
             }
         }
     }
