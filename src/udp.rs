@@ -532,7 +532,7 @@ fn start_udp_recv_handler(socket: UdpSocket, commands: &mut Commands) {
                     }
 
                     let new_tick_count = GameState::read_tick_count(&initial_state_buffer);
-                    if new_tick_count > 1 && last_game_state.tick_count > new_tick_count {
+                    if new_tick_count > 15 && last_game_state.tick_count > new_tick_count {
                         drop(socket.recv_from(&mut [0]));
                         return;
                     }
@@ -644,6 +644,7 @@ fn apply_udp_updates(
                 }
             },
             UdpUpdate::Speed(speed) => {
+                last_packet_time_elapsed.reset();
                 speed_update.send(SpeedUpdate(speed));
             }
             UdpUpdate::Paused(paused) => {
@@ -1361,6 +1362,10 @@ fn extrapolate_packet(mut states: ResMut<GameStates>, game_speed: Res<GameSpeed>
 fn interpolate_calc_next_ball_rot(mut states: ResMut<GameStates>) {
     states.current.ball.rot_mat = states.last.ball.rot_mat;
 
+    if states.next.tick_count < states.last.tick_count {
+        return;
+    }
+    
     let delta_time = (states.next.tick_count - states.last.tick_count) as f32 / states.next.tick_rate;
 
     let ball_ang_vel = states.last.ball.ang_vel * delta_time;
@@ -1386,6 +1391,12 @@ fn interpolate_packets(
     packet_time_elapsed.tick(time.delta());
 
     let delta_time = packet_time_elapsed.elapsed_secs();
+
+    // Don't start extrapolating forever
+    if delta_time > 2. {
+        return;
+    }
+
     let lerp_amount = delta_time / last_packet_time_elapsed.avg();
 
     states.current.ball.pos = states.last.ball.pos.lerp(states.next.ball.pos, lerp_amount);
@@ -1493,24 +1504,37 @@ impl GameStates {
 struct PacketTimeElapsed(Stopwatch);
 
 #[derive(Resource, Default)]
-struct LastPacketTimesElapsed {
+pub struct LastPacketTimesElapsed {
     times: [f32; 15],
+    start: usize,
     len: usize,
 }
 
 impl LastPacketTimesElapsed {
     fn push(&mut self, time: f32) {
         if self.len == self.times.len() {
-            self.times.rotate_left(1);
-            self.times[self.len - 1] = time;
+            self.times[self.start] = time;
+            self.start = (self.start + 1) % self.times.len();
         } else {
             self.times[self.len] = time;
             self.len += 1;
         }
     }
 
+    pub fn reset(&mut self) {
+        self.len = 0;
+    }
+
     fn avg(&self) -> f32 {
-        self.times.iter().take(self.len).sum::<f32>() / self.len as f32
+        if self.len == 0 {
+            return 1. / 120.;
+        }
+
+        let mut sum = 0.;
+        for i in 0..self.len {
+            sum += self.times[(self.start + i) % self.len];
+        }
+        sum / self.len as f32
     }
 }
 

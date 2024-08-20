@@ -5,7 +5,7 @@ use crate::{
     camera::{DaylightOffset, PrimaryCamera, Sun},
     renderer::{DoRendering, RenderGroups},
     spectator::SpectatorSettings,
-    udp::{Connection, PausedUpdate, SendableUdp, SpeedUpdate},
+    udp::{Connection, LastPacketTimesElapsed, PausedUpdate, SendableUdp, SpeedUpdate},
 };
 use bevy::{
     pbr::DirectionalLightShadowMap,
@@ -277,6 +277,7 @@ fn update_speed(
     options: Res<Options>,
     socket: Res<Connection>,
     mut last_packet_send: ResMut<PacketSendTime>,
+    mut last_packet_times: ResMut<LastPacketTimesElapsed>,
     time: Res<Time>,
     mut global: ResMut<GameSpeed>,
 ) {
@@ -286,6 +287,7 @@ fn update_speed(
         return;
     }
 
+    last_packet_times.reset();
     socket.send(SendableUdp::Speed(options.game_speed)).unwrap();
     global.speed = options.game_speed;
 }
