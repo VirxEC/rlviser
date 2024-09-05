@@ -11,7 +11,6 @@ use bevy::{
     utils::ConditionalSendFuture,
 };
 use byteorder::{LittleEndian, ReadBytesExt};
-use once_cell::sync::Lazy;
 use std::{
     collections::HashMap,
     ffi::OsStr,
@@ -399,7 +398,7 @@ fn get_default_material(name: &str, side: Option<Team>) -> Option<StandardMateri
 }
 
 type MaterialsKey = (&'static str, Option<Team>);
-static MATERIALS: Mutex<Lazy<HashMap<MaterialsKey, Handle<StandardMaterial>>>> = Mutex::new(Lazy::new(HashMap::new));
+static MATERIALS: Mutex<Option<HashMap<MaterialsKey, Handle<StandardMaterial>>>> = Mutex::new(None);
 
 pub fn get_material(
     name: &str,
@@ -410,7 +409,8 @@ pub fn get_material(
     images: &mut Assets<Image>,
     render_device: Option<&RenderDevice>,
 ) -> Handle<StandardMaterial> {
-    let mut material_names = MATERIALS.lock().unwrap();
+    let mut material_names_lock = MATERIALS.lock().unwrap();
+    let material_names = material_names_lock.get_or_insert_with(HashMap::new);
 
     let name: &'static str = Box::leak(Box::from(name));
     let key = (name, side);

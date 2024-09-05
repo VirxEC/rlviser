@@ -1365,7 +1365,7 @@ fn interpolate_calc_next_ball_rot(mut states: ResMut<GameStates>) {
     if states.next.tick_count < states.last.tick_count {
         return;
     }
-    
+
     let delta_time = (states.next.tick_count - states.last.tick_count) as f32 / states.next.tick_rate;
 
     let ball_ang_vel = states.last.ball.ang_vel * delta_time;

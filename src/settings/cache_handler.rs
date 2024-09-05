@@ -8,7 +8,6 @@ use bevy::{
     },
     utils::HashMap,
 };
-use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{copy, create_dir_all, read_to_string, File},
@@ -18,9 +17,9 @@ use std::{
 };
 use walkdir::WalkDir;
 
-static MESHES: RwLock<Lazy<HashMap<String, Vec<Handle<Mesh>>>>> = RwLock::new(Lazy::new(HashMap::new));
-static MESH_MATERIALS: RwLock<Lazy<HashMap<String, Vec<MeshMaterial>>>> = RwLock::new(Lazy::new(HashMap::new));
-static TEXTURES: RwLock<Lazy<HashMap<String, Handle<Image>>>> = RwLock::new(Lazy::new(HashMap::new));
+static MESHES: RwLock<Option<HashMap<String, Vec<Handle<Mesh>>>>> = RwLock::new(None);
+static MESH_MATERIALS: RwLock<Option<HashMap<String, Vec<MeshMaterial>>>> = RwLock::new(None);
+static TEXTURES: RwLock<Option<HashMap<String, Handle<Image>>>> = RwLock::new(None);
 
 #[cfg(debug_assertions)]
 mod cache {
@@ -122,7 +121,11 @@ pub fn get_default_mesh_cache(path: &'static str, assets: &AssetServer, meshes: 
     warn!("Cache not found for mesh {name}");
 
     let handle = assets.load(path);
-    MESHES.write().unwrap().insert(name.to_string(), vec![handle.clone()]);
+    MESHES
+        .write()
+        .unwrap()
+        .get_or_insert_with(HashMap::new)
+        .insert(name.to_string(), vec![handle.clone()]);
 
     handle
 }
@@ -168,17 +171,14 @@ pub fn get_mesh_cache<P: AsRef<Path>>(
 }
 
 fn check_mesh_cache(name: &str) -> Option<Vec<Handle<Mesh>>> {
-    MESHES.read().ok()?.get(name).cloned()
+    MESHES.read().ok()?.as_ref().and_then(|map| map.get(name).cloned())
 }
 
 fn insert_mesh_cache(name: String, builder: MeshBuilder, meshes: &mut Assets<Mesh>) -> Vec<Handle<Mesh>> {
     let meshes: Vec<_> = builder.build_meshes().into_iter().map(|mesh| meshes.add(mesh)).collect();
 
-    let Ok(mut map) = MESHES.write() else {
-        return meshes;
-    };
-
-    map.insert(name, meshes.clone());
+    let mut map_lock = MESHES.write().unwrap();
+    map_lock.get_or_insert_with(HashMap::new).insert(name, meshes.clone());
 
     meshes
 }
@@ -322,7 +322,7 @@ impl MeshMaterial {
 pub fn get_material_cache<P: AsRef<Path>>(cache_path: P, asset_path: P, name: &str) -> Option<MeshMaterial> {
     fn inner(cache_path: &Path, asset_path: &Path, name: &str) -> Option<MeshMaterial> {
         let name = name.split('.').last().unwrap();
-        if let Some(materials) = MESH_MATERIALS.read().ok()?.get(name) {
+        if let Some(materials) = MESH_MATERIALS.read().ok()?.as_ref().and_then(|map| map.get(name)) {
             return Some(materials[0].clone());
         }
 
@@ -375,7 +375,7 @@ pub fn get_texture_cache(
     images: &mut Assets<Image>,
     render_device: Option<&RenderDevice>,
 ) -> Handle<Image> {
-    if let Some(texture) = TEXTURES.read().unwrap().get(name) {
+    if let Some(texture) = TEXTURES.read().unwrap().as_ref().and_then(|map| map.get(name)) {
         return texture.clone();
     }
 
