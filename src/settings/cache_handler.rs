@@ -34,7 +34,7 @@ mod cache {
 #[cfg(not(debug_assertions))]
 mod cache {
     use crate::GameLoadState;
-    use bevy::{prelude::*, render::renderer::RenderDevice};
+    use bevy::{prelude::*, render::renderer::RenderDevice, utils::HashMap};
     use include_flate::flate;
     use std::io::Cursor;
     use zip::ZipArchive;
@@ -50,9 +50,13 @@ mod cache {
         let seeker = Cursor::new(&*CACHED_ASSETS);
         let mut archive = ZipArchive::new(seeker).unwrap();
 
-        let mut mesh_cache = super::MESHES.write().unwrap();
-        let mut material_cache = super::MESH_MATERIALS.write().unwrap();
-        let mut texture_cache = super::TEXTURES.write().unwrap();
+        let mut mesh_cache_lock = super::MESHES.write().unwrap();
+        let mut material_cache_lock = super::MESH_MATERIALS.write().unwrap();
+        let mut texture_cache_lock = super::TEXTURES.write().unwrap();
+
+        let mesh_cache = mesh_cache_lock.get_or_insert_with(HashMap::new);
+        let material_cache = material_cache_lock.get_or_insert_with(HashMap::new);
+        let texture_cache = texture_cache_lock.get_or_insert_with(HashMap::new);
 
         for i in 0..archive.len() {
             let file = archive.by_index(i).unwrap();
