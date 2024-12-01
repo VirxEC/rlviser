@@ -35,15 +35,14 @@ use crate::{
     mesh::{BoostPadClicked, CarClicked, ChangeCarPos},
     settings::{options::UiOverlayScale, state_setting::UserCarStates},
 };
-
 use bevy::window::PrimaryWindow;
-use bevy_mod_picking::{backends::raycast::RaycastPickable, prelude::*};
 use bevy_vector_shapes::prelude::*;
 
 #[cfg(debug_assertions)]
 use crate::camera::EntityName;
 
 #[derive(Component)]
+#[require(Mesh3d, MeshMaterial3d<StandardMaterial>, NotShadowCaster, NotShadowReceiver)]
 pub struct BoostPadI(u64);
 
 impl BoostPadI {
@@ -54,9 +53,11 @@ impl BoostPadI {
 }
 
 #[derive(Component)]
+#[require(Mesh3d, MeshMaterial3d<StandardMaterial>)]
 pub struct Ball;
 
 #[derive(Component)]
+#[require(Mesh3d, MeshMaterial3d<StandardMaterial>)]
 pub struct Car(u32);
 
 impl Car {
@@ -67,6 +68,7 @@ impl Car {
 }
 
 #[derive(Component)]
+#[require(Mesh3d, MeshMaterial3d<StandardMaterial>)]
 pub struct CarBody;
 
 #[derive(Resource)]
@@ -155,7 +157,6 @@ const CAR_BODIES: [&str; NUM_CAR_BODIES] = [
 ];
 
 #[cfg(debug_assertions)]
-
 const CAR_BODY_NAMES: [&str; NUM_CAR_BODIES] = [
     "octane_body",
     "dominus_body",
@@ -187,9 +188,11 @@ const fn get_color_from_team(team: Team) -> Color {
 }
 
 #[derive(Component)]
+#[require(Mesh3d, MeshMaterial3d<StandardMaterial>)]
 pub struct CarBoost;
 
 #[derive(Component)]
+#[require(Mesh3d, MeshMaterial3d<StandardMaterial>)]
 struct CarWheel {
     front: bool,
     left: bool,
@@ -199,6 +202,31 @@ impl CarWheel {
     fn new(front: bool, left: bool) -> Self {
         Self { front, left }
     }
+}
+
+// pub fn target_insert<E, C: Component + Default>(mut trigger: Trigger<E>, mut commands: Commands) {
+//     let entity = trigger.entity();
+//     commands.entity(entity).insert(C::default());
+//     trigger.propagate(false);
+// }
+
+pub fn target_insert<E>(component: impl Component + Clone) -> impl FnMut(Trigger<E>, Commands) {
+    move |mut trigger, mut commands| {
+        let entity = trigger.entity();
+        commands.entity(entity).insert(component.clone());
+        trigger.propagate(false);
+    }
+}
+
+pub fn target_remove<E, C: Component>(mut trigger: Trigger<E>, mut commands: Commands) {
+    let entity = trigger.entity();
+    trigger.propagate(false);
+    commands.entity(entity).remove::<C>();
+}
+
+pub fn send_event<E: Clone, S: Event + From<E>>(mut trigger: Trigger<E>, mut events: EventWriter<S>) {
+    trigger.propagate(false);
+    events.send(S::from(trigger.event().to_owned()));
 }
 
 fn spawn_car(
@@ -247,24 +275,20 @@ fn spawn_car(
     commands
         .spawn((
             Car(car_info.id),
-            PbrBundle {
-                mesh: meshes.add(Cuboid::new(hitbox.x * 2., hitbox.y * 3., hitbox.z * 2.)),
-                material: materials.add(StandardMaterial {
-                    base_color: Color::NONE,
-                    alpha_mode: AlphaMode::Add,
-                    unlit: true,
-                    ..default()
-                }),
+            Mesh3d(meshes.add(Cuboid::new(hitbox.x * 2., hitbox.y * 3., hitbox.z * 2.))),
+            MeshMaterial3d(materials.add(StandardMaterial {
+                base_color: Color::NONE,
+                alpha_mode: AlphaMode::Add,
+                unlit: true,
                 ..default()
-            },
+            })),
             #[cfg(debug_assertions)]
             EntityName::from(name),
-            RaycastPickable,
-            On::<Pointer<Over>>::target_insert(HighlightedEntity),
-            On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
-            On::<Pointer<Drag>>::send_event::<ChangeCarPos>(),
-            On::<Pointer<Click>>::send_event::<CarClicked>(),
         ))
+        .observe(target_insert::<Pointer<Over>>(HighlightedEntity))
+        .observe(target_remove::<Pointer<Out>, HighlightedEntity>)
+        .observe(send_event::<Pointer<Drag>, ChangeCarPos>)
+        .observe(send_event::<Pointer<Click>, CarClicked>)
         .with_children(|parent| {
             const CAR_BOOST_LENGTH: f32 = 50.;
 
@@ -280,44 +304,27 @@ fn spawn_car(
                 );
 
                 for (mesh, material) in mesh_info.into_iter().zip(mesh_materials) {
-                    parent.spawn((
-                        CarBody,
-                        PbrBundle {
-                            mesh,
-                            material,
-                            ..default()
-                        },
-                    ));
+                    parent.spawn((CarBody, Mesh3d(mesh), MeshMaterial3d(material)));
                 }
             } else {
                 let material = materials.add(base_color);
 
                 for mesh in mesh_info {
-                    parent.spawn((
-                        CarBody,
-                        PbrBundle {
-                            mesh,
-                            material: material.clone(),
-                            ..default()
-                        },
-                    ));
+                    parent.spawn((CarBody, Mesh3d(mesh), MeshMaterial3d(material.clone())));
                 }
             }
 
             parent.spawn((
-                PbrBundle {
-                    mesh: meshes.add(Cylinder::new(10., CAR_BOOST_LENGTH)),
-                    material: materials.add(StandardMaterial {
-                        base_color: Color::srgba(1., 1., 0., 0.),
-                        alpha_mode: AlphaMode::Add,
-                        cull_mode: None,
-                        ..default()
-                    }),
-                    transform: Transform {
-                        translation: Vec3::new((hitbox.x + CAR_BOOST_LENGTH) / -2., hitbox.y / 2., 0.),
-                        rotation: Quat::from_rotation_z(PI / 2.),
-                        ..default()
-                    },
+                Mesh3d(meshes.add(Cylinder::new(10., CAR_BOOST_LENGTH))),
+                MeshMaterial3d(materials.add(StandardMaterial {
+                    base_color: Color::srgba(1., 1., 0., 0.),
+                    alpha_mode: AlphaMode::Add,
+                    cull_mode: None,
+                    ..default()
+                })),
+                Transform {
+                    translation: Vec3::new((hitbox.x + CAR_BOOST_LENGTH) / -2., hitbox.y / 2., 0.),
+                    rotation: Quat::from_rotation_z(PI / 2.),
                     ..default()
                 },
                 CarBoost,
@@ -333,14 +340,11 @@ fn spawn_car(
                     let offset = Vec3::new(1., 1., 1. - (2. * side as f32));
 
                     parent.spawn((
-                        PbrBundle {
-                            mesh: car_wheel_mesh.mesh.clone(),
-                            material: wheel_material.clone(),
-                            transform: Transform {
-                                translation: wheel_pair.connection_point_offset.to_bevy() * offset + wheel_offset,
-                                rotation: Quat::from_rotation_x(PI * side as f32),
-                                ..default()
-                            },
+                        Mesh3d(car_wheel_mesh.mesh.clone()),
+                        MeshMaterial3d(wheel_material.clone()),
+                        Transform {
+                            translation: wheel_pair.connection_point_offset.to_bevy() * offset + wheel_offset,
+                            rotation: Quat::from_rotation_x(PI * side as f32),
                             ..default()
                         },
                         CarWheel::new(i == 0, side == 0),
@@ -711,9 +715,9 @@ fn update_car(states: Res<GameStates>, mut cars: Query<(&mut Transform, &Car)>) 
 fn update_car_extra(
     states: Res<GameStates>,
     mut cars: Query<(&Car, &Children)>,
-    mut car_boosts: Query<&Handle<StandardMaterial>, With<CarBoost>>,
-    mut car_materials: Query<&Handle<StandardMaterial>, With<CarBody>>,
-    mut car_wheels: Query<&Handle<StandardMaterial>, With<CarWheel>>,
+    mut car_boosts: Query<&MeshMaterial3d<StandardMaterial>, With<CarBoost>>,
+    mut car_materials: Query<&MeshMaterial3d<StandardMaterial>, With<CarBody>>,
+    mut car_wheels: Query<&MeshMaterial3d<StandardMaterial>, With<CarWheel>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut last_boost_states: Local<Vec<u32>>,
     mut last_demoed_states: Local<Vec<u32>>,
@@ -806,7 +810,7 @@ fn update_car_wheels(
     let delta_time = if key.pressed(KeyCode::KeyI) {
         game_speed.speed / states.current.tick_rate
     } else {
-        time.delta_seconds() * game_speed.speed
+        time.delta_secs() * game_speed.speed
     };
 
     calc_car_wheel_update(&states.current, cars, car_wheels, delta_time);
@@ -1021,7 +1025,13 @@ fn update_pads_count(
         for (entity, _) in pads.iter() {
             commands.entity(entity).despawn_recursive();
         }
-        let hitbox_material = materials.add(Color::NONE);
+
+        let hitbox_material = materials.add(StandardMaterial {
+            base_color: Color::NONE,
+            alpha_mode: AlphaMode::Add,
+            unlit: true,
+            ..default()
+        });
 
         let large_pad_mesh = match asset_server.get_load_state(&pad_glows.large) {
             Some(LoadState::Failed(_)) => pad_glows.large_hitbox.clone(),
@@ -1105,33 +1115,26 @@ fn update_pads_count(
             commands
                 .spawn((
                     BoostPadI(code),
-                    PbrBundle {
-                        mesh: visual_mesh,
-                        transform,
-                        material: materials.add(StandardMaterial {
+                    Mesh3d(hitbox),
+                    MeshMaterial3d(hitbox_material.clone()),
+                    transform,
+                    #[cfg(debug_assertions)]
+                    EntityName::from("generic_boost_pad"),
+                ))
+                .observe(target_insert::<Pointer<Over>>(HighlightedEntity))
+                .observe(target_remove::<Pointer<Out>, HighlightedEntity>)
+                .observe(send_event::<Pointer<Click>, BoostPadClicked>)
+                .with_children(|parent| {
+                    parent.spawn((
+                        Mesh3d(visual_mesh),
+                        MeshMaterial3d(materials.add(StandardMaterial {
                             base_color: Color::srgba(0.9, 0.9, 0.1, 0.6),
                             alpha_mode: AlphaMode::Add,
                             double_sided: true,
                             cull_mode: None,
                             ..default()
-                        }),
-                        ..default()
-                    },
-                    #[cfg(debug_assertions)]
-                    EntityName::from("generic_boost_pad"),
-                    RaycastPickable,
-                    On::<Pointer<Over>>::target_insert(HighlightedEntity),
-                    On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
-                    On::<Pointer<Click>>::send_event::<BoostPadClicked>(),
-                    NotShadowCaster,
-                    NotShadowReceiver,
-                ))
-                .with_children(|parent| {
-                    parent.spawn(PbrBundle {
-                        mesh: hitbox,
-                        material: hitbox_material.clone(),
-                        ..default()
-                    });
+                        })),
+                    ));
                 });
         }
     }
@@ -1139,7 +1142,8 @@ fn update_pads_count(
 
 fn update_pad_colors(
     states: Res<GameStates>,
-    query: Query<(&Handle<StandardMaterial>, &BoostPadI)>,
+    query: Query<(&Children, &BoostPadI)>,
+    mats_query: Query<&MeshMaterial3d<StandardMaterial>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let morton_generator = Morton::default();
@@ -1153,7 +1157,7 @@ fn update_pad_colors(
         .collect::<Vec<_>>();
     radsort::sort_by_key(&mut sorted_pads, |(_, code)| *code);
 
-    for (handle, id) in query.iter() {
+    for (children, id) in query.iter() {
         let index = sorted_pads.binary_search_by_key(&id.id(), |(_, code)| *code).unwrap();
         let alpha = if states.current.pads[sorted_pads[index].0].state.is_active {
             0.6
@@ -1162,6 +1166,8 @@ fn update_pad_colors(
             0.0
         };
 
+        let child = children.first().unwrap();
+        let handle = mats_query.get(*child).unwrap();
         materials.get_mut(handle).unwrap().base_color.set_alpha(alpha);
     }
 }
@@ -1172,7 +1178,7 @@ fn update_boost_meter(
     camera: Query<&PrimaryCamera>,
     windows: Query<&Window, With<PrimaryWindow>>,
     mut painter: ShapePainter,
-    mut boost_amount: Query<(&mut Text, &mut Style), With<BoostAmount>>,
+    mut boost_amount: Query<(&mut Text, &mut Node, &mut TextFont), With<BoostAmount>>,
     mut was_last_director: Local<bool>,
 ) {
     let id = match camera.single() {
@@ -1198,7 +1204,7 @@ fn update_boost_meter(
     if id == 0 {
         if *was_last_director {
             *was_last_director = false;
-            boost_amount.single_mut().0.sections[0].value.clear();
+            boost_amount.single_mut().0 .0.clear();
         }
 
         return;
@@ -1229,12 +1235,12 @@ fn update_boost_meter(
 
     painter.reset();
 
-    let (mut text_display, mut style) = boost_amount.single_mut();
+    let (mut text_display, mut style, mut font) = boost_amount.single_mut();
     style.right = Val::Px((BOOST_INDICATOR_POS.x - 25.) * ui_scale.scale);
     style.bottom = Val::Px(BOOST_INDICATOR_POS.y * ui_scale.scale);
 
-    text_display.sections[0].value = car_state.boost.round().to_string();
-    text_display.sections[0].style.font_size = BOOST_INDICATOR_FONT_SIZE * ui_scale.scale;
+    **text_display = car_state.boost.round().to_string();
+    font.font_size = BOOST_INDICATOR_FONT_SIZE * ui_scale.scale;
 
     *was_last_director = true;
 }
@@ -1248,7 +1254,7 @@ fn update_time(states: Res<GameStates>, show_time: Res<ShowTime>, mut text_displ
     const YEAR: u64 = 365 * DAY;
 
     if !show_time.enabled {
-        text_display.single_mut().sections[0].value = String::new();
+        **text_display.single_mut() = String::new();
         return;
     }
 
@@ -1297,7 +1303,7 @@ fn update_time(states: Res<GameStates>, show_time: Res<ShowTime>, mut text_displ
 
     time_segments.push(format!("{seconds:02}s"));
 
-    text_display.single_mut().sections[0].value = time_segments.join(":");
+    **text_display.single_mut() = time_segments.join(":");
 }
 
 fn update_field(states: Res<GameStates>, mut game_mode: ResMut<GameMode>, mut load_state: ResMut<NextState<GameLoadState>>) {
@@ -1321,7 +1327,7 @@ fn update_ball_rotation(
     let delta_time = if matches!(*packet_smoothing, PacketSmoothing::None) {
         (states.current.tick_count - *last_game_tick) as f32 / states.current.tick_rate
     } else {
-        time.delta_seconds() * game_speed.speed
+        time.delta_secs() * game_speed.speed
     };
 
     *last_game_tick = states.current.tick_count;
@@ -1340,7 +1346,7 @@ fn extrapolate_packet(mut states: ResMut<GameStates>, game_speed: Res<GameSpeed>
         return;
     }
 
-    let delta_time = time.delta_seconds() * game_speed.speed;
+    let delta_time = time.delta_secs() * game_speed.speed;
 
     let ball_pos = states.current.ball.vel * delta_time;
     states.current.ball.pos += ball_pos;

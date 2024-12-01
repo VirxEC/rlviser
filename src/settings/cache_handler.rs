@@ -1,11 +1,8 @@
 use crate::{assets::load_assets, mesh::MeshBuilder, GameLoadState};
 use bevy::{
+    image::{CompressedImageFormats, ImageSampler, ImageType},
     prelude::*,
-    render::{
-        render_asset::RenderAssetUsages,
-        renderer::RenderDevice,
-        texture::{CompressedImageFormats, ImageSampler, ImageType},
-    },
+    render::{render_asset::RenderAssetUsages, renderer::RenderDevice},
     utils::HashMap,
 };
 use serde::{Deserialize, Serialize};

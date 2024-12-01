@@ -1,7 +1,7 @@
 use crate::{
     assets::*,
     rocketsim::{GameMode, Team},
-    udp::{Ball, ToBevyVec, ToBevyVecFlat},
+    udp::{send_event, target_insert, target_remove, Ball, ToBevyVec, ToBevyVecFlat},
     GameLoadState,
 };
 use bevy::{
@@ -35,7 +35,6 @@ use crate::{
     settings::state_setting::{EnableBallInfo, EnableCarInfo, EnablePadInfo, UserCarStates, UserPadStates},
     udp::{BoostPadI, Car, Connection, GameStates, SendableUdp},
 };
-use bevy_mod_picking::{backends::raycast::RaycastPickable, prelude::*};
 use std::time::Duration;
 
 #[cfg(feature = "team_goal_barriers")]
@@ -58,14 +57,14 @@ impl Plugin for FieldLoaderPlugin {
                 .add_systems(
                     Update,
                     (
-                        handle_ball_clicked.run_if(on_event::<BallClicked>()),
-                        handle_car_clicked.run_if(on_event::<CarClicked>()),
-                        handle_boost_pad_clicked.run_if(on_event::<BoostPadClicked>()),
+                        handle_ball_clicked.run_if(on_event::<BallClicked>),
+                        handle_car_clicked.run_if(on_event::<CarClicked>),
+                        handle_boost_pad_clicked.run_if(on_event::<BoostPadClicked>),
                         (
                             advance_stopwatch,
                             (
-                                change_ball_pos.run_if(on_event::<ChangeBallPos>()),
-                                change_car_pos.run_if(on_event::<ChangeCarPos>()),
+                                change_ball_pos.run_if(on_event::<ChangeBallPos>),
+                                change_car_pos.run_if(on_event::<ChangeCarPos>),
                             )
                                 .run_if(|last_state_set: Res<StateSetTime>| {
                                     // Limit state setting to avoid bogging down the simulation with state setting requests
@@ -95,8 +94,8 @@ fn advance_stopwatch(mut last_state_set: ResMut<StateSetTime>, time: Res<Time>) 
 #[derive(Event)]
 pub struct ChangeBallPos(PointerButton);
 
-impl From<ListenerInput<Pointer<Drag>>> for ChangeBallPos {
-    fn from(event: ListenerInput<Pointer<Drag>>) -> Self {
+impl From<Pointer<Drag>> for ChangeBallPos {
+    fn from(event: Pointer<Drag>) -> Self {
         Self(event.button)
     }
 }
@@ -135,8 +134,8 @@ fn change_ball_pos(
 #[derive(Event)]
 pub struct ChangeCarPos(PointerButton, Entity);
 
-impl From<ListenerInput<Pointer<Drag>>> for ChangeCarPos {
-    fn from(event: ListenerInput<Pointer<Drag>>) -> Self {
+impl From<Pointer<Drag>> for ChangeCarPos {
+    fn from(event: Pointer<Drag>) -> Self {
         Self(event.button, event.target)
     }
 }
@@ -185,8 +184,8 @@ fn change_car_pos(
 #[derive(Event)]
 pub struct CarClicked(PointerButton, Entity);
 
-impl From<ListenerInput<Pointer<Click>>> for CarClicked {
-    fn from(event: ListenerInput<Pointer<Click>>) -> Self {
+impl From<Pointer<Click>> for CarClicked {
+    fn from(event: Pointer<Click>) -> Self {
         Self(event.button, event.target)
     }
 }
@@ -218,7 +217,7 @@ fn project_ray_to_plane(
     let cursor_coords = windows.single().cursor_position()?;
 
     // Get the ray that goes from the camera through the cursor
-    let global_ray = camera.viewport_to_world(global_transform, cursor_coords)?;
+    let global_ray = camera.viewport_to_world(global_transform, cursor_coords).ok()?;
 
     let cam_pos = Vec3A::from(global_ray.origin);
     let cursor_dir = Vec3A::from(Vec3::from(global_ray.direction));
@@ -240,8 +239,8 @@ fn get_move_object_target(cam_pos: Vec3A, cursor_dir: Vec3A, plane_normal: Vec3A
 #[derive(Event)]
 pub struct BallClicked(PointerButton);
 
-impl From<ListenerInput<Pointer<Click>>> for BallClicked {
-    fn from(event: ListenerInput<Pointer<Click>>) -> Self {
+impl From<Pointer<Click>> for BallClicked {
+    fn from(event: Pointer<Click>) -> Self {
         Self(event.button)
     }
 }
@@ -259,8 +258,8 @@ fn handle_ball_clicked(mut events: EventReader<BallClicked>, mut enable_ball_inf
 #[derive(Event)]
 pub struct BoostPadClicked(PointerButton, Entity);
 
-impl From<ListenerInput<Pointer<Click>>> for BoostPadClicked {
-    fn from(event: ListenerInput<Pointer<Click>>) -> Self {
+impl From<Pointer<Click>> for BoostPadClicked {
+    fn from(event: Pointer<Click>) -> Self {
         Self(event.button, event.target)
     }
 }
@@ -315,29 +314,21 @@ fn load_extra_field(
     commands
         .spawn((
             Ball,
-            PbrBundle {
-                mesh: ball_mesh,
-                material: materials.add(ball_material),
-                transform: Transform::from_xyz(0., 92., 0.),
-                ..default()
-            },
+            Mesh3d(ball_mesh),
+            MeshMaterial3d(materials.add(ball_material)),
+            Transform::from_xyz(0., 92., 0.),
             #[cfg(debug_assertions)]
             EntityName::from("ball"),
-            RaycastPickable,
-            On::<Pointer<Over>>::target_insert(HighlightedEntity),
-            On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
-            On::<Pointer<Drag>>::send_event::<ChangeBallPos>(),
-            On::<Pointer<Click>>::send_event::<BallClicked>(),
         ))
+        .observe(target_insert::<Pointer<Over>>(HighlightedEntity))
+        .observe(target_remove::<Pointer<Out>, HighlightedEntity>)
+        .observe(send_event::<Pointer<Drag>, ChangeBallPos>)
+        .observe(send_event::<Pointer<Click>, BallClicked>)
         .with_children(|parent| {
-            parent.spawn(PointLightBundle {
-                point_light: PointLight {
-                    color: initial_ball_color,
-                    radius: 90.,
-                    intensity: 200_000_000.,
-                    range: 1000.,
-                    ..default()
-                },
+            parent.spawn(PointLight {
+                color: initial_ball_color,
+                intensity: 200_000_000.,
+                range: 1000.,
                 ..default()
             });
         });
@@ -450,6 +441,7 @@ pub struct LargeBoostPadLocRots {
 }
 
 #[derive(Component)]
+#[require(Mesh3d, MeshMaterial3d<StandardMaterial>, NotShadowCaster, NotShadowReceiver)]
 pub struct StaticFieldEntity;
 
 flate!(pub static STADIUM_P_LAYOUT: str from "stadiums/Stadium_P_MeshObjects.json");
@@ -481,10 +473,10 @@ fn load_goals(
 ) {
     match game_mode {
         GameMode::Soccar | GameMode::Snowday | GameMode::HeatSeeker => {
-            commands.spawn((
-                PbrBundle {
-                    mesh: meshes.add(Rectangle::from_size(Vec2::splat(1000.))),
-                    material: materials.add(StandardMaterial {
+            commands
+                .spawn((
+                    Mesh3d(meshes.add(Rectangle::from_size(Vec2::splat(1000.)))),
+                    MeshMaterial3d(materials.add(StandardMaterial {
                         base_color: {
                             let mut color = BLUE_COLOR.with_alpha(0.8);
                             color.blue *= 2.;
@@ -495,51 +487,45 @@ fn load_goals(
                         cull_mode: None,
                         alpha_mode: AlphaMode::Add,
                         ..default()
-                    }),
-                    transform: Transform {
+                    })),
+                    Transform {
                         translation: Vec3::new(0., 321.3875, -5120.),
                         rotation: Quat::IDENTITY,
                         scale: Vec3::new(0.89 * 2., 0.32 * 2., 0.),
                     },
-                    ..default()
-                },
-                #[cfg(debug_assertions)]
-                EntityName::from("blue_goal"),
-                RaycastPickable,
-                On::<Pointer<Over>>::target_insert(HighlightedEntity),
-                On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
-                StaticFieldEntity,
-                NotShadowCaster,
-                NotShadowReceiver,
-            ));
+                    #[cfg(debug_assertions)]
+                    EntityName::from("blue_goal"),
+                    StaticFieldEntity,
+                ))
+                .observe(target_insert::<Pointer<Over>>(HighlightedEntity))
+                .observe(target_remove::<Pointer<Out>, HighlightedEntity>);
 
-            commands.spawn((
-                PbrBundle {
-                    mesh: meshes.add(Rectangle::from_size(Vec2::splat(1000.))),
-                    material: materials.add(StandardMaterial {
-                        base_color: Color::Srgba(ORANGE_COLOR.with_alpha(0.8)),
+            commands
+                .spawn((
+                    Mesh3d(meshes.add(Rectangle::from_size(Vec2::splat(1000.)))),
+                    MeshMaterial3d(materials.add(StandardMaterial {
+                        base_color: {
+                            let mut color = ORANGE_COLOR.with_alpha(0.8);
+                            color.red *= 2.;
+                            Color::Srgba(color)
+                        },
                         emissive: LinearRgba::from(ORANGE_COLOR.with_alpha(0.5)),
                         double_sided: true,
                         cull_mode: None,
                         alpha_mode: AlphaMode::Add,
                         ..default()
-                    }),
-                    transform: Transform {
+                    })),
+                    Transform {
                         translation: Vec3::new(0., 321.3875, 5120.),
                         rotation: Quat::IDENTITY,
                         scale: Vec3::new(0.89 * 2., 0.32 * 2., 0.),
                     },
-                    ..default()
-                },
-                #[cfg(debug_assertions)]
-                EntityName::from("orange_goal"),
-                RaycastPickable,
-                On::<Pointer<Over>>::target_insert(HighlightedEntity),
-                On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
-                StaticFieldEntity,
-                NotShadowCaster,
-                NotShadowReceiver,
-            ));
+                    #[cfg(debug_assertions)]
+                    EntityName::from("orange_goal"),
+                    StaticFieldEntity,
+                ))
+                .observe(target_insert::<Pointer<Over>>(HighlightedEntity))
+                .observe(target_remove::<Pointer<Out>, HighlightedEntity>);
         }
         // TODO: hoops
         _ => {}
@@ -695,19 +681,15 @@ fn process_info_node(
         }
 
         let mut obj = commands.spawn((
-            PbrBundle {
-                mesh,
-                material,
-                transform,
-                ..default()
-            },
+            Mesh3d(mesh),
+            MeshMaterial3d(material),
+            transform,
             #[cfg(debug_assertions)]
             EntityName::from(format!("{} | {mat}", node.static_mesh)),
-            RaycastPickable,
-            On::<Pointer<Over>>::target_insert(HighlightedEntity),
-            On::<Pointer<Out>>::target_remove::<HighlightedEntity>(),
             StaticFieldEntity,
         ));
+        obj.observe(target_insert::<Pointer<Over>>(HighlightedEntity))
+            .observe(target_remove::<Pointer<Out>, HighlightedEntity>);
 
         if NO_SHADOWS.contains(&node.static_mesh.as_ref()) {
             obj.insert(NotShadowCaster).insert(NotShadowReceiver);

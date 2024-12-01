@@ -9,8 +9,7 @@ pub struct GameOptions;
 
 impl Plugin for GameOptions {
     fn build(&self, app: &mut App) {
-        app.insert_resource(if cfg!(feature = "ssao") { Msaa::Off } else { Msaa::default() })
-            .insert_resource(Options::default_read_file())
+        app.insert_resource(Options::default_read_file())
             .insert_resource(BallCam::default())
             .insert_resource(UiOverlayScale::default())
             .insert_resource(ShowTime::default())
@@ -52,7 +51,6 @@ impl Default for Options {
             vsync: false,
             uncap_fps: false,
             fps_limit: 120.,
-
             fps: (0, [0.; 120]),
             ball_cam: true,
             stop_day: true,

@@ -74,7 +74,7 @@ fn spectator_update(
     }
 
     if let Ok(window) = windows.get_single() {
-        if window.cursor.grab_mode == CursorGrabMode::None {
+        if window.cursor_options.grab_mode == CursorGrabMode::None {
             motion.clear();
             return;
         }
@@ -129,7 +129,7 @@ fn spectator_update(
 
         let result = forward * delta_axial + right * delta_lateral + up * delta_vertical;
 
-        camera_transform.translation += result * time.delta_seconds();
+        camera_transform.translation += result * time.delta_secs();
     }
 
     motion.clear();

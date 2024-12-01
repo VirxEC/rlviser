@@ -21,7 +21,6 @@ use bevy_egui::{
     EguiContexts, EguiPlugin,
 };
 use bevy_framepace::{FramepaceSettings, Limiter};
-use bevy_mod_picking::picking_core::PickingPluginsSettings;
 
 #[cfg(debug_assertions)]
 use crate::camera::{EntityName, HighlightedEntity};
@@ -146,7 +145,7 @@ fn ui_system(
 
     let ctx = contexts.ctx_mut();
 
-    let dt = time.delta_seconds();
+    let dt = time.delta_secs();
     if dt == 0.0 {
         return;
     }
@@ -330,19 +329,22 @@ fn update_calc_ball_rot(options: Res<Options>, mut calc_ball_rot: ResMut<CalcBal
 }
 
 #[cfg(not(feature = "ssao"))]
-fn update_msaa(options: Res<Options>, mut msaa: ResMut<Msaa>) {
+fn update_msaa(options: Res<Options>, mut msaa_query: Query<&mut Msaa>) {
     const MSAA_SAMPLES: [u32; 4] = [1, 2, 4, 8];
-    if MSAA_SAMPLES[options.msaa] == msaa.samples() {
-        return;
-    }
 
-    *msaa = match options.msaa {
-        0 => Msaa::Off,
-        1 => Msaa::Sample2,
-        2 => Msaa::Sample4,
-        3 => Msaa::Sample8,
-        _ => unreachable!(),
-    };
+    for mut msaa in msaa_query.iter_mut() {
+        if MSAA_SAMPLES[options.msaa] == msaa.samples() {
+            continue;
+        }
+
+        *msaa = match options.msaa {
+            0 => Msaa::Off,
+            1 => Msaa::Sample2,
+            2 => Msaa::Sample4,
+            3 => Msaa::Sample8,
+            _ => unreachable!(),
+        };
+    }
 }
 
 fn toggle_show_time(options: Res<Options>, mut show_time: ResMut<ShowTime>) {
@@ -370,7 +372,7 @@ fn write_settings_to_file(
     mut last_time: Local<f32>,
 ) {
     // ensure the time difference is > 1 second
-    let secs = time.elapsed_seconds_wrapped();
+    let secs = time.elapsed_secs_wrapped();
     if (*last_time - secs).abs() < 1. {
         return;
     }
@@ -398,7 +400,7 @@ fn update_camera_state(mut primary_camera: Query<&mut PrimaryCamera>, options: R
 
 fn listen(
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
-    mut picking_state: ResMut<PickingPluginsSettings>,
+    mut picking_state: ResMut<PickingPlugin>,
     key: Res<ButtonInput<KeyCode>>,
     mut menu_focused: ResMut<MenuFocused>,
     mut last_focus: Local<bool>,
@@ -410,7 +412,7 @@ fn listen(
 
     if *last_focus != menu_focused.0 {
         let mut window = windows.single_mut();
-        window.cursor.grab_mode = if menu_focused.0 {
+        window.cursor_options.grab_mode = if menu_focused.0 {
             CursorGrabMode::None
         } else if cfg!(windows) {
             CursorGrabMode::Confined
@@ -418,7 +420,7 @@ fn listen(
             CursorGrabMode::Locked
         };
 
-        window.cursor.visible = menu_focused.0;
+        window.cursor_options.visible = menu_focused.0;
         picking_state.is_enabled = menu_focused.0;
     }
 

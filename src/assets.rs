@@ -4,7 +4,7 @@ use crate::{
     settings::cache_handler::{get_default_mesh_cache, get_material_cache, get_mesh_cache, get_texture_cache},
 };
 use bevy::{
-    asset::{io::Reader, AssetLoader, AsyncReadExt},
+    asset::{io::Reader, AssetLoader},
     color::palettes::css,
     prelude::*,
     render::renderer::RenderDevice,
@@ -24,7 +24,7 @@ pub struct AssetsLoaderPlugin;
 
 impl Plugin for AssetsLoaderPlugin {
     fn build(&self, app: &mut App) {
-        app.register_asset_loader(PskxLoader).init_asset::<Mesh>();
+        app.register_asset_loader(PskxLoader);
     }
 }
 
@@ -583,11 +583,11 @@ impl AssetLoader for PskxLoader {
     type Settings = ();
     type Error = PskxLoaderError;
 
-    fn load<'a>(
-        &'a self,
-        reader: &'a mut Reader,
-        _settings: &'a Self::Settings,
-        load_context: &'a mut bevy::asset::LoadContext,
+    fn load(
+        &self,
+        reader: &mut dyn Reader,
+        _settings: &Self::Settings,
+        load_context: &mut bevy::asset::LoadContext,
     ) -> impl ConditionalSendFuture<Output = Result<Self::Asset, Self::Error>> {
         Box::pin(async move {
             let mut bytes = Vec::new();

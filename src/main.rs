@@ -11,14 +11,15 @@ mod settings;
 mod spectator;
 mod udp;
 
+use std::env;
+
 use bevy::{
     diagnostic::LogDiagnosticsPlugin,
+    image::{ImageAddressMode, ImageSamplerDescriptor},
     prelude::*,
-    render::texture::{ImageAddressMode, ImageSamplerDescriptor},
     window::PresentMode,
 };
 use settings::{cache_handler, gui};
-use std::env;
 
 #[derive(Clone, Eq, PartialEq, Debug, Hash, Default, States)]
 enum GameLoadState {

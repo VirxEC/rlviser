@@ -26,9 +26,9 @@ impl Plugin for StateSettingInterface {
                     update_car_info.run_if(|enable_menu: Res<EnableCarInfo>| !enable_menu.0.is_empty()),
                     update_boost_pad_info.run_if(|enable_menu: Res<EnablePadInfo>| !enable_menu.0.is_empty()),
                     (
-                        set_user_ball_state.run_if(on_event::<UserSetBallState>()),
-                        set_user_car_state.run_if(on_event::<UserSetCarState>()),
-                        set_user_pad_state.run_if(on_event::<UserSetPadState>()),
+                        set_user_ball_state.run_if(on_event::<UserSetBallState>),
+                        set_user_car_state.run_if(on_event::<UserSetCarState>),
+                        set_user_pad_state.run_if(on_event::<UserSetPadState>),
                     )
                         .run_if(resource_exists::<Connection>),
                 )
@@ -140,7 +140,7 @@ fn update_boost_pad_info(
             ui.horizontal(|ui| {
                 ui.vertical(|ui| {
                     ui.label(format!("Is active: {}", pad.state.is_active));
-                    egui::ComboBox::from_id_source("Is active").width(60.).show_index(
+                    egui::ComboBox::from_id_salt("Is active").width(60.).show_index(
                         ui,
                         &mut user_pad.is_active,
                         USER_BOOL_NAMES.len(),
@@ -605,7 +605,7 @@ fn update_car_info(
                             ui.vertical(|ui| {
                                 ui.label(format!("Has jumped: {}", car.state.has_jumped));
                                 ui.horizontal(|ui| {
-                                    egui::ComboBox::from_id_source("Has jumped").width(60.).show_index(
+                                    egui::ComboBox::from_id_salt("Has jumped").width(60.).show_index(
                                         ui,
                                         &mut user_car.has_jumped,
                                         USER_BOOL_NAMES.len(),
@@ -619,7 +619,7 @@ fn update_car_info(
 
                                 ui.label(format!("Has flipped: {}", car.state.has_flipped));
                                 ui.horizontal(|ui| {
-                                    egui::ComboBox::from_id_source("Has flipped").width(60.).show_index(
+                                    egui::ComboBox::from_id_salt("Has flipped").width(60.).show_index(
                                         ui,
                                         &mut user_car.has_flipped,
                                         USER_BOOL_NAMES.len(),
@@ -644,7 +644,7 @@ fn update_car_info(
                             ui.vertical(|ui| {
                                 ui.label(format!("Has double jumped: {}", car.state.has_double_jumped));
                                 ui.horizontal(|ui| {
-                                    egui::ComboBox::from_id_source("Has double jumped").width(60.).show_index(
+                                    egui::ComboBox::from_id_salt("Has double jumped").width(60.).show_index(
                                         ui,
                                         &mut user_car.has_double_jumped,
                                         USER_BOOL_NAMES.len(),
