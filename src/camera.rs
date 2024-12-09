@@ -8,7 +8,7 @@ use bevy::{
 use serde::{Deserialize, Serialize};
 use std::f32::consts::PI;
 
-// use bevy_atmosphere::prelude::*;
+use bevy_atmosphere::prelude::*;
 use bevy_framepace::{FramepacePlugin, FramepaceSettings};
 use bevy_vector_shapes::prelude::*;
 use std::time::Duration;
@@ -73,7 +73,7 @@ fn setup(mut commands: Commands) {
             ..default()
         },
         Transform::from_translation(Vec3::new(-3000., 1000., 0.)).looking_to(Vec3::X, Vec3::Y),
-        Camera { hdr: true, ..default() },
+        Camera { order: 0, ..default() },
         Tonemapping::ReinhardLuminance,
         if cfg!(feature = "ssao") {
             ShadowFilteringMethod::Temporal
@@ -90,14 +90,14 @@ fn setup(mut commands: Commands) {
         .insert(ScreenSpaceAmbientOcclusion::default())
         .insert(TemporalAntiAliasing::default());
 
-    // commands.spawn((
-    //     Camera2d,
-    //     Camera {
-    //         order: 1,
-    //         clear_color: ClearColorConfig::None,
-    //         ..default()
-    //     },
-    // ));
+    commands.spawn((
+        Camera2d,
+        Camera {
+            order: 1,
+            clear_color: ClearColorConfig::None,
+            ..default()
+        },
+    ));
 
     commands.spawn((
         Text::new(""),
@@ -151,7 +151,7 @@ pub struct DaylightOffset {
 }
 
 fn daylight_cycle(
-    // mut atmosphere: AtmosphereMut<Nishita>,
+    mut atmosphere: AtmosphereMut<Nishita>,
     mut query: Query<(&mut Transform, &mut DirectionalLight), With<Sun>>,
     mut timer: ResMut<CycleTimer>,
     offset: Res<DaylightOffset>,
@@ -164,7 +164,7 @@ fn daylight_cycle(
         let t = (offset.offset + secs) / (200. / offset.day_speed);
 
         let sun_position = Vec3::new(-t.cos(), t.sin(), 0.);
-        // atmosphere.sun_position = sun_position;
+        atmosphere.sun_position = sun_position;
 
         if let Some((mut light_trans, mut directional)) = query.single_mut().into() {
             light_trans.translation = sun_position * 100_000.;
@@ -213,19 +213,15 @@ impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
         {
             app.insert_resource(CycleTimer(Timer::new(
-                    Duration::from_secs_f32(1. / 60.),
-                    TimerMode::Repeating,
-                )))
-                .insert_resource(FramepaceSettings {
-                    limiter: bevy_framepace::Limiter::from_framerate(60.),
-                })
-                // .insert_resource(AtmosphereModel::default())
-                .add_plugins((
-                    FramepacePlugin,
-                    // AtmospherePlugin,
-                    Shape2dPlugin::default(),
-                ))
-                .add_systems(Update, daylight_cycle);
+                Duration::from_secs_f32(1. / 60.),
+                TimerMode::Repeating,
+            )))
+            .insert_resource(FramepaceSettings {
+                limiter: bevy_framepace::Limiter::from_framerate(60.),
+            })
+            .insert_resource(AtmosphereModel::default())
+            .add_plugins((FramepacePlugin, AtmospherePlugin, Shape2dPlugin::default()))
+            .add_systems(Update, daylight_cycle);
         }
 
         app.insert_resource(SpectatorSettings::default())

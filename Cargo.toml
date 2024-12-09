@@ -7,8 +7,7 @@ publish = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-#bevy_atmosphere = "0.10"
-# bevy_atmosphere = { git = "https://github.com/ptsd/bevy_atmosphere", branch = "bevy-0.15" }
+bevy_atmosphere = "0.11"
 #bevy_framepace = { version = "0.17", default-features = false }
 bevy_framepace = { git = "https://github.com/eero-lehtinen/bevy_framepace", branch = "bevy-15", default-features = false }
 bevy_egui = { version = "0.31", default-features = false, features = ["default_fonts", "render"] }
