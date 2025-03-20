@@ -37,7 +37,7 @@ fn spectator_init(cameras: Query<Entity, With<Spectator>>, mut settings: ResMut<
     use bevy::ecs::query::QuerySingleError;
 
     if settings.active_spectator.is_none() {
-        settings.active_spectator = match cameras.get_single() {
+        settings.active_spectator = match cameras.single() {
             Ok(a) => Some(a),
             Err(QuerySingleError::NoEntities(_)) => {
                 warn!("Failed to find a Spectator; Active camera will remain unset.");
@@ -65,15 +65,12 @@ fn spectator_update(
         return;
     };
 
-    if primary_camera
-        .get_single()
-        .is_ok_and(|state| *state != PrimaryCamera::Spectator)
-    {
+    if primary_camera.single().is_ok_and(|state| *state != PrimaryCamera::Spectator) {
         motion.clear();
         return;
     }
 
-    if let Ok(window) = windows.get_single() {
+    if let Ok(window) = windows.single() {
         if window.cursor_options.grab_mode == CursorGrabMode::None {
             motion.clear();
             return;

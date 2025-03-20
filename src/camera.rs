@@ -8,9 +8,9 @@ use bevy::{
 use serde::{Deserialize, Serialize};
 use std::f32::consts::PI;
 
-use bevy_atmosphere::prelude::*;
-use bevy_framepace::{FramepacePlugin, FramepaceSettings};
-use bevy_vector_shapes::prelude::*;
+// use bevy_atmosphere::{prelude::*, settings::SkyboxCreationMode};
+// use bevy_framepace::{FramepacePlugin, FramepaceSettings};
+// use bevy_vector_shapes::prelude::*;
 use std::time::Duration;
 
 #[cfg(feature = "ssao")]
@@ -49,31 +49,19 @@ fn setup(mut commands: Commands) {
         ..default()
     });
 
-    commands.spawn((
-        DirectionalLight::default(),
-        CascadeShadowConfigBuilder {
-            num_cascades: 4,
-            minimum_distance: 1.,
-            maximum_distance: 10000.0,
-            first_cascade_far_bound: 3000.0,
-            ..default()
-        }
-        .build(),
-        Sun,
-    ));
+    commands.spawn((DirectionalLight::default(), Sun));
 
     #[allow(unused_variables, unused_mut)]
     let mut camera_spawn = commands.spawn((
         PrimaryCamera::default(),
         Camera3d::default(),
-        PerspectiveProjection {
+        Projection::Perspective(PerspectiveProjection {
             near: 5.,
-            far: 500_000.,
+            far: 5_000.,
             fov: PI / 3.,
             ..default()
-        },
+        }),
         Transform::from_translation(Vec3::new(-3000., 1000., 0.)).looking_to(Vec3::X, Vec3::Y),
-        Camera { order: 0, ..default() },
         Tonemapping::ReinhardLuminance,
         if cfg!(feature = "ssao") {
             ShadowFilteringMethod::Temporal
@@ -83,6 +71,7 @@ fn setup(mut commands: Commands) {
         // AtmosphereCamera::default(),
         if cfg!(feature = "ssao") { Msaa::Off } else { Msaa::default() },
         Spectator,
+        MeshPickingCamera,
     ));
 
     #[cfg(feature = "ssao")]
@@ -151,7 +140,7 @@ pub struct DaylightOffset {
 }
 
 fn daylight_cycle(
-    mut atmosphere: AtmosphereMut<Nishita>,
+    // mut atmosphere: AtmosphereMut<Nishita>,
     mut query: Query<(&mut Transform, &mut DirectionalLight), With<Sun>>,
     mut timer: ResMut<CycleTimer>,
     offset: Res<DaylightOffset>,
@@ -164,9 +153,9 @@ fn daylight_cycle(
         let t = (offset.offset + secs) / (200. / offset.day_speed);
 
         let sun_position = Vec3::new(-t.cos(), t.sin(), 0.);
-        atmosphere.sun_position = sun_position;
+        // atmosphere.sun_position = sun_position;
 
-        if let Some((mut light_trans, mut directional)) = query.single_mut().into() {
+        if let Some((mut light_trans, mut directional)) = query.single_mut().unwrap().into() {
             light_trans.translation = sun_position * 100_000.;
             light_trans.look_at(Vec3::ZERO, Vec3::Y);
             directional.illuminance = t.sin().max(0.0).powi(2) * 10000.;
@@ -216,17 +205,25 @@ impl Plugin for CameraPlugin {
                 Duration::from_secs_f32(1. / 60.),
                 TimerMode::Repeating,
             )))
-            .insert_resource(FramepaceSettings {
-                limiter: bevy_framepace::Limiter::from_framerate(60.),
-            })
-            .insert_resource(AtmosphereModel::default())
-            .add_plugins((FramepacePlugin, AtmospherePlugin, Shape2dPlugin::default()))
+            // .insert_resource(FramepaceSettings {
+            //     limiter: bevy_framepace::Limiter::from_framerate(60.),
+            // })
+            // .insert_resource(AtmosphereModel::default())
+            // .insert_resource(AtmosphereSettings {
+            //     skybox_creation_mode: SkyboxCreationMode::FromSpecifiedFar(500_000.),
+            //     ..default()
+            // })
+            // .add_plugins((FramepacePlugin, AtmospherePlugin, Shape2dPlugin::default()))
             .add_systems(Update, daylight_cycle);
         }
 
         app.insert_resource(SpectatorSettings::default())
             .insert_resource(DaylightOffset::default())
             .insert_resource(DirectionalLightShadowMap::default())
+            .insert_resource(MeshPickingSettings {
+                require_markers: true,
+                ray_cast_visibility: RayCastVisibility::Any,
+            })
             .add_plugins((
                 SpectatorPlugin,
                 MeshPickingPlugin,

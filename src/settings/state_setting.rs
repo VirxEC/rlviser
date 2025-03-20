@@ -1,10 +1,12 @@
+use std::collections::HashMap;
+
 use super::options::MenuFocused;
 use crate::{
     morton::Morton,
     udp::{Connection, GameStates, SendableUdp},
 };
-use bevy::{math::Vec3A, prelude::*, utils::HashMap};
-use bevy_egui::{egui, EguiContexts};
+use bevy::{math::Vec3A, prelude::*};
+// use bevy_egui::{egui, EguiContexts};
 
 pub struct StateSettingInterface;
 
@@ -22,9 +24,9 @@ impl Plugin for StateSettingInterface {
             .add_systems(
                 Update,
                 (
-                    update_ball_info.run_if(resource_equals(EnableBallInfo(true))),
-                    update_car_info.run_if(|enable_menu: Res<EnableCarInfo>| !enable_menu.0.is_empty()),
-                    update_boost_pad_info.run_if(|enable_menu: Res<EnablePadInfo>| !enable_menu.0.is_empty()),
+                    // update_ball_info.run_if(resource_equals(EnableBallInfo(true))),
+                    // update_car_info.run_if(|enable_menu: Res<EnableCarInfo>| !enable_menu.0.is_empty()),
+                    // update_boost_pad_info.run_if(|enable_menu: Res<EnablePadInfo>| !enable_menu.0.is_empty()),
                     (
                         set_user_ball_state.run_if(on_event::<UserSetBallState>),
                         set_user_car_state.run_if(on_event::<UserSetCarState>),
@@ -106,63 +108,63 @@ impl UserPadStates {
     }
 }
 
-fn update_boost_pad_info(
-    mut contexts: EguiContexts,
-    game_states: Res<GameStates>,
-    mut enable_menu: ResMut<EnablePadInfo>,
-    mut set_user_state: EventWriter<UserSetPadState>,
-    mut user_pads: ResMut<UserPadStates>,
-) {
-    const USER_BOOL_NAMES: [&str; 3] = ["", "True", "False"];
+// fn update_boost_pad_info(
+//     mut contexts: EguiContexts,
+//     game_states: Res<GameStates>,
+//     mut enable_menu: ResMut<EnablePadInfo>,
+//     mut set_user_state: EventWriter<UserSetPadState>,
+//     mut user_pads: ResMut<UserPadStates>,
+// ) {
+//     const USER_BOOL_NAMES: [&str; 3] = ["", "True", "False"];
 
-    let ctx = contexts.ctx_mut();
+//     let ctx = contexts.ctx_mut();
 
-    let morton_generator = Morton::default();
-    for (i, pad) in game_states.current.pads.iter().enumerate() {
-        let code = morton_generator.get_code(pad.position);
-        let Some(entry) = enable_menu.0.get_mut(&code) else {
-            continue;
-        };
+//     let morton_generator = Morton::default();
+//     for (i, pad) in game_states.current.pads.iter().enumerate() {
+//         let code = morton_generator.get_code(pad.position);
+//         let Some(entry) = enable_menu.0.get_mut(&code) else {
+//             continue;
+//         };
 
-        if !*entry {
-            continue;
-        }
+//         if !*entry {
+//             continue;
+//         }
 
-        let user_pad = user_pads.0.entry(code).or_default();
+//         let user_pad = user_pads.0.entry(code).or_default();
 
-        let title = format!("{}Boost pad {}", if pad.is_big { "(Large) " } else { "" }, i);
-        egui::Window::new(title).open(entry).show(ctx, |ui| {
-            ui.label(format!(
-                "Position: [{:.0}, {:.0}, {:.0}]",
-                pad.position.x, pad.position.y, pad.position.z
-            ));
+//         let title = format!("{}Boost pad {}", if pad.is_big { "(Large) " } else { "" }, i);
+//         egui::Window::new(title).open(entry).show(ctx, |ui| {
+//             ui.label(format!(
+//                 "Position: [{:.0}, {:.0}, {:.0}]",
+//                 pad.position.x, pad.position.y, pad.position.z
+//             ));
 
-            ui.horizontal(|ui| {
-                ui.vertical(|ui| {
-                    ui.label(format!("Is active: {}", pad.state.is_active));
-                    egui::ComboBox::from_id_salt("Is active").width(60.).show_index(
-                        ui,
-                        &mut user_pad.is_active,
-                        USER_BOOL_NAMES.len(),
-                        |i| USER_BOOL_NAMES[i],
-                    );
-                });
-                ui.vertical(|ui| {
-                    ui.label(format!("Timer: {:.1}", pad.state.cooldown));
-                    ui.add(egui::TextEdit::singleline(&mut user_pad.timer).desired_width(60.));
-                });
-            });
+//             ui.horizontal(|ui| {
+//                 ui.vertical(|ui| {
+//                     ui.label(format!("Is active: {}", pad.state.is_active));
+//                     egui::ComboBox::from_id_salt("Is active").width(60.).show_index(
+//                         ui,
+//                         &mut user_pad.is_active,
+//                         USER_BOOL_NAMES.len(),
+//                         |i| USER_BOOL_NAMES[i],
+//                     );
+//                 });
+//                 ui.vertical(|ui| {
+//                     ui.label(format!("Timer: {:.1}", pad.state.cooldown));
+//                     ui.add(egui::TextEdit::singleline(&mut user_pad.timer).desired_width(60.));
+//                 });
+//             });
 
-            if ui
-                .button("     Set all     ")
-                .on_hover_text("Set all (defined) boost pad properties")
-                .clicked()
-            {
-                set_user_state.send(UserSetPadState(code));
-            }
-        });
-    }
-}
+//             if ui
+//                 .button("     Set all     ")
+//                 .on_hover_text("Set all (defined) boost pad properties")
+//                 .clicked()
+//             {
+//                 set_user_state.send(UserSetPadState(code));
+//             }
+//         });
+//     }
+// }
 
 fn set_user_pad_state(
     mut events: EventReader<UserSetPadState>,
@@ -268,70 +270,70 @@ fn set_user_ball_state(
     socket.send(SendableUdp::State(game_states.next.clone())).unwrap();
 }
 
-fn update_ball_info(
-    mut contexts: EguiContexts,
-    game_states: Res<GameStates>,
-    mut enable_menu: ResMut<EnableBallInfo>,
-    mut set_user_state: EventWriter<UserSetBallState>,
-    mut user_ball: ResMut<UserBallState>,
-) {
-    egui::Window::new("Ball")
-        .open(&mut enable_menu.0)
-        .show(contexts.ctx_mut(), |ui| {
-            ui.label(format!(
-                "Position: [{:.1}, {:.1}, {:.1}]",
-                game_states.current.ball.pos.x, game_states.current.ball.pos.y, game_states.current.ball.pos.z
-            ));
-            ui.horizontal(|ui| {
-                ui.label("X: ");
-                ui.add(egui::TextEdit::singleline(&mut user_ball.pos[0]).desired_width(50.));
-                ui.label("Y: ");
-                ui.add(egui::TextEdit::singleline(&mut user_ball.pos[1]).desired_width(50.));
-                ui.label("Z: ");
-                ui.add(egui::TextEdit::singleline(&mut user_ball.pos[2]).desired_width(50.));
-                if ui.button("Set").on_hover_text("Set ball position").clicked() {
-                    set_user_state.send(UserSetBallState(SetBallStateAmount::Pos));
-                }
-            });
-            ui.label(format!(
-                "Velocity: [{:.1}, {:.1}, {:.1}]",
-                game_states.current.ball.vel.x, game_states.current.ball.vel.y, game_states.current.ball.vel.z
-            ));
-            ui.horizontal(|ui| {
-                ui.label("X: ");
-                ui.add(egui::TextEdit::singleline(&mut user_ball.vel[0]).desired_width(50.));
-                ui.label("Y: ");
-                ui.add(egui::TextEdit::singleline(&mut user_ball.vel[1]).desired_width(50.));
-                ui.label("Z: ");
-                ui.add(egui::TextEdit::singleline(&mut user_ball.vel[2]).desired_width(50.));
-                if ui.button("Set").on_hover_text("Set ball velocity").clicked() {
-                    set_user_state.send(UserSetBallState(SetBallStateAmount::Vel));
-                }
-            });
-            ui.label(format!(
-                "Angular velocity: [{:.1}, {:.1}, {:.1}]",
-                game_states.current.ball.ang_vel.x, game_states.current.ball.ang_vel.y, game_states.current.ball.ang_vel.z
-            ));
-            ui.horizontal(|ui| {
-                ui.label("X: ");
-                ui.add(egui::TextEdit::singleline(&mut user_ball.ang_vel[0]).desired_width(50.));
-                ui.label("Y: ");
-                ui.add(egui::TextEdit::singleline(&mut user_ball.ang_vel[1]).desired_width(50.));
-                ui.label("Z: ");
-                ui.add(egui::TextEdit::singleline(&mut user_ball.ang_vel[2]).desired_width(50.));
-                if ui.button("Set").on_hover_text("Set ball angular velocity").clicked() {
-                    set_user_state.send(UserSetBallState(SetBallStateAmount::AngVel));
-                }
-            });
-            if ui
-                .button("     Set all     ")
-                .on_hover_text("Set all (defined) ball properties")
-                .clicked()
-            {
-                set_user_state.send(UserSetBallState(SetBallStateAmount::All));
-            }
-        });
-}
+// fn update_ball_info(
+//     mut contexts: EguiContexts,
+//     game_states: Res<GameStates>,
+//     mut enable_menu: ResMut<EnableBallInfo>,
+//     mut set_user_state: EventWriter<UserSetBallState>,
+//     mut user_ball: ResMut<UserBallState>,
+// ) {
+//     egui::Window::new("Ball")
+//         .open(&mut enable_menu.0)
+//         .show(contexts.ctx_mut(), |ui| {
+//             ui.label(format!(
+//                 "Position: [{:.1}, {:.1}, {:.1}]",
+//                 game_states.current.ball.pos.x, game_states.current.ball.pos.y, game_states.current.ball.pos.z
+//             ));
+//             ui.horizontal(|ui| {
+//                 ui.label("X: ");
+//                 ui.add(egui::TextEdit::singleline(&mut user_ball.pos[0]).desired_width(50.));
+//                 ui.label("Y: ");
+//                 ui.add(egui::TextEdit::singleline(&mut user_ball.pos[1]).desired_width(50.));
+//                 ui.label("Z: ");
+//                 ui.add(egui::TextEdit::singleline(&mut user_ball.pos[2]).desired_width(50.));
+//                 if ui.button("Set").on_hover_text("Set ball position").clicked() {
+//                     set_user_state.send(UserSetBallState(SetBallStateAmount::Pos));
+//                 }
+//             });
+//             ui.label(format!(
+//                 "Velocity: [{:.1}, {:.1}, {:.1}]",
+//                 game_states.current.ball.vel.x, game_states.current.ball.vel.y, game_states.current.ball.vel.z
+//             ));
+//             ui.horizontal(|ui| {
+//                 ui.label("X: ");
+//                 ui.add(egui::TextEdit::singleline(&mut user_ball.vel[0]).desired_width(50.));
+//                 ui.label("Y: ");
+//                 ui.add(egui::TextEdit::singleline(&mut user_ball.vel[1]).desired_width(50.));
+//                 ui.label("Z: ");
+//                 ui.add(egui::TextEdit::singleline(&mut user_ball.vel[2]).desired_width(50.));
+//                 if ui.button("Set").on_hover_text("Set ball velocity").clicked() {
+//                     set_user_state.send(UserSetBallState(SetBallStateAmount::Vel));
+//                 }
+//             });
+//             ui.label(format!(
+//                 "Angular velocity: [{:.1}, {:.1}, {:.1}]",
+//                 game_states.current.ball.ang_vel.x, game_states.current.ball.ang_vel.y, game_states.current.ball.ang_vel.z
+//             ));
+//             ui.horizontal(|ui| {
+//                 ui.label("X: ");
+//                 ui.add(egui::TextEdit::singleline(&mut user_ball.ang_vel[0]).desired_width(50.));
+//                 ui.label("Y: ");
+//                 ui.add(egui::TextEdit::singleline(&mut user_ball.ang_vel[1]).desired_width(50.));
+//                 ui.label("Z: ");
+//                 ui.add(egui::TextEdit::singleline(&mut user_ball.ang_vel[2]).desired_width(50.));
+//                 if ui.button("Set").on_hover_text("Set ball angular velocity").clicked() {
+//                     set_user_state.send(UserSetBallState(SetBallStateAmount::AngVel));
+//                 }
+//             });
+//             if ui
+//                 .button("     Set all     ")
+//                 .on_hover_text("Set all (defined) ball properties")
+//                 .clicked()
+//             {
+//                 set_user_state.send(UserSetBallState(SetBallStateAmount::All));
+//             }
+//         });
+// }
 
 #[derive(Event)]
 struct UserSetCarState(u32, SetCarStateAmount);
@@ -510,187 +512,187 @@ fn set_user_car_state(
     socket.send(SendableUdp::State(game_states.next.clone())).unwrap();
 }
 
-fn update_car_info(
-    mut contexts: EguiContexts,
-    game_states: Res<GameStates>,
-    mut enable_menu: ResMut<EnableCarInfo>,
-    mut set_user_state: EventWriter<UserSetCarState>,
-    mut user_cars: ResMut<UserCarStates>,
-) {
-    const USER_BOOL_NAMES: [&str; 2] = ["", "False"];
+// fn update_car_info(
+//     mut contexts: EguiContexts,
+//     game_states: Res<GameStates>,
+//     mut enable_menu: ResMut<EnableCarInfo>,
+//     mut set_user_state: EventWriter<UserSetCarState>,
+//     mut user_cars: ResMut<UserCarStates>,
+// ) {
+//     const USER_BOOL_NAMES: [&str; 2] = ["", "False"];
 
-    let ctx = contexts.ctx_mut();
+//     let ctx = contexts.ctx_mut();
 
-    for car in game_states.current.cars.iter() {
-        let Some(entry) = enable_menu.0.get_mut(&car.id) else {
-            continue;
-        };
+//     for car in game_states.current.cars.iter() {
+//         let Some(entry) = enable_menu.0.get_mut(&car.id) else {
+//             continue;
+//         };
 
-        if !*entry {
-            continue;
-        }
+//         if !*entry {
+//             continue;
+//         }
 
-        let user_car = user_cars.0.entry(car.id).or_default();
+//         let user_car = user_cars.0.entry(car.id).or_default();
 
-        egui::Window::new(format!("{:?} Car {}", car.team, car.id))
-            .open(entry)
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.vertical(|ui| {
-                        ui.label(format!("Is on ground: {}", car.state.is_on_ground));
-                        ui.label(format!("Jump time: {:.1}", car.state.jump_time));
-                        ui.label(format!("Flip time: {:.1}", car.state.flip_time));
-                        ui.label(format!("Is flipping: {}", car.state.is_flipping));
-                        ui.label(format!("Is jumping: {}", car.state.is_jumping));
-                        ui.label(format!("Is jumping: {}", car.state.is_jumping));
-                        ui.label(format!("Time spent boosting: {:.1}", car.state.time_spent_boosting));
-                        ui.label(format!("Is supersonic: {}", car.state.is_supersonic));
-                        ui.label(format!("Supersonic time: {:.1}", car.state.supersonic_time));
-                        ui.label(format!("Handbrake val: {:.1}", car.state.handbrake_val));
-                        ui.label(format!("Is auto flipping: {}", car.state.is_auto_flipping));
-                        ui.label(format!("Auto flip timer: {:.1}", car.state.auto_flip_timer));
-                        ui.label(format!("Is demolished: {}", car.state.is_demoed));
-                    });
+//         egui::Window::new(format!("{:?} Car {}", car.team, car.id))
+//             .open(entry)
+//             .show(ctx, |ui| {
+//                 ui.horizontal(|ui| {
+//                     ui.vertical(|ui| {
+//                         ui.label(format!("Is on ground: {}", car.state.is_on_ground));
+//                         ui.label(format!("Jump time: {:.1}", car.state.jump_time));
+//                         ui.label(format!("Flip time: {:.1}", car.state.flip_time));
+//                         ui.label(format!("Is flipping: {}", car.state.is_flipping));
+//                         ui.label(format!("Is jumping: {}", car.state.is_jumping));
+//                         ui.label(format!("Is jumping: {}", car.state.is_jumping));
+//                         ui.label(format!("Time spent boosting: {:.1}", car.state.time_spent_boosting));
+//                         ui.label(format!("Is supersonic: {}", car.state.is_supersonic));
+//                         ui.label(format!("Supersonic time: {:.1}", car.state.supersonic_time));
+//                         ui.label(format!("Handbrake val: {:.1}", car.state.handbrake_val));
+//                         ui.label(format!("Is auto flipping: {}", car.state.is_auto_flipping));
+//                         ui.label(format!("Auto flip timer: {:.1}", car.state.auto_flip_timer));
+//                         ui.label(format!("Is demolished: {}", car.state.is_demoed));
+//                     });
 
-                    ui.vertical(|ui| {
-                        ui.label(format!(
-                            "Position: [{:.1}, {:.1}, {:.1}]",
-                            car.state.pos.x, car.state.pos.y, car.state.pos.z
-                        ));
-                        ui.horizontal(|ui| {
-                            ui.label("X: ");
-                            ui.add(egui::TextEdit::singleline(&mut user_car.pos[0]).desired_width(50.));
-                            ui.label("Y: ");
-                            ui.add(egui::TextEdit::singleline(&mut user_car.pos[1]).desired_width(50.));
-                            ui.label("Z: ");
-                            ui.add(egui::TextEdit::singleline(&mut user_car.pos[2]).desired_width(50.));
-                            if ui.button("Set").on_hover_text("Set car position").clicked() {
-                                set_user_state.send(UserSetCarState(car.id, SetCarStateAmount::Pos));
-                            }
-                        });
+//                     ui.vertical(|ui| {
+//                         ui.label(format!(
+//                             "Position: [{:.1}, {:.1}, {:.1}]",
+//                             car.state.pos.x, car.state.pos.y, car.state.pos.z
+//                         ));
+//                         ui.horizontal(|ui| {
+//                             ui.label("X: ");
+//                             ui.add(egui::TextEdit::singleline(&mut user_car.pos[0]).desired_width(50.));
+//                             ui.label("Y: ");
+//                             ui.add(egui::TextEdit::singleline(&mut user_car.pos[1]).desired_width(50.));
+//                             ui.label("Z: ");
+//                             ui.add(egui::TextEdit::singleline(&mut user_car.pos[2]).desired_width(50.));
+//                             if ui.button("Set").on_hover_text("Set car position").clicked() {
+//                                 set_user_state.send(UserSetCarState(car.id, SetCarStateAmount::Pos));
+//                             }
+//                         });
 
-                        ui.label(format!(
-                            "Velocity: [{:.1}, {:.1}, {:.1}]",
-                            car.state.vel.x, car.state.vel.y, car.state.vel.z
-                        ));
-                        ui.horizontal(|ui| {
-                            ui.label("X: ");
-                            ui.add(egui::TextEdit::singleline(&mut user_car.vel[0]).desired_width(50.));
-                            ui.label("Y: ");
-                            ui.add(egui::TextEdit::singleline(&mut user_car.vel[1]).desired_width(50.));
-                            ui.label("Z: ");
-                            ui.add(egui::TextEdit::singleline(&mut user_car.vel[2]).desired_width(50.));
-                            if ui.button("Set").on_hover_text("Set car velocity").clicked() {
-                                set_user_state.send(UserSetCarState(car.id, SetCarStateAmount::Vel));
-                            }
-                        });
+//                         ui.label(format!(
+//                             "Velocity: [{:.1}, {:.1}, {:.1}]",
+//                             car.state.vel.x, car.state.vel.y, car.state.vel.z
+//                         ));
+//                         ui.horizontal(|ui| {
+//                             ui.label("X: ");
+//                             ui.add(egui::TextEdit::singleline(&mut user_car.vel[0]).desired_width(50.));
+//                             ui.label("Y: ");
+//                             ui.add(egui::TextEdit::singleline(&mut user_car.vel[1]).desired_width(50.));
+//                             ui.label("Z: ");
+//                             ui.add(egui::TextEdit::singleline(&mut user_car.vel[2]).desired_width(50.));
+//                             if ui.button("Set").on_hover_text("Set car velocity").clicked() {
+//                                 set_user_state.send(UserSetCarState(car.id, SetCarStateAmount::Vel));
+//                             }
+//                         });
 
-                        ui.label(format!(
-                            "Angular velocity: [{:.1}, {:.1}, {:.1}]",
-                            car.state.ang_vel.x, car.state.ang_vel.y, car.state.ang_vel.z
-                        ));
-                        ui.horizontal(|ui| {
-                            ui.label("X: ");
-                            ui.add(egui::TextEdit::singleline(&mut user_car.ang_vel[0]).desired_width(50.));
-                            ui.label("Y: ");
-                            ui.add(egui::TextEdit::singleline(&mut user_car.ang_vel[1]).desired_width(50.));
-                            ui.label("Z: ");
-                            ui.add(egui::TextEdit::singleline(&mut user_car.ang_vel[2]).desired_width(50.));
-                            if ui.button("Set").on_hover_text("Set car angular velocity").clicked() {
-                                set_user_state.send(UserSetCarState(car.id, SetCarStateAmount::AngVel));
-                            }
-                        });
+//                         ui.label(format!(
+//                             "Angular velocity: [{:.1}, {:.1}, {:.1}]",
+//                             car.state.ang_vel.x, car.state.ang_vel.y, car.state.ang_vel.z
+//                         ));
+//                         ui.horizontal(|ui| {
+//                             ui.label("X: ");
+//                             ui.add(egui::TextEdit::singleline(&mut user_car.ang_vel[0]).desired_width(50.));
+//                             ui.label("Y: ");
+//                             ui.add(egui::TextEdit::singleline(&mut user_car.ang_vel[1]).desired_width(50.));
+//                             ui.label("Z: ");
+//                             ui.add(egui::TextEdit::singleline(&mut user_car.ang_vel[2]).desired_width(50.));
+//                             if ui.button("Set").on_hover_text("Set car angular velocity").clicked() {
+//                                 set_user_state.send(UserSetCarState(car.id, SetCarStateAmount::AngVel));
+//                             }
+//                         });
 
-                        ui.horizontal(|ui| {
-                            ui.vertical(|ui| {
-                                ui.label(format!("Has jumped: {}", car.state.has_jumped));
-                                ui.horizontal(|ui| {
-                                    egui::ComboBox::from_id_salt("Has jumped").width(60.).show_index(
-                                        ui,
-                                        &mut user_car.has_jumped,
-                                        USER_BOOL_NAMES.len(),
-                                        |i| USER_BOOL_NAMES[i],
-                                    );
+//                         ui.horizontal(|ui| {
+//                             ui.vertical(|ui| {
+//                                 ui.label(format!("Has jumped: {}", car.state.has_jumped));
+//                                 ui.horizontal(|ui| {
+//                                     egui::ComboBox::from_id_salt("Has jumped").width(60.).show_index(
+//                                         ui,
+//                                         &mut user_car.has_jumped,
+//                                         USER_BOOL_NAMES.len(),
+//                                         |i| USER_BOOL_NAMES[i],
+//                                     );
 
-                                    if ui.button("Set").on_hover_text("Set car has jumped").clicked() {
-                                        set_user_state.send(UserSetCarState(car.id, SetCarStateAmount::Jumped));
-                                    }
-                                });
+//                                     if ui.button("Set").on_hover_text("Set car has jumped").clicked() {
+//                                         set_user_state.send(UserSetCarState(car.id, SetCarStateAmount::Jumped));
+//                                     }
+//                                 });
 
-                                ui.label(format!("Has flipped: {}", car.state.has_flipped));
-                                ui.horizontal(|ui| {
-                                    egui::ComboBox::from_id_salt("Has flipped").width(60.).show_index(
-                                        ui,
-                                        &mut user_car.has_flipped,
-                                        USER_BOOL_NAMES.len(),
-                                        |i| USER_BOOL_NAMES[i],
-                                    );
+//                                 ui.label(format!("Has flipped: {}", car.state.has_flipped));
+//                                 ui.horizontal(|ui| {
+//                                     egui::ComboBox::from_id_salt("Has flipped").width(60.).show_index(
+//                                         ui,
+//                                         &mut user_car.has_flipped,
+//                                         USER_BOOL_NAMES.len(),
+//                                         |i| USER_BOOL_NAMES[i],
+//                                     );
 
-                                    if ui.button("Set").on_hover_text("Set car has flipped").clicked() {
-                                        set_user_state.send(UserSetCarState(car.id, SetCarStateAmount::Flipped));
-                                    }
-                                });
+//                                     if ui.button("Set").on_hover_text("Set car has flipped").clicked() {
+//                                         set_user_state.send(UserSetCarState(car.id, SetCarStateAmount::Flipped));
+//                                     }
+//                                 });
 
-                                ui.label("");
+//                                 ui.label("");
 
-                                if ui
-                                    .button("     Set all     ")
-                                    .on_hover_text("Set all (defined) car properties")
-                                    .clicked()
-                                {
-                                    set_user_state.send(UserSetCarState(car.id, SetCarStateAmount::All));
-                                }
-                            });
-                            ui.vertical(|ui| {
-                                ui.label(format!("Has double jumped: {}", car.state.has_double_jumped));
-                                ui.horizontal(|ui| {
-                                    egui::ComboBox::from_id_salt("Has double jumped").width(60.).show_index(
-                                        ui,
-                                        &mut user_car.has_double_jumped,
-                                        USER_BOOL_NAMES.len(),
-                                        |i| USER_BOOL_NAMES[i],
-                                    );
+//                                 if ui
+//                                     .button("     Set all     ")
+//                                     .on_hover_text("Set all (defined) car properties")
+//                                     .clicked()
+//                                 {
+//                                     set_user_state.send(UserSetCarState(car.id, SetCarStateAmount::All));
+//                                 }
+//                             });
+//                             ui.vertical(|ui| {
+//                                 ui.label(format!("Has double jumped: {}", car.state.has_double_jumped));
+//                                 ui.horizontal(|ui| {
+//                                     egui::ComboBox::from_id_salt("Has double jumped").width(60.).show_index(
+//                                         ui,
+//                                         &mut user_car.has_double_jumped,
+//                                         USER_BOOL_NAMES.len(),
+//                                         |i| USER_BOOL_NAMES[i],
+//                                     );
 
-                                    if ui.button("Set").on_hover_text("Set car has double jumped").clicked() {
-                                        set_user_state.send(UserSetCarState(car.id, SetCarStateAmount::DoubleJumped));
-                                    }
-                                });
+//                                     if ui.button("Set").on_hover_text("Set car has double jumped").clicked() {
+//                                         set_user_state.send(UserSetCarState(car.id, SetCarStateAmount::DoubleJumped));
+//                                     }
+//                                 });
 
-                                ui.label(format!("Boost: {:.0}", car.state.boost));
-                                ui.horizontal(|ui| {
-                                    ui.add(egui::TextEdit::singleline(&mut user_car.boost).desired_width(60.));
-                                    if ui.button("Set").on_hover_text("Set car boost").clicked() {
-                                        set_user_state.send(UserSetCarState(car.id, SetCarStateAmount::Boost));
-                                    }
-                                });
+//                                 ui.label(format!("Boost: {:.0}", car.state.boost));
+//                                 ui.horizontal(|ui| {
+//                                     ui.add(egui::TextEdit::singleline(&mut user_car.boost).desired_width(60.));
+//                                     if ui.button("Set").on_hover_text("Set car boost").clicked() {
+//                                         set_user_state.send(UserSetCarState(car.id, SetCarStateAmount::Boost));
+//                                     }
+//                                 });
 
-                                ui.label(format!("Demo respawn timer: {:.1}", car.state.demo_respawn_timer));
-                                ui.horizontal(|ui| {
-                                    ui.add(egui::TextEdit::singleline(&mut user_car.demo_respawn_timer).desired_width(60.));
-                                    if ui.button("Set").on_hover_text("Set car demo respawn timer").clicked() {
-                                        set_user_state.send(UserSetCarState(car.id, SetCarStateAmount::DemoRespawnTimer));
-                                    }
-                                });
-                            });
-                        });
-                    });
-                });
+//                                 ui.label(format!("Demo respawn timer: {:.1}", car.state.demo_respawn_timer));
+//                                 ui.horizontal(|ui| {
+//                                     ui.add(egui::TextEdit::singleline(&mut user_car.demo_respawn_timer).desired_width(60.));
+//                                     if ui.button("Set").on_hover_text("Set car demo respawn timer").clicked() {
+//                                         set_user_state.send(UserSetCarState(car.id, SetCarStateAmount::DemoRespawnTimer));
+//                                     }
+//                                 });
+//                             });
+//                         });
+//                     });
+//                 });
 
-                ui.vertical(|ui| {
-                    ui.label("Last known controls:");
-                    ui.horizontal(|ui| {
-                        ui.label(format!("Throttle: {:.1}", car.state.last_controls.throttle));
-                        ui.label(format!("Steer: {:.1}", car.state.last_controls.steer));
-                        ui.label(format!("Boost: {}", car.state.last_controls.boost));
-                        ui.label(format!("Handbrake: {}", car.state.last_controls.handbrake));
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label(format!("Pitch: {:.1}", car.state.last_controls.pitch));
-                        ui.label(format!("Yaw: {:.1}", car.state.last_controls.yaw));
-                        ui.label(format!("Roll: {:.1}", car.state.last_controls.roll));
-                        ui.label(format!("Jump: {}", car.state.last_controls.jump));
-                    });
-                });
-            });
-    }
-}
+//                 ui.vertical(|ui| {
+//                     ui.label("Last known controls:");
+//                     ui.horizontal(|ui| {
+//                         ui.label(format!("Throttle: {:.1}", car.state.last_controls.throttle));
+//                         ui.label(format!("Steer: {:.1}", car.state.last_controls.steer));
+//                         ui.label(format!("Boost: {}", car.state.last_controls.boost));
+//                         ui.label(format!("Handbrake: {}", car.state.last_controls.handbrake));
+//                     });
+//                     ui.horizontal(|ui| {
+//                         ui.label(format!("Pitch: {:.1}", car.state.last_controls.pitch));
+//                         ui.label(format!("Yaw: {:.1}", car.state.last_controls.yaw));
+//                         ui.label(format!("Roll: {:.1}", car.state.last_controls.roll));
+//                         ui.label(format!("Jump: {}", car.state.last_controls.jump));
+//                     });
+//                 });
+//             });
+//     }
+// }

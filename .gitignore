@@ -9,3 +9,4 @@ umodel*
 settings.txt
 /collision_meshes
 /cache
+/.cargo

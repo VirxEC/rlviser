@@ -14,14 +14,15 @@ use bevy::{
     asset::LoadState,
     math::{Mat3A, Vec3A},
     pbr::{NotShadowCaster, NotShadowReceiver},
+    picking::mesh_picking::ray_cast::SimplifiedMesh,
     prelude::*,
     render::renderer::RenderDevice,
     time::Stopwatch,
-    utils::HashMap,
 };
 use crossbeam_channel::{Receiver, Sender};
 use itertools::izip;
 use std::{
+    collections::HashMap,
     f32::consts::PI,
     fs,
     mem::{replace, swap},
@@ -36,7 +37,7 @@ use crate::{
     settings::{options::UiOverlayScale, state_setting::UserCarStates},
 };
 use bevy::window::PrimaryWindow;
-use bevy_vector_shapes::prelude::*;
+// use bevy_vector_shapes::prelude::*;
 
 #[cfg(debug_assertions)]
 use crate::camera::EntityName;
@@ -129,7 +130,7 @@ impl ToBevyVec for Vec3A {
 impl ToBevyVec for Vec3 {
     #[inline]
     fn to_bevy(self) -> Vec3 {
-        Vec3::new(self.x, self.z, self.y)
+        Self::new(self.x, self.z, self.y)
     }
 }
 
@@ -199,7 +200,7 @@ struct CarWheel {
 }
 
 impl CarWheel {
-    fn new(front: bool, left: bool) -> Self {
+    const fn new(front: bool, left: bool) -> Self {
         Self { front, left }
     }
 }
@@ -210,23 +211,23 @@ impl CarWheel {
 //     trigger.propagate(false);
 // }
 
-pub fn target_insert<E>(component: impl Component + Clone) -> impl FnMut(Trigger<E>, Commands) {
+pub fn target_insert<E>(component: impl Component + Clone) -> impl Fn(Trigger<E>, Commands) {
     move |mut trigger, mut commands| {
-        let entity = trigger.entity();
+        let entity = trigger.target();
         commands.entity(entity).insert(component.clone());
         trigger.propagate(false);
     }
 }
 
 pub fn target_remove<E, C: Component>(mut trigger: Trigger<E>, mut commands: Commands) {
-    let entity = trigger.entity();
+    let entity = trigger.target();
     trigger.propagate(false);
     commands.entity(entity).remove::<C>();
 }
 
 pub fn send_event<E: Clone, S: Event + From<E>>(mut trigger: Trigger<E>, mut events: EventWriter<S>) {
     trigger.propagate(false);
-    events.send(S::from(trigger.event().to_owned()));
+    events.write(S::from(trigger.event().to_owned()));
 }
 
 fn spawn_car(
@@ -275,7 +276,8 @@ fn spawn_car(
     commands
         .spawn((
             Car(car_info.id),
-            Mesh3d(meshes.add(Cuboid::new(hitbox.x * 2., hitbox.y * 3., hitbox.z * 2.))),
+            SimplifiedMesh(meshes.add(Sphere::new(hitbox.y * 2.5))),
+            Mesh3d(meshes.add(Cuboid::new(hitbox.x, hitbox.y, hitbox.z))),
             MeshMaterial3d(materials.add(StandardMaterial {
                 base_color: Color::NONE,
                 alpha_mode: AlphaMode::Add,
@@ -284,6 +286,7 @@ fn spawn_car(
             })),
             #[cfg(debug_assertions)]
             EntityName::from(name),
+            Pickable::default(),
         ))
         .observe(target_insert::<Pointer<Over>>(HighlightedEntity))
         .observe(target_remove::<Pointer<Out>, HighlightedEntity>)
@@ -337,7 +340,7 @@ fn spawn_car(
                 let wheel_offset = -Vec3::Y * (wheel_pair.suspension_rest_length - 12.);
 
                 for side in 0..=1 {
-                    let offset = Vec3::new(1., 1., 1. - (2. * side as f32));
+                    let offset = Vec3::new(1., 1., 2.0f32.mul_add(-(side as f32), 1.));
 
                     parent.spawn((
                         Mesh3d(car_wheel_mesh.mesh.clone()),
@@ -633,7 +636,7 @@ fn apply_udp_updates(
     for update in udp_updates.try_iter() {
         match update {
             UdpUpdate::Exit => {
-                exit.send(AppExit::Success);
+                exit.write(AppExit::Success);
                 return;
             }
             UdpUpdate::State(new_state) => {
@@ -649,10 +652,10 @@ fn apply_udp_updates(
             },
             UdpUpdate::Speed(speed) => {
                 last_packet_time_elapsed.reset();
-                speed_update.send(SpeedUpdate(speed));
+                speed_update.write(SpeedUpdate(speed));
             }
             UdpUpdate::Paused(paused) => {
-                paused_update.send(PausedUpdate(paused));
+                paused_update.write(PausedUpdate(paused));
             }
             UdpUpdate::Connection => {
                 socket.send(SendableUdp::Paused(game_speed.paused)).unwrap();
@@ -680,23 +683,29 @@ fn update_ball(
     mut ball: Query<(&mut Transform, &Children), With<Ball>>,
     mut point_light: Query<&mut PointLight>,
 ) {
-    let Ok((mut transform, children)) = ball.get_single_mut() else {
+    let Ok((mut transform, children)) = ball.single_mut() else {
         return;
     };
 
     let new_pos = states.current.ball.pos.to_bevy();
     transform.translation = new_pos;
 
-    let mut point_light = point_light.get_mut(children.first().copied().unwrap()).unwrap();
+    for child in children {
+        let Ok(mut point_light) = point_light.get_mut(*child) else {
+            continue;
+        };
 
-    let amount = (transform.translation.z.abs() + 500.) / 3500.;
-    point_light.color = if new_pos.z > 0. {
-        Color::srgb(amount.max(0.5), (amount * (2. / 3.)).max(0.5), 0.5)
-    } else {
-        Color::srgb(0.5, 0.5, amount.max(0.5))
-    };
+        let amount = (transform.translation.z.abs() + 500.) / 3500.;
+        point_light.color = if new_pos.z > 0. {
+            Color::srgb(amount.max(0.5), (amount * (2. / 3.)).max(0.5), 0.5)
+        } else {
+            Color::srgb(0.5, 0.5, amount.max(0.5))
+        };
 
-    transform.rotation = states.current.ball.rot_mat.to_bevy();
+        transform.rotation = states.current.ball.rot_mat.to_bevy();
+
+        break;
+    }
 }
 
 const MIN_CAMERA_BALLCAM_HEIGHT: f32 = 30.;
@@ -869,7 +878,7 @@ fn pre_update_car(
     commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut user_cars: ResMut<UserCarStates>,
+    // mut user_cars: ResMut<UserCarStates>,
     car_wheel_mesh: Res<CarWheelMesh>,
     mut images: ResMut<Assets<Image>>,
     render_device: Option<Res<RenderDevice>>,
@@ -878,7 +887,7 @@ fn pre_update_car(
         &cars,
         &states.current,
         &car_entities,
-        &mut user_cars,
+        // &mut user_cars,
         commands,
         &mut meshes,
         &mut materials,
@@ -899,7 +908,7 @@ fn update_camera(
 ) {
     timer.0.tick(time.delta());
 
-    let (mut primary_camera, mut camera_transform) = camera_query.single_mut();
+    let (mut primary_camera, mut camera_transform) = camera_query.single_mut().unwrap();
 
     let car_id = match primary_camera.as_mut() {
         PrimaryCamera::TrackCar(id) => {
@@ -913,9 +922,9 @@ fn update_camera(
             let index = *id as usize - 1;
             if index >= ids.len() {
                 return;
-            } else {
-                ids[index]
             }
+
+            ids[index]
         }
         PrimaryCamera::Director(id) => {
             if *id == 0 || timer.0.finished() {
@@ -969,7 +978,7 @@ fn correct_car_count(
     cars: &Query<&Car>,
     state: &GameState,
     car_entities: &Query<(Entity, &Car)>,
-    user_cars: &mut UserCarStates,
+    // user_cars: &mut UserCarStates,
     mut commands: Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
@@ -981,8 +990,8 @@ fn correct_car_count(
     // remove cars that no longer exist
     for (entity, car) in car_entities {
         if !state.cars.iter().any(|car_info| car.0 == car_info.id) {
-            user_cars.remove(car.0);
-            commands.entity(entity).despawn_recursive();
+            // user_cars.remove(car.0);
+            commands.entity(entity).despawn();
         }
     }
 
@@ -1023,15 +1032,8 @@ fn update_pads_count(
         // if a previous pad a new pad are same pad
         // It is the easiest to despawn and respawn all pads
         for (entity, _) in pads.iter() {
-            commands.entity(entity).despawn_recursive();
+            commands.entity(entity).despawn();
         }
-
-        let hitbox_material = materials.add(StandardMaterial {
-            base_color: Color::NONE,
-            alpha_mode: AlphaMode::Add,
-            unlit: true,
-            ..default()
-        });
 
         let large_pad_mesh = match asset_server.get_load_state(&pad_glows.large) {
             Some(LoadState::Failed(_)) => pad_glows.large_hitbox.clone(),
@@ -1043,7 +1045,7 @@ fn update_pads_count(
             _ => pad_glows.small.clone(),
         };
 
-        for pad in states.current.pads.iter() {
+        for pad in &states.current.pads {
             let code = morton_generator.get_code(pad.position);
             let mut transform = Transform::from_translation(pad.position.to_bevy() - Vec3::Y * 70.);
 
@@ -1115,35 +1117,30 @@ fn update_pads_count(
             commands
                 .spawn((
                     BoostPadI(code),
-                    Mesh3d(hitbox),
-                    MeshMaterial3d(hitbox_material.clone()),
+                    SimplifiedMesh(hitbox),
+                    Mesh3d(visual_mesh),
+                    MeshMaterial3d(materials.add(StandardMaterial {
+                        base_color: Color::srgba(0.9, 0.9, 0.1, 0.6),
+                        alpha_mode: AlphaMode::Add,
+                        double_sided: true,
+                        cull_mode: None,
+                        ..default()
+                    })),
                     transform,
                     #[cfg(debug_assertions)]
                     EntityName::from("generic_boost_pad"),
+                    Pickable::default(),
                 ))
                 .observe(target_insert::<Pointer<Over>>(HighlightedEntity))
                 .observe(target_remove::<Pointer<Out>, HighlightedEntity>)
-                .observe(send_event::<Pointer<Click>, BoostPadClicked>)
-                .with_children(|parent| {
-                    parent.spawn((
-                        Mesh3d(visual_mesh),
-                        MeshMaterial3d(materials.add(StandardMaterial {
-                            base_color: Color::srgba(0.9, 0.9, 0.1, 0.6),
-                            alpha_mode: AlphaMode::Add,
-                            double_sided: true,
-                            cull_mode: None,
-                            ..default()
-                        })),
-                    ));
-                });
+                .observe(send_event::<Pointer<Click>, BoostPadClicked>);
         }
     }
 }
 
 fn update_pad_colors(
     states: Res<GameStates>,
-    query: Query<(&Children, &BoostPadI)>,
-    mats_query: Query<&MeshMaterial3d<StandardMaterial>>,
+    query: Query<(&BoostPadI, &MeshMaterial3d<StandardMaterial>)>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let morton_generator = Morton::default();
@@ -1157,8 +1154,9 @@ fn update_pad_colors(
         .collect::<Vec<_>>();
     radsort::sort_by_key(&mut sorted_pads, |(_, code)| *code);
 
-    for (children, id) in query.iter() {
+    for (id, material) in query.iter() {
         let index = sorted_pads.binary_search_by_key(&id.id(), |(_, code)| *code).unwrap();
+
         let alpha = if states.current.pads[sorted_pads[index].0].state.is_active {
             0.6
         } else {
@@ -1166,84 +1164,85 @@ fn update_pad_colors(
             0.0
         };
 
-        let child = children.first().unwrap();
-        let handle = mats_query.get(*child).unwrap();
-        materials.get_mut(handle).unwrap().base_color.set_alpha(alpha);
+        let material = materials.get_mut(material).unwrap();
+        if material.base_color.alpha() != alpha {
+            material.base_color.set_alpha(alpha);
+        }
     }
 }
 
-fn update_boost_meter(
-    states: Res<GameStates>,
-    ui_scale: Res<UiOverlayScale>,
-    camera: Query<&PrimaryCamera>,
-    windows: Query<&Window, With<PrimaryWindow>>,
-    mut painter: ShapePainter,
-    mut boost_amount: Query<(&mut Text, &mut Node, &mut TextFont), With<BoostAmount>>,
-    mut was_last_director: Local<bool>,
-) {
-    let id = match camera.single() {
-        PrimaryCamera::TrackCar(id) => {
-            if states.current.cars.is_empty() {
-                return;
-            }
+// fn update_boost_meter(
+//     states: Res<GameStates>,
+//     ui_scale: Res<UiOverlayScale>,
+//     camera: Query<&PrimaryCamera>,
+//     windows: Query<&Window, With<PrimaryWindow>>,
+//     mut painter: ShapePainter,
+//     mut boost_amount: Query<(&mut Text, &mut Node, &mut TextFont), With<BoostAmount>>,
+//     mut was_last_director: Local<bool>,
+// ) {
+//     let id = match camera.single() {
+//         PrimaryCamera::TrackCar(id) => {
+//             if states.current.cars.is_empty() {
+//                 return;
+//             }
 
-            let mut ids = states.current.cars.iter().map(|car_info| car_info.id).collect::<Vec<_>>();
-            radsort::sort(&mut ids);
+//             let mut ids = states.current.cars.iter().map(|car_info| car_info.id).collect::<Vec<_>>();
+//             radsort::sort(&mut ids);
 
-            let index = *id as usize - 1;
-            if index >= ids.len() {
-                0
-            } else {
-                ids[index]
-            }
-        }
-        PrimaryCamera::Director(id) => *id,
-        PrimaryCamera::Spectator => 0,
-    };
+//             let index = *id as usize - 1;
+//             if index >= ids.len() {
+//                 0
+//             } else {
+//                 ids[index]
+//             }
+//         }
+//         PrimaryCamera::Director(id) => *id,
+//         PrimaryCamera::Spectator => 0,
+//     };
 
-    if id == 0 {
-        if *was_last_director {
-            *was_last_director = false;
-            boost_amount.single_mut().0 .0.clear();
-        }
+//     if id == 0 {
+//         if *was_last_director {
+//             *was_last_director = false;
+//             boost_amount.single_mut().0 .0.clear();
+//         }
 
-        return;
-    }
+//         return;
+//     }
 
-    let Some(car_state) = &states.current.cars.iter().find(|info| id == info.id).map(|info| info.state) else {
-        return;
-    };
+//     let Some(car_state) = &states.current.cars.iter().find(|info| id == info.id).map(|info| info.state) else {
+//         return;
+//     };
 
-    let primary_window = windows.single();
-    let window_res = Vec2::new(primary_window.width(), primary_window.height());
-    let painter_pos = (window_res / 2. - (BOOST_INDICATOR_POS + 25.) * ui_scale.scale) * Vec2::new(1., -1.);
+//     let primary_window = windows.single();
+//     let window_res = Vec2::new(primary_window.width(), primary_window.height());
+//     let painter_pos = (window_res / 2. - (BOOST_INDICATOR_POS + 25.) * ui_scale.scale) * Vec2::new(1., -1.);
 
-    painter.set_translation(painter_pos.extend(0.));
-    painter.color = Color::srgb(0.075, 0.075, 0.15);
-    painter.circle(100.0 * ui_scale.scale);
+//     painter.set_translation(painter_pos.extend(0.));
+//     painter.color = Color::srgb(0.075, 0.075, 0.15);
+//     painter.circle(100.0 * ui_scale.scale);
 
-    let scale = car_state.boost / 100.;
+//     let scale = car_state.boost / 100.;
 
-    let start_angle = 7. * PI / 6.;
-    let full_angle = 11. * PI / 6.;
-    let end_angle = (full_angle - start_angle).mul_add(scale, start_angle);
+//     let start_angle = 7. * PI / 6.;
+//     let full_angle = 11. * PI / 6.;
+//     let end_angle = (full_angle - start_angle).mul_add(scale, start_angle);
 
-    painter.color = Color::srgb(1., 0.84 * scale, 0.);
-    painter.hollow = true;
-    painter.thickness = 4.;
-    painter.arc(80. * ui_scale.scale, start_angle, end_angle);
+//     painter.color = Color::srgb(1., 0.84 * scale, 0.);
+//     painter.hollow = true;
+//     painter.thickness = 4.;
+//     painter.arc(80. * ui_scale.scale, start_angle, end_angle);
 
-    painter.reset();
+//     painter.reset();
 
-    let (mut text_display, mut style, mut font) = boost_amount.single_mut();
-    style.right = Val::Px((BOOST_INDICATOR_POS.x - 25.) * ui_scale.scale);
-    style.bottom = Val::Px(BOOST_INDICATOR_POS.y * ui_scale.scale);
+//     let (mut text_display, mut style, mut font) = boost_amount.single_mut();
+//     style.right = Val::Px((BOOST_INDICATOR_POS.x - 25.) * ui_scale.scale);
+//     style.bottom = Val::Px(BOOST_INDICATOR_POS.y * ui_scale.scale);
 
-    **text_display = car_state.boost.round().to_string();
-    font.font_size = BOOST_INDICATOR_FONT_SIZE * ui_scale.scale;
+//     **text_display = car_state.boost.round().to_string();
+//     font.font_size = BOOST_INDICATOR_FONT_SIZE * ui_scale.scale;
 
-    *was_last_director = true;
-}
+//     *was_last_director = true;
+// }
 
 fn update_time(states: Res<GameStates>, show_time: Res<ShowTime>, mut text_display: Query<&mut Text, With<TimeDisplay>>) {
     const MINUTE: u64 = 60;
@@ -1254,7 +1253,7 @@ fn update_time(states: Res<GameStates>, show_time: Res<ShowTime>, mut text_displ
     const YEAR: u64 = 365 * DAY;
 
     if !show_time.enabled {
-        **text_display.single_mut() = String::new();
+        **text_display.single_mut().unwrap() = String::new();
         return;
     }
 
@@ -1303,7 +1302,7 @@ fn update_time(states: Res<GameStates>, show_time: Res<ShowTime>, mut text_displ
 
     time_segments.push(format!("{seconds:02}s"));
 
-    **text_display.single_mut() = time_segments.join(":");
+    **text_display.single_mut().unwrap() = time_segments.join(":");
 }
 
 fn update_field(states: Res<GameStates>, mut game_mode: ResMut<GameMode>, mut load_state: ResMut<NextState<GameLoadState>>) {
@@ -1351,7 +1350,7 @@ fn extrapolate_packet(mut states: ResMut<GameStates>, game_speed: Res<GameSpeed>
     let ball_pos = states.current.ball.vel * delta_time;
     states.current.ball.pos += ball_pos;
 
-    for car in states.current.cars.iter_mut() {
+    for car in &mut states.current.cars {
         let car_pos = car.state.vel * delta_time;
         car.state.pos += car_pos;
 
@@ -1604,7 +1603,7 @@ impl Plugin for RocketSimPlugin {
                                         .run_if(|ps: Res<PacketSmoothing>| matches!(*ps, PacketSmoothing::Interpolate)),
                                 )
                                     .run_if(|updated: Res<PacketUpdated>| !updated.0),
-                                (listen, update_boost_meter),
+                                (listen /*update_boost_meter*/,),
                             ),
                         )
                             .chain(),

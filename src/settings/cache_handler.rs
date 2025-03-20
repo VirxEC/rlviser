@@ -3,10 +3,9 @@ use bevy::{
     image::{CompressedImageFormats, ImageSampler, ImageType},
     prelude::*,
     render::{render_asset::RenderAssetUsages, renderer::RenderDevice},
-    utils::HashMap,
 };
-use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashMap,
     fs::{copy, create_dir_all, read_to_string, File},
     io::Read,
     path::{Path, MAIN_SEPARATOR},
@@ -110,9 +109,7 @@ pub fn get_default_mesh_cache(path: &'static str, assets: &AssetServer, meshes: 
         return meshes[0].clone();
     }
 
-    if !cfg!(debug_assertions) {
-        panic!("Failed to load mesh {name}");
-    }
+    assert!(cfg!(debug_assertions), "Failed to load mesh {name}");
 
     let cache_path = format!("./cache/mesh/{name}.bin");
     if let Ok(mesh) = File::open(&cache_path) {
@@ -184,7 +181,7 @@ fn insert_mesh_cache(name: String, builder: MeshBuilder, meshes: &mut Assets<Mes
     meshes
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Copy, bincode::Encode, bincode::Decode)]
 pub enum CAlphaMode {
     Opaque,
     Mask(f32),
@@ -198,18 +195,18 @@ pub enum CAlphaMode {
 impl From<CAlphaMode> for AlphaMode {
     fn from(mode: CAlphaMode) -> Self {
         match mode {
-            CAlphaMode::Opaque => AlphaMode::Opaque,
-            CAlphaMode::Mask(threshold) => AlphaMode::Mask(threshold),
-            CAlphaMode::Blend => AlphaMode::Blend,
-            CAlphaMode::Premultiplied => AlphaMode::Premultiplied,
-            CAlphaMode::AlphaToCoverage => AlphaMode::AlphaToCoverage,
-            CAlphaMode::Add => AlphaMode::Add,
-            CAlphaMode::Multiply => AlphaMode::Multiply,
+            CAlphaMode::Opaque => Self::Opaque,
+            CAlphaMode::Mask(threshold) => Self::Mask(threshold),
+            CAlphaMode::Blend => Self::Blend,
+            CAlphaMode::Premultiplied => Self::Premultiplied,
+            CAlphaMode::AlphaToCoverage => Self::AlphaToCoverage,
+            CAlphaMode::Add => Self::Add,
+            CAlphaMode::Multiply => Self::Multiply,
         }
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, bincode::Encode, bincode::Decode)]
 pub struct MeshMaterial {
     pub diffuse: Option<String>,
     pub normal: Option<String>,
@@ -312,11 +309,11 @@ impl MeshMaterial {
     fn create_cache(&self, path: &Path) {
         create_dir_all(path.parent().unwrap()).unwrap();
         let mut file = File::create(path).unwrap();
-        bincode::serialize_into(&mut file, self).unwrap();
+        bincode::encode_into_std_write(self, &mut file, bincode::config::legacy()).unwrap();
     }
 
-    fn from_cache<R: Read>(file: R) -> Self {
-        bincode::deserialize_from(file).unwrap()
+    fn from_cache<R: Read>(mut file: R) -> Self {
+        bincode::decode_from_std_read(&mut file, bincode::config::legacy()).unwrap()
     }
 }
 
@@ -354,10 +351,10 @@ fn read_tga<R: Read>(mut reader: R, render_device: Option<&RenderDevice>) -> Ima
     reader.read_to_end(&mut bytes).unwrap();
 
     let image_type = ImageType::Extension("tga");
-    let supported_compressed_formats = match render_device {
-        Some(render_device) => CompressedImageFormats::from_features(render_device.features()),
-        None => CompressedImageFormats::NONE,
-    };
+
+    let supported_compressed_formats = render_device.map_or(CompressedImageFormats::NONE, |render_device| {
+        CompressedImageFormats::from_features(render_device.features())
+    });
 
     Image::from_buffer(
         &bytes,
@@ -380,9 +377,7 @@ pub fn get_texture_cache(
         return texture.clone();
     }
 
-    if !cfg!(debug_assertions) {
-        panic!("Failed to load texture {name}");
-    }
+    assert!(cfg!(debug_assertions), "Failed to load texture {name}");
 
     let cache_path_name = format!("./cache/textures/{name}.tga");
     let cache_path = Path::new(&cache_path_name);

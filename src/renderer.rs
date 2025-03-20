@@ -1,5 +1,7 @@
+use std::collections::HashMap;
+
 use crate::udp::ToBevyVec;
-use bevy::{prelude::*, utils::HashMap};
+use bevy::prelude::*;
 
 #[derive(Clone, Copy, Debug)]
 pub struct CustomColor {
@@ -41,7 +43,7 @@ pub struct RenderGroups {
 }
 
 fn render_gizmos(mut renders: ResMut<RenderGroups>, mut gizmos: Gizmos) {
-    for (_, renders) in renders.groups.iter_mut() {
+    for renders in renders.groups.values_mut() {
         for render in renders.iter() {
             match render {
                 Render::Line2D { start, end, color } => {

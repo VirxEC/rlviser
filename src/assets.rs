@@ -7,8 +7,8 @@ use bevy::{
     asset::{io::Reader, AssetLoader},
     color::palettes::css,
     prelude::*,
-    render::renderer::RenderDevice,
-    utils::ConditionalSendFuture,
+    render::{mesh::CylinderMeshBuilder, renderer::RenderDevice},
+    tasks::ConditionalSendFuture,
 };
 use byteorder::{LittleEndian, ReadBytesExt};
 use std::{
@@ -46,9 +46,9 @@ pub fn load_assets(
 
     commands.insert_resource(BoostPickupGlows {
         small: get_default_mesh_cache("Pickup_Boost/StaticMesh3/BoostPad_Small_02_SM.pskx", &assets, &mut meshes),
-        small_hitbox: meshes.add(Cylinder::new(144. / 2., 165.)),
+        small_hitbox: meshes.add(CylinderMeshBuilder::new(144. / 2., 165., 32)),
         large: get_default_mesh_cache("Pickup_Boost/StaticMesh3/BoostPad_Large_Glow.pskx", &assets, &mut meshes),
-        large_hitbox: meshes.add(Cylinder::new(208. / 2., 168.)),
+        large_hitbox: meshes.add(CylinderMeshBuilder::new(208. / 2., 168., 32)),
     });
 
     commands.insert_resource(BallAssets {
@@ -374,7 +374,7 @@ fn get_default_material(name: &str, side: Option<Team>) -> Option<StandardMateri
     } else if name.contains("Advert") || name.contains("DarkMetal") {
         Color::srgb_u8(191, 192, 192)
     } else {
-        println!("Unknown material {name}");
+        warn!("Unknown material {name}");
         return None;
     };
 
@@ -634,9 +634,7 @@ pub mod umodel {
         let mut input = String::new();
         io::stdin().read_line(&mut input).unwrap();
 
-        if input.trim().to_lowercase() != "y" {
-            panic!("{CANT_FIND_FOLDER}");
-        }
+        assert!(input.trim().to_lowercase() == "y", "{CANT_FIND_FOLDER}");
 
         println!("Searching system for 'RocketLeague.exe'...");
 
@@ -654,9 +652,7 @@ pub mod umodel {
 
         similarity_sort(&mut search, search_input);
 
-        if search.is_empty() {
-            panic!("{CANT_FIND_FOLDER}");
-        }
+        assert!(!search.is_empty(), "{CANT_FIND_FOLDER}");
 
         let mut input = String::new();
 

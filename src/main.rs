@@ -1,4 +1,9 @@
-#![allow(clippy::too_many_arguments, clippy::needless_pass_by_value, clippy::module_name_repetitions)]
+#![allow(
+    clippy::too_many_arguments,
+    clippy::needless_pass_by_value,
+    clippy::module_name_repetitions,
+    clippy::significant_drop_tightening
+)]
 
 mod assets;
 mod bytes;
@@ -11,15 +16,13 @@ mod settings;
 mod spectator;
 mod udp;
 
-use std::env;
-
 use bevy::{
-    diagnostic::LogDiagnosticsPlugin,
     image::{ImageAddressMode, ImageSamplerDescriptor},
     prelude::*,
     window::PresentMode,
 };
 use settings::{cache_handler, gui};
+use std::env;
 
 #[derive(Clone, Eq, PartialEq, Debug, Hash, Default, States)]
 enum GameLoadState {
@@ -72,10 +75,6 @@ fn main() {
                     }),
                     ..default()
                 }),
-            LogDiagnosticsPlugin {
-                debug: cfg!(feature = "debug"),
-                ..default()
-            },
             cache_handler::CachePlugin,
             camera::CameraPlugin,
             gui::DebugOverlayPlugin,

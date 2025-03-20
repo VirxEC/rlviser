@@ -9,6 +9,7 @@ use bevy::{
     color::palettes::css,
     math::Vec3A,
     pbr::{NotShadowCaster, NotShadowReceiver},
+    picking::mesh_picking::ray_cast::SimplifiedMesh,
     prelude::*,
     render::{
         mesh::{self, VertexAttributeValues},
@@ -19,7 +20,7 @@ use bevy::{
     window::PrimaryWindow,
 };
 use include_flate::flate;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::{
     cmp::Ordering,
     fs::{create_dir_all, File},
@@ -68,7 +69,7 @@ impl Plugin for FieldLoaderPlugin {
                             )
                                 .run_if(|last_state_set: Res<StateSetTime>| {
                                     // Limit state setting to avoid bogging down the simulation with state setting requests
-                                    last_state_set.0.elapsed() >= Duration::from_secs_f32(1. / 60.)
+                                    last_state_set.0.elapsed() >= Duration::from_secs_f32(1. / 30.)
                                 }),
                         )
                             .chain(),
@@ -154,6 +155,7 @@ fn change_car_pos(
         return;
     };
 
+    let mut set_state = false;
     for event in events.read() {
         if event.0 != PointerButton::Primary {
             continue;
@@ -167,6 +169,8 @@ fn change_car_pos(
             return;
         };
 
+        set_state = true;
+
         let target = get_move_object_target(cam_pos, cursor_dir, plane_normal, current_car.state.pos.xzy());
         let car_vel = (target.xzy() - current_car.state.pos).normalize() * 2000.;
         current_car.state.vel = car_vel;
@@ -174,10 +178,13 @@ fn change_car_pos(
         if let Some(next_car) = game_states.next.cars.iter_mut().find(|car| car.id == car_id) {
             next_car.state.vel = car_vel;
         };
-
-        last_state_set.0.reset();
     }
 
+    if !set_state {
+        return;
+    }
+
+    last_state_set.0.reset();
     socket.send(SendableUdp::State(game_states.next.clone())).unwrap();
 }
 
@@ -213,8 +220,8 @@ fn project_ray_to_plane(
     camera: Query<(&Camera, &GlobalTransform), With<PrimaryCamera>>,
     windows: Query<&Window, With<PrimaryWindow>>,
 ) -> Option<[Vec3A; 3]> {
-    let (camera, global_transform) = camera.single();
-    let cursor_coords = windows.single().cursor_position()?;
+    let (camera, global_transform) = camera.single().unwrap();
+    let cursor_coords = windows.single().unwrap().cursor_position()?;
 
     // Get the ray that goes from the camera through the cursor
     let global_ray = camera.viewport_to_world(global_transform, cursor_coords).ok()?;
@@ -275,6 +282,7 @@ fn handle_boost_pad_clicked(
         }
 
         if let Ok(boost_pad) = boost_pads.get(event.1) {
+            println!("this boost pad is {}", boost_pad.id());
             enable_boost_pad_info.toggle(boost_pad.id());
         }
     }
@@ -314,11 +322,13 @@ fn load_extra_field(
     commands
         .spawn((
             Ball,
-            Mesh3d(ball_mesh),
-            MeshMaterial3d(materials.add(ball_material)),
+            SimplifiedMesh(meshes.add(Sphere::new(95.))),
             Transform::from_xyz(0., 92., 0.),
             #[cfg(debug_assertions)]
             EntityName::from("ball"),
+            Pickable::default(),
+            Mesh3d(ball_mesh),
+            MeshMaterial3d(materials.add(ball_material)),
         ))
         .observe(target_insert::<Pointer<Over>>(HighlightedEntity))
         .observe(target_remove::<Pointer<Out>, HighlightedEntity>)
@@ -451,11 +461,11 @@ fn despawn_old_field(
     mut commands: Commands,
     mut state: ResMut<NextState<GameLoadState>>,
     static_field_entities: Query<Entity, With<StaticFieldEntity>>,
-    mut user_pads: ResMut<UserPadStates>,
-    mut user_cars: ResMut<UserCarStates>,
+    // mut user_pads: ResMut<UserPadStates>,
+    // mut user_cars: ResMut<UserCarStates>,
 ) {
-    user_pads.clear();
-    user_cars.clear();
+    // user_pads.clear();
+    // user_cars.clear();
 
     static_field_entities.iter().for_each(|entity| {
         commands.entity(entity).despawn();
@@ -656,7 +666,7 @@ fn process_info_node(
         let side = match side_signum.cmp(&0) {
             Ordering::Greater => Some(Team::Orange),
             Ordering::Less => Some(Team::Blue),
-            _ => None,
+            Ordering::Equal => None,
         };
 
         let mat_name = if !cfg!(feature = "full_load") && node.static_mesh.ends_with("OOBFloor") {
@@ -709,7 +719,7 @@ pub enum MeshBuilderError {
 }
 
 /// A collection of inter-connected triangles.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, bincode::Encode, bincode::Decode)]
 pub struct MeshBuilder {
     ids: Vec<usize>,
     verts: Vec<f32>,
@@ -723,11 +733,11 @@ impl MeshBuilder {
     pub fn create_cache(&self, path: &Path) {
         create_dir_all(path.parent().unwrap()).unwrap();
         let mut file = File::create(path).unwrap();
-        bincode::serialize_into(&mut file, self).unwrap();
+        bincode::encode_into_std_write(self, &mut file, bincode::config::legacy()).unwrap();
     }
 
-    pub fn from_cache<R: Read>(reader: R) -> Self {
-        bincode::deserialize_from(reader).unwrap()
+    pub fn from_cache<R: Read>(mut reader: R) -> Self {
+        bincode::decode_from_std_read(&mut reader, bincode::config::legacy()).unwrap()
     }
 
     #[must_use]

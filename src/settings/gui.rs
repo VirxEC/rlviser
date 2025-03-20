@@ -16,11 +16,11 @@ use bevy::{
 use std::time::Duration;
 
 use super::state_setting::StateSettingInterface;
-use bevy_egui::{
-    egui::{self, CollapsingHeader},
-    EguiContexts, EguiPlugin,
-};
-use bevy_framepace::{FramepaceSettings, Limiter};
+// use bevy_egui::{
+//     egui::{self, CollapsingHeader},
+//     EguiContexts, EguiPlugin,
+// };
+// use bevy_framepace::{FramepaceSettings, Limiter};
 
 #[cfg(debug_assertions)]
 use crate::camera::{EntityName, HighlightedEntity};
@@ -29,7 +29,7 @@ pub struct DebugOverlayPlugin;
 
 impl Plugin for DebugOverlayPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((GameOptions, EguiPlugin, StateSettingInterface))
+        app.add_plugins((GameOptions, StateSettingInterface /*, EguiPlugin*/))
             .insert_resource(RenderInfo::default())
             .insert_resource(UpdateRenderInfoTime::default())
             .insert_resource(PacketSendTime::default())
@@ -40,8 +40,8 @@ impl Plugin for DebugOverlayPlugin {
                     (read_speed_update_event, read_paused_update_event),
                     (
                         advance_time,
-                        ui_system,
-                        toggle_vsync,
+                        // ui_system,
+                        // toggle_vsync,
                         toggle_ballcam,
                         toggle_show_time,
                         update_daytime,
@@ -69,8 +69,8 @@ impl Plugin for DebugOverlayPlugin {
                     .chain(),
             );
 
-        #[cfg(debug_assertions)]
-        app.add_systems(Update, debug_ui);
+        // #[cfg(debug_assertions)]
+        // app.add_systems(Update, debug_ui);
     }
 }
 
@@ -81,29 +81,29 @@ fn advance_time(mut last_packet_send: ResMut<PacketSendTime>, time: Res<Time>) {
     last_packet_send.0.tick(time.delta());
 }
 
-#[cfg(debug_assertions)]
-fn debug_ui(
-    mut contexts: EguiContexts,
-    heq: Query<(&Transform, &EntityName), With<HighlightedEntity>>,
-    cam_pos: Query<&Transform, With<PrimaryCamera>>,
-) {
-    let ctx = contexts.ctx_mut();
-    let camera_pos = cam_pos.single().translation;
+// #[cfg(debug_assertions)]
+// fn debug_ui(
+//     mut contexts: EguiContexts,
+//     heq: Query<(&Transform, &EntityName), With<HighlightedEntity>>,
+//     cam_pos: Query<&Transform, With<PrimaryCamera>>,
+// ) {
+//     let ctx = contexts.ctx_mut();
+//     let camera_pos = cam_pos.single().translation;
 
-    let (he_pos, highlighted_entity_name) = heq
-        .get_single()
-        .map(|(transform, he)| (transform.translation, he.name.clone()))
-        .unwrap_or((Vec3::default(), Box::from("None")));
+//     let (he_pos, highlighted_entity_name) = heq.get_single().map_or_else(
+//         |_| (Vec3::default(), Box::from("None")),
+//         |(transform, he)| (transform.translation, he.name.clone()),
+//     );
 
-    egui::Window::new("Debug").show(ctx, |ui| {
-        ui.label(format!(
-            "Primary camera position: [{:.0}, {:.0}, {:.0}]",
-            camera_pos.x, camera_pos.y, camera_pos.z
-        ));
-        ui.label(format!("HE position: [{:.0}, {:.0}, {:.0}]", he_pos.x, he_pos.y, he_pos.z));
-        ui.label(format!("Highlighted entity: {highlighted_entity_name}"));
-    });
-}
+//     egui::Window::new("Debug").show(ctx, |ui| {
+//         ui.label(format!(
+//             "Primary camera position: [{:.0}, {:.0}, {:.0}]",
+//             camera_pos.x, camera_pos.y, camera_pos.z
+//         ));
+//         ui.label(format!("HE position: [{:.0}, {:.0}, {:.0}]", he_pos.x, he_pos.y, he_pos.z));
+//         ui.label(format!("Highlighted entity: {highlighted_entity_name}"));
+//     });
+// }
 
 #[derive(Resource, Default)]
 struct UpdateRenderInfoTime(Stopwatch);
@@ -131,108 +131,108 @@ fn update_render_info(
     render_info.items = renders.groups.values().map(Vec::len).sum();
 }
 
-fn ui_system(
-    mut menu_focused: ResMut<MenuFocused>,
-    mut options: ResMut<Options>,
-    mut contexts: EguiContexts,
-    render_info: Res<RenderInfo>,
-    time: Res<Time>,
-) {
-    #[cfg(not(feature = "ssao"))]
-    const MSAA_NAMES: [&str; 4] = ["Off", "2x", "4x", "8x"];
-    const SHADOW_NAMES: [&str; 4] = ["Off", "0.5x", "1x", "1.5x"];
-    const SMOOTHING_NAMES: [&str; 3] = ["None", "Interpolate", "Extrapolate"];
+// fn ui_system(
+//     mut menu_focused: ResMut<MenuFocused>,
+//     mut options: ResMut<Options>,
+//     mut contexts: EguiContexts,
+//     render_info: Res<RenderInfo>,
+//     time: Res<Time>,
+// ) {
+//     #[cfg(not(feature = "ssao"))]
+//     const MSAA_NAMES: [&str; 4] = ["Off", "2x", "4x", "8x"];
+//     const SHADOW_NAMES: [&str; 4] = ["Off", "0.5x", "1x", "1.5x"];
+//     const SMOOTHING_NAMES: [&str; 3] = ["None", "Interpolate", "Extrapolate"];
 
-    let ctx = contexts.ctx_mut();
+//     let ctx = contexts.ctx_mut();
 
-    let dt = time.delta_secs();
-    if dt == 0.0 {
-        return;
-    }
+//     let dt = time.delta_secs();
+//     if dt == 0.0 {
+//         return;
+//     }
 
-    let (i, history) = &mut options.fps;
+//     let (i, history) = &mut options.fps;
 
-    history[*i] = dt;
-    *i += 1;
-    *i %= history.len();
+//     history[*i] = dt;
+//     *i += 1;
+//     *i %= history.len();
 
-    let avg_dt = history.iter().sum::<f32>() / history.len() as f32;
-    let fps = 1. / avg_dt;
+//     let avg_dt = history.iter().sum::<f32>() / history.len() as f32;
+//     let fps = 1. / avg_dt;
 
-    egui::Window::new("Menu")
-        .auto_sized()
-        .open(&mut menu_focused)
-        .show(ctx, |ui| {
-            ui.label(format!("FPS: {fps:.0}"));
+//     egui::Window::new("Menu")
+//         .auto_sized()
+//         .open(&mut menu_focused)
+//         .show(ctx, |ui| {
+//             ui.label(format!("FPS: {fps:.0}"));
 
-            ui.collapsing("Graphics", |ui| {
-                ui.horizontal(|ui| {
-                    ui.checkbox(&mut options.vsync, "vsync");
-                    ui.checkbox(&mut options.uncap_fps, "Uncap FPS");
-                    ui.add(egui::DragValue::new(&mut options.fps_limit).speed(5.).range(30..=600));
-                });
+//             ui.collapsing("Graphics", |ui| {
+//                 ui.horizontal(|ui| {
+//                     ui.checkbox(&mut options.vsync, "vsync");
+//                     ui.checkbox(&mut options.uncap_fps, "Uncap FPS");
+//                     ui.add(egui::DragValue::new(&mut options.fps_limit).speed(5.).range(30..=600));
+//                 });
 
-                ui.horizontal(|ui| {
-                    egui::ComboBox::from_label("Shadows").width(50.).show_index(
-                        ui,
-                        &mut options.shadows,
-                        SHADOW_NAMES.len(),
-                        |i| SHADOW_NAMES[i],
-                    );
-                    #[cfg(not(feature = "ssao"))]
-                    egui::ComboBox::from_label("MSAA")
-                        .width(40.)
-                        .show_index(ui, &mut options.msaa, MSAA_NAMES.len(), |i| MSAA_NAMES[i]);
-                });
+//                 ui.horizontal(|ui| {
+//                     egui::ComboBox::from_label("Shadows").width(50.).show_index(
+//                         ui,
+//                         &mut options.shadows,
+//                         SHADOW_NAMES.len(),
+//                         |i| SHADOW_NAMES[i],
+//                     );
+//                     #[cfg(not(feature = "ssao"))]
+//                     egui::ComboBox::from_label("MSAA")
+//                         .width(40.)
+//                         .show_index(ui, &mut options.msaa, MSAA_NAMES.len(), |i| MSAA_NAMES[i]);
+//                 });
 
-                egui::ComboBox::from_label("Packet smoothing").width(100.).show_index(
-                    ui,
-                    &mut options.packet_smoothing as &mut usize,
-                    SMOOTHING_NAMES.len(),
-                    |i| SMOOTHING_NAMES[i],
-                );
-                ui.checkbox(&mut options.calc_ball_rot, "Ignore packet ball rotation");
-            });
+//                 egui::ComboBox::from_label("Packet smoothing").width(100.).show_index(
+//                     ui,
+//                     &mut options.packet_smoothing as &mut usize,
+//                     SMOOTHING_NAMES.len(),
+//                     |i| SMOOTHING_NAMES[i],
+//                 );
+//                 ui.checkbox(&mut options.calc_ball_rot, "Ignore packet ball rotation");
+//             });
 
-            CollapsingHeader::new("World settings").default_open(true).show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label("Game speed");
-                    ui.add(
-                        egui::DragValue::new(&mut options.game_speed)
-                            .range(0.1..=10.0)
-                            .speed(0.02)
-                            .fixed_decimals(1),
-                    );
-                    ui.checkbox(&mut options.paused, "Paused");
-                });
+//             CollapsingHeader::new("World settings").default_open(true).show(ui, |ui| {
+//                 ui.horizontal(|ui| {
+//                     ui.label("Game speed");
+//                     ui.add(
+//                         egui::DragValue::new(&mut options.game_speed)
+//                             .range(0.1..=10.0)
+//                             .speed(0.02)
+//                             .fixed_decimals(1),
+//                     );
+//                     ui.checkbox(&mut options.paused, "Paused");
+//                 });
 
-                ui.add_space(15.);
+//                 ui.add_space(15.);
 
-                ui.horizontal(|ui| {
-                    ui.checkbox(&mut options.show_time, "In-game time");
-                    ui.checkbox(&mut options.ball_cam, "Ball cam");
-                });
-                ui.add(egui::Slider::new(&mut options.ui_scale, 0.4..=4.0).text("UI scale"));
-                ui.label("Mouse sensitivity:");
-                ui.add(egui::Slider::new(&mut options.mouse_sensitivity, 0.01..=4.0));
+//                 ui.horizontal(|ui| {
+//                     ui.checkbox(&mut options.show_time, "In-game time");
+//                     ui.checkbox(&mut options.ball_cam, "Ball cam");
+//                 });
+//                 ui.add(egui::Slider::new(&mut options.ui_scale, 0.4..=4.0).text("UI scale"));
+//                 ui.label("Mouse sensitivity:");
+//                 ui.add(egui::Slider::new(&mut options.mouse_sensitivity, 0.01..=4.0));
 
-                ui.add_space(15.);
+//                 ui.add_space(15.);
 
-                ui.checkbox(&mut options.stop_day, "Stop day cycle");
-                ui.add(egui::Slider::new(&mut options.daytime, 0.0..=150.0).text("Daytime"));
-                ui.add(egui::Slider::new(&mut options.day_speed, 0.0..=10.0).text("Day speed"));
-            });
+//                 ui.checkbox(&mut options.stop_day, "Stop day cycle");
+//                 ui.add(egui::Slider::new(&mut options.daytime, 0.0..=150.0).text("Daytime"));
+//                 ui.add(egui::Slider::new(&mut options.day_speed, 0.0..=10.0).text("Day speed"));
+//             });
 
-            ui.collapsing("Rendering manager", |ui| {
-                ui.checkbox(&mut options.allow_rendering, "Allow rendering");
+//             ui.collapsing("Rendering manager", |ui| {
+//                 ui.checkbox(&mut options.allow_rendering, "Allow rendering");
 
-                ui.add_space(10.);
+//                 ui.add_space(10.);
 
-                ui.label(format!("Groups: {}", render_info.groups));
-                ui.label(format!("Items: {}", render_info.items));
-            });
-        });
-}
+//                 ui.label(format!("Groups: {}", render_info.groups));
+//                 ui.label(format!("Items: {}", render_info.items));
+//             });
+//         });
+// }
 
 fn update_allow_rendering(options: Res<Options>, mut do_rendering: ResMut<DoRendering>, mut renders: ResMut<RenderGroups>) {
     if !options.allow_rendering {
@@ -301,7 +301,7 @@ fn update_shadows(
     mut query: Query<&mut DirectionalLight, With<Sun>>,
     mut shadow_map: ResMut<DirectionalLightShadowMap>,
 ) {
-    query.single_mut().shadows_enabled = options.shadows != 0;
+    query.single_mut().unwrap().shadows_enabled = options.shadows != 0;
     shadow_map.size = 2048
         * match options.shadows {
             2 => 2,
@@ -314,15 +314,15 @@ fn toggle_ballcam(options: Res<Options>, mut ballcam: ResMut<BallCam>) {
     ballcam.enabled = options.ball_cam;
 }
 
-fn toggle_vsync(options: Res<Options>, mut framepace: ResMut<FramepaceSettings>) {
-    framepace.limiter = if options.vsync {
-        Limiter::Auto
-    } else if options.uncap_fps {
-        Limiter::Off
-    } else {
-        Limiter::from_framerate(options.fps_limit)
-    };
-}
+// fn toggle_vsync(options: Res<Options>, mut framepace: ResMut<FramepaceSettings>) {
+//     framepace.limiter = if options.vsync {
+//         Limiter::Auto
+//     } else if options.uncap_fps {
+//         Limiter::Off
+//     } else {
+//         Limiter::from_framerate(options.fps_limit)
+//     };
+// }
 
 fn update_calc_ball_rot(options: Res<Options>, mut calc_ball_rot: ResMut<CalcBallRot>) {
     calc_ball_rot.0 = options.calc_ball_rot;
@@ -332,7 +332,7 @@ fn update_calc_ball_rot(options: Res<Options>, mut calc_ball_rot: ResMut<CalcBal
 fn update_msaa(options: Res<Options>, mut msaa_query: Query<&mut Msaa>) {
     const MSAA_SAMPLES: [u32; 4] = [1, 2, 4, 8];
 
-    for mut msaa in msaa_query.iter_mut() {
+    for mut msaa in &mut msaa_query {
         if MSAA_SAMPLES[options.msaa] == msaa.samples() {
             continue;
         }
@@ -390,12 +390,12 @@ fn write_settings_to_file(
 
 fn update_camera_state(mut primary_camera: Query<&mut PrimaryCamera>, options: Res<Options>) {
     if PrimaryCamera::Director(0) == options.camera_state {
-        if let PrimaryCamera::Director(_) = primary_camera.single() {
+        if let PrimaryCamera::Director(_) = primary_camera.single().unwrap() {
             return;
         }
     }
 
-    *primary_camera.single_mut() = options.camera_state;
+    *primary_camera.single_mut().unwrap() = options.camera_state;
 }
 
 fn listen(
@@ -411,7 +411,7 @@ fn listen(
     }
 
     if *last_focus != menu_focused.0 {
-        let mut window = windows.single_mut();
+        let mut window = windows.single_mut().unwrap();
         window.cursor_options.grab_mode = if menu_focused.0 {
             CursorGrabMode::None
         } else if cfg!(windows) {
