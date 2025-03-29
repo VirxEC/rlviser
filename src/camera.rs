@@ -2,7 +2,7 @@ use crate::spectator::{Spectator, SpectatorPlugin, SpectatorSettings};
 use bevy::{
     color::palettes::css,
     core_pipeline::tonemapping::Tonemapping,
-    pbr::{CascadeShadowConfigBuilder, DirectionalLightShadowMap, ShadowFilteringMethod},
+    pbr::{DirectionalLightShadowMap, ShadowFilteringMethod},
     prelude::*,
 };
 use serde::{Deserialize, Serialize};

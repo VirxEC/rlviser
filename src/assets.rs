@@ -149,7 +149,7 @@ pub fn get_mesh_info(name: &str, meshes: &mut Assets<Mesh>) -> Option<Vec<Handle
         }
     }
 
-    let file_name = local_path.split('/').last().unwrap();
+    let file_name = local_path.split('/').next_back().unwrap();
     let cache_path = format!("./cache/mesh/{file_name}.bin");
 
     let extension = if name.contains(".SkeletalMesh3") { "psk" } else { "pskx" };
@@ -269,7 +269,7 @@ fn retreive_material(
         }
     }
 
-    let file_name = pre_path.split('/').last().unwrap();
+    let file_name = pre_path.split('/').next_back().unwrap();
     let cache_path = format!("./cache/material/{file_name}.bin");
     let mesh_material = get_material_cache(cache_path, pre_path, name)?;
 

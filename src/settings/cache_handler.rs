@@ -103,7 +103,7 @@ impl Plugin for CachePlugin {
 }
 
 pub fn get_default_mesh_cache(path: &'static str, assets: &AssetServer, meshes: &mut Assets<Mesh>) -> Handle<Mesh> {
-    let name = path.split('/').last().unwrap().trim_end_matches(".pskx");
+    let name = path.split('/').next_back().unwrap().trim_end_matches(".pskx");
 
     if let Some(meshes) = check_mesh_cache(name) {
         return meshes[0].clone();
@@ -135,7 +135,7 @@ pub fn get_mesh_cache<P: AsRef<Path>>(
     meshes: &mut Assets<Mesh>,
 ) -> Option<Vec<Handle<Mesh>>> {
     fn inner(cache_path: &Path, asset_path: &Path, name: &str, meshes: &mut Assets<Mesh>) -> Option<Vec<Handle<Mesh>>> {
-        let name = name.split('.').last().unwrap();
+        let name = name.split('.').next_back().unwrap();
         if let Some(meshes) = check_mesh_cache(name) {
             return Some(meshes);
         }
@@ -319,7 +319,7 @@ impl MeshMaterial {
 
 pub fn get_material_cache<P: AsRef<Path>>(cache_path: P, asset_path: P, name: &str) -> Option<MeshMaterial> {
     fn inner(cache_path: &Path, asset_path: &Path, name: &str) -> Option<MeshMaterial> {
-        let name = name.split('.').last().unwrap();
+        let name = name.split('.').next_back().unwrap();
         if let Some(materials) = MESH_MATERIALS.read().ok()?.as_ref().and_then(|map| map.get(name)) {
             return Some(materials[0].clone());
         }

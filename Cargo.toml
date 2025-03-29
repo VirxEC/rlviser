@@ -27,7 +27,7 @@ image = { version = "0.25.1", features = ["tga"], default-features = false }
 log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
 
 [dependencies.bevy]
-version = "=0.16.0-rc.1"
+version = "=0.16.0-rc.2"
 default-features = false
 features = [
     "bevy_core_pipeline",
