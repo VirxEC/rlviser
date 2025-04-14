@@ -1,23 +1,23 @@
 [package]
 version = "0.7.17"
 name = "rlviser"
-edition = "2021"
+edition = "2024"
 publish = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-# bevy_atmosphere = "0.12"
 # bevy_framepace = { version = "0.18", default-features = false }
-# bevy_egui = { version = "0.33", default-features = false, features = ["default_fonts", "render"] }
+bevy_framepace = { git = "https://github.com/aloucks/bevy_framepace", branch = "bevy-0.16", default-features = false }
+bevy_egui = { version = "0.34.0-rc.2", default-features = false, features = ["default_fonts", "render"] }
 # bevy_vector_shapes = "0.9"
+bevy_vector_shapes = { git = "https://github.com/patrickariel/bevy_vector_shapes", branch = "016rc2" }
 byteorder = "1.4.3"
 include-flate = "0.3.0"
 serde = { version = "1.0.160", features = ["derive", "rc"] }
 serde_json = "1.0.96"
 walkdir = "2.3.3"
 thiserror = "2.0"
-radsort = "0.1.0"
 rust_search = "2.1.0"
 crossbeam-channel = "0.5.12"
 itertools = "0.14.0"
@@ -25,32 +25,19 @@ bincode = "2.0"
 zip = "2.1.3"
 image = { version = "0.25.1", features = ["tga"], default-features = false }
 log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
+itoa = "1.0.15"
 
 [dependencies.bevy]
-version = "=0.16.0-rc.2"
+version = "=0.16.0-rc.4"
 default-features = false
-features = [
-    "bevy_core_pipeline",
-    "bevy_gizmos",
-    "bevy_log",
-    "bevy_window",
-    "bevy_mesh_picking_backend",
-    "bevy_pbr",
-    "bevy_picking",
-    "bevy_state",
-    "bevy_ui",
-    "default_font",
-    "std",
-    "tga",
-    "wayland",
-    "x11",
-]
+features = ["bevy_core_pipeline", "bevy_gizmos", "bevy_window", "bevy_mesh_picking_backend", "bevy_pbr", "bevy_picking", "bevy_state", "bevy_ui", "default_font", "std", "tga", "wayland", "x11"]
 
 [features]
 default = []
 full_load = []
 ssao = []
 team_goal_barriers = []
+dyn = ["bevy/dynamic_linking"]
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]

@@ -1,5 +1,6 @@
 use crate::{
-    assets::{get_material, get_mesh_info, BoostPickupGlows, CarWheelMesh},
+    GameLoadState, ServerPort,
+    assets::{BoostPickupGlows, CarWheelMesh, get_material, get_mesh_info},
     bytes::{FromBytes, ToBytes, ToBytesExact},
     camera::{PrimaryCamera, TimeDisplay},
     mesh::LargeBoostPadLocRots,
@@ -7,7 +8,6 @@ use crate::{
     renderer::{RenderGroups, RenderMessage, UdpRendererPlugin},
     rocketsim::{CarInfo, GameMode, GameState, Team},
     settings::options::{BallCam, CalcBallRot, GameSpeed, Options, PacketSmoothing, ShowTime},
-    GameLoadState, ServerPort,
 };
 use bevy::{
     app::AppExit,
@@ -32,12 +32,12 @@ use std::{
 };
 
 use crate::{
-    camera::{BoostAmount, HighlightedEntity, BOOST_INDICATOR_FONT_SIZE, BOOST_INDICATOR_POS},
+    camera::{BOOST_INDICATOR_FONT_SIZE, BOOST_INDICATOR_POS, BoostAmount, HighlightedEntity},
     mesh::{BoostPadClicked, CarClicked, ChangeCarPos},
     settings::{options::UiOverlayScale, state_setting::UserCarStates},
 };
 use bevy::window::PrimaryWindow;
-// use bevy_vector_shapes::prelude::*;
+use bevy_vector_shapes::prelude::*;
 
 #[cfg(debug_assertions)]
 use crate::camera::EntityName;
@@ -204,12 +204,6 @@ impl CarWheel {
         Self { front, left }
     }
 }
-
-// pub fn target_insert<E, C: Component + Default>(mut trigger: Trigger<E>, mut commands: Commands) {
-//     let entity = trigger.entity();
-//     commands.entity(entity).insert(C::default());
-//     trigger.propagate(false);
-// }
 
 pub fn target_insert<E>(component: impl Component + Clone) -> impl Fn(Trigger<E>, Commands) {
     move |mut trigger, mut commands| {
@@ -447,42 +441,44 @@ struct UdpUpdateStream(Receiver<UdpUpdate>);
 fn start_udp_send_handler(socket: UdpSocket, out_addr: SocketAddr, outgoing: Receiver<SendableUdp>) {
     socket.send_to(&[UdpPacketTypes::Connection as u8], out_addr).unwrap();
 
-    thread::spawn(move || loop {
-        match outgoing.recv() {
-            Ok(SendableUdp::State(state)) => {
-                let bytes = state.to_bytes();
+    thread::spawn(move || {
+        loop {
+            match outgoing.recv() {
+                Ok(SendableUdp::State(state)) => {
+                    let bytes = state.to_bytes();
 
-                if socket.send_to(&[UdpPacketTypes::GameState as u8], out_addr).is_err() {
-                    continue;
-                }
+                    if socket.send_to(&[UdpPacketTypes::GameState as u8], out_addr).is_err() {
+                        continue;
+                    }
 
-                if socket.send_to(&bytes, out_addr).is_err() {
-                    continue;
+                    if socket.send_to(&bytes, out_addr).is_err() {
+                        continue;
+                    }
                 }
+                Ok(SendableUdp::Speed(speed)) => {
+                    let bytes = speed.to_bytes();
+
+                    if socket.send_to(&[UdpPacketTypes::Speed as u8], out_addr).is_err() {
+                        continue;
+                    }
+
+                    if socket.send_to(&bytes, out_addr).is_err() {
+                        continue;
+                    }
+                }
+                Ok(SendableUdp::Paused(paused)) => {
+                    let paused = [paused as u8];
+
+                    if socket.send_to(&[UdpPacketTypes::Paused as u8], out_addr).is_err() {
+                        continue;
+                    }
+
+                    if socket.send_to(&paused, out_addr).is_err() {
+                        continue;
+                    }
+                }
+                Err(_) => return,
             }
-            Ok(SendableUdp::Speed(speed)) => {
-                let bytes = speed.to_bytes();
-
-                if socket.send_to(&[UdpPacketTypes::Speed as u8], out_addr).is_err() {
-                    continue;
-                }
-
-                if socket.send_to(&bytes, out_addr).is_err() {
-                    continue;
-                }
-            }
-            Ok(SendableUdp::Paused(paused)) => {
-                let paused = [paused as u8];
-
-                if socket.send_to(&[UdpPacketTypes::Paused as u8], out_addr).is_err() {
-                    continue;
-                }
-
-                if socket.send_to(&paused, out_addr).is_err() {
-                    continue;
-                }
-            }
-            Err(_) => return,
         }
     });
 }
@@ -878,7 +874,7 @@ fn pre_update_car(
     commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    // mut user_cars: ResMut<UserCarStates>,
+    mut user_cars: ResMut<UserCarStates>,
     car_wheel_mesh: Res<CarWheelMesh>,
     mut images: ResMut<Assets<Image>>,
     render_device: Option<Res<RenderDevice>>,
@@ -887,7 +883,7 @@ fn pre_update_car(
         &cars,
         &states.current,
         &car_entities,
-        // &mut user_cars,
+        &mut user_cars,
         commands,
         &mut meshes,
         &mut materials,
@@ -917,7 +913,7 @@ fn update_camera(
             }
 
             let mut ids = states.current.cars.iter().map(|car_info| car_info.id).collect::<Vec<_>>();
-            radsort::sort(&mut ids);
+            ids.sort();
 
             let index = *id as usize - 1;
             if index >= ids.len() {
@@ -978,7 +974,7 @@ fn correct_car_count(
     cars: &Query<&Car>,
     state: &GameState,
     car_entities: &Query<(Entity, &Car)>,
-    // user_cars: &mut UserCarStates,
+    user_cars: &mut UserCarStates,
     mut commands: Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
@@ -990,7 +986,7 @@ fn correct_car_count(
     // remove cars that no longer exist
     for (entity, car) in car_entities {
         if !state.cars.iter().any(|car_info| car.0 == car_info.id) {
-            // user_cars.remove(car.0);
+            user_cars.remove(car.0);
             commands.entity(entity).despawn();
         }
     }
@@ -1025,8 +1021,6 @@ fn update_pads_count(
     mut commands: Commands,
 ) {
     if pads.iter().count() != states.current.pads.len() && !large_boost_pad_loc_rots.rots.is_empty() {
-        let morton_generator = Morton::default();
-
         // The number of pads shouldn't change often
         // There's also not an easy way to determine
         // if a previous pad a new pad are same pad
@@ -1044,6 +1038,8 @@ fn update_pads_count(
             Some(LoadState::Failed(_)) => pad_glows.small_hitbox.clone(),
             _ => pad_glows.small.clone(),
         };
+
+        let morton_generator = Morton::default();
 
         for pad in &states.current.pads {
             let code = morton_generator.get_code(pad.position);
@@ -1126,6 +1122,8 @@ fn update_pads_count(
                         cull_mode: None,
                         ..default()
                     })),
+                    NotShadowCaster,
+                    NotShadowReceiver,
                     transform,
                     #[cfg(debug_assertions)]
                     EntityName::from("generic_boost_pad"),
@@ -1142,107 +1140,110 @@ fn update_pad_colors(
     states: Res<GameStates>,
     query: Query<(&BoostPadI, &MeshMaterial3d<StandardMaterial>)>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut sorted_pads: Local<Vec<(usize, u64)>>,
 ) {
-    let morton_generator = Morton::default();
+    if sorted_pads.len() != states.current.pads.len() {
+        let morton_generator = Morton::default();
 
-    let mut sorted_pads = states
-        .current
-        .pads
-        .iter()
-        .enumerate()
-        .map(|(i, pad)| (i, morton_generator.get_code(pad.position)))
-        .collect::<Vec<_>>();
-    radsort::sort_by_key(&mut sorted_pads, |(_, code)| *code);
+        *sorted_pads = states
+            .current
+            .pads
+            .iter()
+            .enumerate()
+            .map(|(i, pad)| (i, morton_generator.get_code(pad.position)))
+            .collect::<Vec<_>>();
+        sorted_pads.sort_by_key(|(_, code)| *code);
+    }
 
     for (id, material) in query.iter() {
         let index = sorted_pads.binary_search_by_key(&id.id(), |(_, code)| *code).unwrap();
 
-        let alpha = if states.current.pads[sorted_pads[index].0].state.is_active {
+        let new_alpha = if states.current.pads[sorted_pads[index].0].state.is_active {
             0.6
         } else {
-            // make the glow on inactive pads dissapear
+            // make the glow on inactive pads disappear
             0.0
         };
 
-        let material = materials.get_mut(material).unwrap();
-        if material.base_color.alpha() != alpha {
-            material.base_color.set_alpha(alpha);
+        let current_alpha = materials.get(material).unwrap().base_color.alpha();
+        if current_alpha != new_alpha {
+            materials.get_mut(material).unwrap().base_color.set_alpha(new_alpha);
         }
     }
 }
 
-// fn update_boost_meter(
-//     states: Res<GameStates>,
-//     ui_scale: Res<UiOverlayScale>,
-//     camera: Query<&PrimaryCamera>,
-//     windows: Query<&Window, With<PrimaryWindow>>,
-//     mut painter: ShapePainter,
-//     mut boost_amount: Query<(&mut Text, &mut Node, &mut TextFont), With<BoostAmount>>,
-//     mut was_last_director: Local<bool>,
-// ) {
-//     let id = match camera.single() {
-//         PrimaryCamera::TrackCar(id) => {
-//             if states.current.cars.is_empty() {
-//                 return;
-//             }
+fn update_boost_meter(
+    states: Res<GameStates>,
+    ui_scale: Res<UiOverlayScale>,
+    camera: Query<&PrimaryCamera>,
+    windows: Query<&Window, With<PrimaryWindow>>,
+    mut painter: ShapePainter,
+    mut boost_amount: Query<(&mut Text, &mut Node, &mut TextFont), With<BoostAmount>>,
+    mut was_last_director: Local<bool>,
+) {
+    const START_ANGLE: f32 = 7. * PI / 6.;
+    const FULL_ANGLE: f32 = 11. * PI / 6.;
+    const UI_BACKGROUND: Color = Color::srgb(0.075, 0.075, 0.15);
 
-//             let mut ids = states.current.cars.iter().map(|car_info| car_info.id).collect::<Vec<_>>();
-//             radsort::sort(&mut ids);
+    let id = match camera.single().unwrap() {
+        PrimaryCamera::TrackCar(id) => {
+            if states.current.cars.is_empty() {
+                return;
+            }
 
-//             let index = *id as usize - 1;
-//             if index >= ids.len() {
-//                 0
-//             } else {
-//                 ids[index]
-//             }
-//         }
-//         PrimaryCamera::Director(id) => *id,
-//         PrimaryCamera::Spectator => 0,
-//     };
+            let mut ids = states.current.cars.iter().map(|car_info| car_info.id).collect::<Vec<_>>();
+            ids.sort();
 
-//     if id == 0 {
-//         if *was_last_director {
-//             *was_last_director = false;
-//             boost_amount.single_mut().0 .0.clear();
-//         }
+            let index = *id as usize - 1;
+            if index >= ids.len() { 0 } else { ids[index] }
+        }
+        PrimaryCamera::Director(id) => *id,
+        PrimaryCamera::Spectator => 0,
+    };
 
-//         return;
-//     }
+    if id == 0 {
+        if *was_last_director {
+            *was_last_director = false;
+            boost_amount.single_mut().unwrap().0.0.clear();
+        }
 
-//     let Some(car_state) = &states.current.cars.iter().find(|info| id == info.id).map(|info| info.state) else {
-//         return;
-//     };
+        return;
+    }
 
-//     let primary_window = windows.single();
-//     let window_res = Vec2::new(primary_window.width(), primary_window.height());
-//     let painter_pos = (window_res / 2. - (BOOST_INDICATOR_POS + 25.) * ui_scale.scale) * Vec2::new(1., -1.);
+    let Some(car_state) = &states.current.cars.iter().find(|info| id == info.id).map(|info| info.state) else {
+        return;
+    };
 
-//     painter.set_translation(painter_pos.extend(0.));
-//     painter.color = Color::srgb(0.075, 0.075, 0.15);
-//     painter.circle(100.0 * ui_scale.scale);
+    let primary_window = windows.single().unwrap();
+    let window_res = Vec2::new(primary_window.width(), primary_window.height());
+    let painter_pos = (window_res / 2. - (BOOST_INDICATOR_POS + 25.) * ui_scale.scale) * Vec2::new(1., -1.);
 
-//     let scale = car_state.boost / 100.;
+    painter.set_translation(painter_pos.extend(0.));
+    painter.color = UI_BACKGROUND;
+    painter.circle(100.0 * ui_scale.scale);
 
-//     let start_angle = 7. * PI / 6.;
-//     let full_angle = 11. * PI / 6.;
-//     let end_angle = (full_angle - start_angle).mul_add(scale, start_angle);
+    let scale = car_state.boost / 100.;
+    let end_angle = (FULL_ANGLE - START_ANGLE) * scale + START_ANGLE;
 
-//     painter.color = Color::srgb(1., 0.84 * scale, 0.);
-//     painter.hollow = true;
-//     painter.thickness = 4.;
-//     painter.arc(80. * ui_scale.scale, start_angle, end_angle);
+    painter.color = Color::srgb(1., 0.84 * scale, 0.);
+    painter.hollow = true;
+    painter.thickness = 4.;
+    painter.arc(80. * ui_scale.scale, START_ANGLE, end_angle);
 
-//     painter.reset();
+    painter.reset();
 
-//     let (mut text_display, mut style, mut font) = boost_amount.single_mut();
-//     style.right = Val::Px((BOOST_INDICATOR_POS.x - 25.) * ui_scale.scale);
-//     style.bottom = Val::Px(BOOST_INDICATOR_POS.y * ui_scale.scale);
+    let (mut text_display, mut style, mut font) = boost_amount.single_mut().unwrap();
+    style.right = Val::Px((BOOST_INDICATOR_POS.x - 25.) * ui_scale.scale);
+    style.bottom = Val::Px(BOOST_INDICATOR_POS.y * ui_scale.scale);
 
-//     **text_display = car_state.boost.round().to_string();
-//     font.font_size = BOOST_INDICATOR_FONT_SIZE * ui_scale.scale;
+    let boost_val = car_state.boost.round() as u8;
 
-//     *was_last_director = true;
-// }
+    text_display.clear();
+    text_display.push_str(itoa::Buffer::new().format(boost_val));
+    font.font_size = BOOST_INDICATOR_FONT_SIZE * ui_scale.scale;
+
+    *was_last_director = true;
+}
 
 fn update_time(states: Res<GameStates>, show_time: Res<ShowTime>, mut text_display: Query<&mut Text, With<TimeDisplay>>) {
     const MINUTE: u64 = 60;
@@ -1252,8 +1253,15 @@ fn update_time(states: Res<GameStates>, show_time: Res<ShowTime>, mut text_displ
     const MONTH: u64 = 30 * DAY;
     const YEAR: u64 = 365 * DAY;
 
+    const OPTIONAL_TIME_SEGMENTS: [(u64, char, usize); 5] =
+        [(YEAR, 'y', 0), (MONTH, 'm', 2), (WEEK, 'w', 2), (DAY, 'd', 0), (HOUR, 'h', 2)];
+
+    const REQUIRED_TIME_SEGMENTS: [(u64, char, usize); 2] = [(MINUTE, 'm', 2), (1, 's', 2)];
+
+    let text = &mut text_display.single_mut().unwrap().0;
+    text.clear();
+
     if !show_time.enabled {
-        **text_display.single_mut().unwrap() = String::new();
         return;
     }
 
@@ -1262,47 +1270,52 @@ fn update_time(states: Res<GameStates>, show_time: Res<ShowTime>, mut text_displ
         return;
     }
 
+    let mut itoa_buf = itoa::Buffer::new();
     let mut seconds = states.current.tick_count / tick_rate;
 
-    let mut time_segments = Vec::with_capacity(7);
+    for (denom, unit, round) in OPTIONAL_TIME_SEGMENTS {
+        let val = seconds / denom;
+        if val > 0 {
+            let val_str = itoa_buf.format(val);
 
-    let years = seconds / YEAR;
-    if years > 0 {
-        time_segments.push(format!("{years}y"));
+            if val_str.len() < round {
+                let num_pad = round - val_str.len();
+                for _ in 0..num_pad {
+                    text.push('0');
+                }
+            }
+
+            if !text.is_empty() {
+                text.push(':');
+            }
+
+            text.push_str(val_str);
+            text.push(unit);
+        }
+
+        seconds -= val * denom;
     }
-    seconds -= years * YEAR;
 
-    let months = seconds / MONTH;
-    if months > 0 {
-        time_segments.push(format!("{months:02}m"));
+    for (denom, unit, round) in REQUIRED_TIME_SEGMENTS {
+        if !text.is_empty() {
+            text.push(':');
+        }
+
+        let val = seconds / denom;
+        let val_str = itoa_buf.format(val);
+
+        if val_str.len() < round {
+            let num_pad = round - val_str.len();
+            for _ in 0..num_pad {
+                text.push('0');
+            }
+        }
+
+        text.push_str(val_str);
+        text.push(unit);
+
+        seconds -= val * denom;
     }
-    seconds -= months * MONTH;
-
-    let weeks = seconds / WEEK;
-    if weeks > 0 {
-        time_segments.push(format!("{weeks:02}w"));
-    }
-    seconds -= weeks * WEEK;
-
-    let days = seconds / DAY;
-    if days > 0 {
-        time_segments.push(format!("{days}d"));
-    }
-    seconds -= days * DAY;
-
-    let hours = seconds / HOUR;
-    if hours > 0 {
-        time_segments.push(format!("{hours:02}h"));
-    }
-    seconds -= hours * HOUR;
-
-    let minutes = seconds / MINUTE;
-    time_segments.push(format!("{minutes:02}m"));
-    seconds -= minutes * MINUTE;
-
-    time_segments.push(format!("{seconds:02}s"));
-
-    **text_display.single_mut().unwrap() = time_segments.join(":");
 }
 
 fn update_field(states: Res<GameStates>, mut game_mode: ResMut<GameMode>, mut load_state: ResMut<NextState<GameLoadState>>) {
@@ -1321,6 +1334,10 @@ fn update_ball_rotation(
 ) {
     if game_speed.paused {
         return;
+    }
+
+    if *last_game_tick > states.current.tick_count {
+        *last_game_tick = states.current.tick_count;
     }
 
     let delta_time = if matches!(*packet_smoothing, PacketSmoothing::None) {
@@ -1603,7 +1620,7 @@ impl Plugin for RocketSimPlugin {
                                         .run_if(|ps: Res<PacketSmoothing>| matches!(*ps, PacketSmoothing::Interpolate)),
                                 )
                                     .run_if(|updated: Res<PacketUpdated>| !updated.0),
-                                (listen /*update_boost_meter*/,),
+                                (listen, update_boost_meter),
                             ),
                         )
                             .chain(),

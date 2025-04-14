@@ -4,7 +4,7 @@ use crate::{
     settings::cache_handler::{get_default_mesh_cache, get_material_cache, get_mesh_cache, get_texture_cache},
 };
 use bevy::{
-    asset::{io::Reader, AssetLoader},
+    asset::{AssetLoader, io::Reader},
     color::palettes::css,
     prelude::*,
     render::{mesh::CylinderMeshBuilder, renderer::RenderDevice},
@@ -611,7 +611,7 @@ impl AssetLoader for PskxLoader {
 #[cfg(debug_assertions)]
 pub mod umodel {
     use bevy::prelude::*;
-    use rust_search::{similarity_sort, SearchBuilder};
+    use rust_search::{SearchBuilder, similarity_sort};
     use std::{
         fs,
         io::{self, Write},
@@ -700,7 +700,9 @@ pub mod umodel {
         let input_file = fs::read_to_string("assets.path").unwrap_or_else(|_| find_input_dir());
 
         let Some(assets_dir) = input_file.lines().next() else {
-            panic!("Your 'assets.path' file is empty! Create the file with the path to your 'rocketleague/TAGame/CookedPCConsole' folder.");
+            panic!(
+                "Your 'assets.path' file is empty! Create the file with the path to your 'rocketleague/TAGame/CookedPCConsole' folder."
+            );
         };
 
         let assets_path = Path::new(assets_dir);

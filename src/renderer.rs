@@ -1,7 +1,6 @@
-use std::collections::HashMap;
-
 use crate::udp::ToBevyVec;
 use bevy::prelude::*;
+use std::collections::HashMap;
 
 #[derive(Clone, Copy, Debug)]
 pub struct CustomColor {

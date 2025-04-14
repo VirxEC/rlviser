@@ -1,8 +1,8 @@
 use crate::{
+    GameLoadState,
     assets::*,
     rocketsim::{GameMode, Team},
-    udp::{send_event, target_insert, target_remove, Ball, ToBevyVec, ToBevyVecFlat},
-    GameLoadState,
+    udp::{Ball, ToBevyVec, ToBevyVecFlat, send_event, target_insert, target_remove},
 };
 use bevy::{
     asset::LoadState,
@@ -23,7 +23,7 @@ use include_flate::flate;
 use serde::Deserialize;
 use std::{
     cmp::Ordering,
-    fs::{create_dir_all, File},
+    fs::{File, create_dir_all},
     io::{self, Read},
     path::Path,
     rc::Rc,
@@ -282,7 +282,6 @@ fn handle_boost_pad_clicked(
         }
 
         if let Ok(boost_pad) = boost_pads.get(event.1) {
-            println!("this boost pad is {}", boost_pad.id());
             enable_boost_pad_info.toggle(boost_pad.id());
         }
     }
@@ -461,11 +460,11 @@ fn despawn_old_field(
     mut commands: Commands,
     mut state: ResMut<NextState<GameLoadState>>,
     static_field_entities: Query<Entity, With<StaticFieldEntity>>,
-    // mut user_pads: ResMut<UserPadStates>,
-    // mut user_cars: ResMut<UserCarStates>,
+    mut user_pads: ResMut<UserPadStates>,
+    mut user_cars: ResMut<UserCarStates>,
 ) {
-    // user_pads.clear();
-    // user_cars.clear();
+    user_pads.clear();
+    user_cars.clear();
 
     static_field_entities.iter().for_each(|entity| {
         commands.entity(entity).despawn();
@@ -654,11 +653,7 @@ fn process_info_node(
         }
 
         let side_signum = if node.static_mesh.contains("BBall_HoopBackBoard_02") {
-            if node.rotation.is_some() {
-                -1
-            } else {
-                1
-            }
+            if node.rotation.is_some() { -1 } else { 1 }
         } else {
             node.translation.map(|t| (t[1] as i16).signum()).unwrap_or_default()
         };

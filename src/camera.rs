@@ -2,15 +2,18 @@ use crate::spectator::{Spectator, SpectatorPlugin, SpectatorSettings};
 use bevy::{
     color::palettes::css,
     core_pipeline::tonemapping::Tonemapping,
-    pbr::{DirectionalLightShadowMap, ShadowFilteringMethod},
+    pbr::{
+        Atmosphere, AtmosphereSettings, CascadeShadowConfigBuilder, DirectionalLightShadowMap, ShadowFilteringMethod,
+        light_consts::lux,
+    },
     prelude::*,
+    render::camera::Exposure,
 };
 use serde::{Deserialize, Serialize};
 use std::f32::consts::PI;
 
-// use bevy_atmosphere::{prelude::*, settings::SkyboxCreationMode};
-// use bevy_framepace::{FramepacePlugin, FramepaceSettings};
-// use bevy_vector_shapes::prelude::*;
+use bevy_framepace::{FramepacePlugin, FramepaceSettings};
+use bevy_vector_shapes::prelude::*;
 use std::time::Duration;
 
 #[cfg(feature = "ssao")]
@@ -45,19 +48,27 @@ pub const TIME_DISPLAY_POS: Vec2 = Vec2::new(0., 60.);
 
 fn setup(mut commands: Commands) {
     commands.insert_resource(AmbientLight {
-        brightness: 500.,
+        brightness: lux::FULL_DAYLIGHT,
         ..default()
     });
 
-    commands.spawn((DirectionalLight::default(), Sun));
+    let cascade_shadow_config = CascadeShadowConfigBuilder {
+        minimum_distance: 10.,
+        first_cascade_far_bound: 1000.,
+        maximum_distance: 15_000.,
+        ..default()
+    }
+    .build();
 
-    #[allow(unused_variables, unused_mut)]
-    let mut camera_spawn = commands.spawn((
+    commands.spawn((DirectionalLight::default(), cascade_shadow_config, Sun));
+
+    commands.spawn((
         PrimaryCamera::default(),
+        Camera { hdr: true, ..default() },
         Camera3d::default(),
         Projection::Perspective(PerspectiveProjection {
             near: 5.,
-            far: 5_000.,
+            far: 50_000.,
             fov: PI / 3.,
             ..default()
         }),
@@ -68,21 +79,27 @@ fn setup(mut commands: Commands) {
         } else {
             ShadowFilteringMethod::Gaussian
         },
-        // AtmosphereCamera::default(),
         if cfg!(feature = "ssao") { Msaa::Off } else { Msaa::default() },
         Spectator,
         MeshPickingCamera,
+        Atmosphere::EARTH,
+        Exposure::SUNLIGHT,
+        AtmosphereSettings {
+            aerial_view_lut_max_distance: 320.,
+            scene_units_to_m: 0.01,
+            ..default()
+        },
+        #[cfg(feature = "ssao")]
+        ScreenSpaceAmbientOcclusion::default(),
+        #[cfg(feature = "ssao")]
+        TemporalAntiAliasing::default(),
     ));
-
-    #[cfg(feature = "ssao")]
-    camera_spawn
-        .insert(ScreenSpaceAmbientOcclusion::default())
-        .insert(TemporalAntiAliasing::default());
 
     commands.spawn((
         Camera2d,
         Camera {
             order: 1,
+            hdr: true,
             clear_color: ClearColorConfig::None,
             ..default()
         },
@@ -140,7 +157,6 @@ pub struct DaylightOffset {
 }
 
 fn daylight_cycle(
-    // mut atmosphere: AtmosphereMut<Nishita>,
     mut query: Query<(&mut Transform, &mut DirectionalLight), With<Sun>>,
     mut timer: ResMut<CycleTimer>,
     offset: Res<DaylightOffset>,
@@ -153,12 +169,11 @@ fn daylight_cycle(
         let t = (offset.offset + secs) / (200. / offset.day_speed);
 
         let sun_position = Vec3::new(-t.cos(), t.sin(), 0.);
-        // atmosphere.sun_position = sun_position;
 
         if let Some((mut light_trans, mut directional)) = query.single_mut().unwrap().into() {
             light_trans.translation = sun_position * 100_000.;
             light_trans.look_at(Vec3::ZERO, Vec3::Y);
-            directional.illuminance = t.sin().max(0.0).powi(2) * 10000.;
+            directional.illuminance = t.sin().max(0.0).powi(2) * lux::RAW_SUNLIGHT;
         }
     }
 }
@@ -205,15 +220,10 @@ impl Plugin for CameraPlugin {
                 Duration::from_secs_f32(1. / 60.),
                 TimerMode::Repeating,
             )))
-            // .insert_resource(FramepaceSettings {
-            //     limiter: bevy_framepace::Limiter::from_framerate(60.),
-            // })
-            // .insert_resource(AtmosphereModel::default())
-            // .insert_resource(AtmosphereSettings {
-            //     skybox_creation_mode: SkyboxCreationMode::FromSpecifiedFar(500_000.),
-            //     ..default()
-            // })
-            // .add_plugins((FramepacePlugin, AtmospherePlugin, Shape2dPlugin::default()))
+            .insert_resource(FramepaceSettings {
+                limiter: bevy_framepace::Limiter::from_framerate(60.),
+            })
+            .add_plugins((FramepacePlugin, Shape2dPlugin::default()))
             .add_systems(Update, daylight_cycle);
         }
 

@@ -1,4 +1,4 @@
-use crate::{assets::load_assets, mesh::MeshBuilder, GameLoadState};
+use crate::{GameLoadState, assets::load_assets, mesh::MeshBuilder};
 use bevy::{
     image::{CompressedImageFormats, ImageSampler, ImageType},
     prelude::*,
@@ -6,9 +6,9 @@ use bevy::{
 };
 use std::{
     collections::HashMap,
-    fs::{copy, create_dir_all, read_to_string, File},
+    fs::{File, copy, create_dir_all, read_to_string},
     io::Read,
-    path::{Path, MAIN_SEPARATOR},
+    path::{MAIN_SEPARATOR, Path},
     sync::RwLock,
 };
 use walkdir::WalkDir;
