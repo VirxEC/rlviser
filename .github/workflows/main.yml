@@ -34,7 +34,7 @@ jobs:
         uses: houseabsolute/actions-rust-cross@v0
         with:
           target: ${{ matrix.platform.target }}
-          args: "--release"
+          args: "--release --no-default-features"
       - name: Upload artifact (Windows)
         if: contains(matrix.platform.os, 'windows')
         uses: actions/upload-artifact@v4.3.3
