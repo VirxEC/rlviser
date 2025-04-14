@@ -450,7 +450,7 @@ pub struct LargeBoostPadLocRots {
 }
 
 #[derive(Component)]
-#[require(Mesh3d, MeshMaterial3d<StandardMaterial>, NotShadowCaster, NotShadowReceiver)]
+#[require(Mesh3d, MeshMaterial3d<StandardMaterial>, NotShadowCaster)]
 pub struct StaticFieldEntity;
 
 flate!(pub static STADIUM_P_LAYOUT: str from "stadiums/Stadium_P_MeshObjects.json");

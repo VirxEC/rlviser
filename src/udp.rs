@@ -324,6 +324,8 @@ fn spawn_car(
                     rotation: Quat::from_rotation_z(PI / 2.),
                     ..default()
                 },
+                NotShadowCaster,
+                NotShadowReceiver,
                 CarBoost,
             ));
 

@@ -53,14 +53,19 @@ fn setup(mut commands: Commands) {
     });
 
     let cascade_shadow_config = CascadeShadowConfigBuilder {
-        minimum_distance: 10.,
-        first_cascade_far_bound: 1000.,
-        maximum_distance: 15_000.,
+        minimum_distance: 20.,
+        first_cascade_far_bound: 2000.,
+        maximum_distance: 30_000.,
         ..default()
     }
     .build();
 
-    commands.spawn((DirectionalLight::default(), cascade_shadow_config, Sun));
+    commands.spawn((
+        DirectionalLight::default(),
+        ShadowFilteringMethod::Hardware2x2,
+        cascade_shadow_config,
+        Sun,
+    ));
 
     commands.spawn((
         PrimaryCamera::default(),
