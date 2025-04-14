@@ -9,6 +9,7 @@ use crate::{
     rocketsim::{CarInfo, GameMode, GameState, Team},
     settings::options::{BallCam, CalcBallRot, GameSpeed, Options, PacketSmoothing, ShowTime},
 };
+use ahash::AHashMap;
 use bevy::{
     app::AppExit,
     asset::LoadState,
@@ -22,7 +23,6 @@ use bevy::{
 use crossbeam_channel::{Receiver, Sender};
 use itertools::izip;
 use std::{
-    collections::HashMap,
     f32::consts::PI,
     fs,
     mem::{replace, swap},
@@ -726,7 +726,7 @@ fn update_car_extra(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut last_boost_states: Local<Vec<u32>>,
     mut last_demoed_states: Local<Vec<u32>>,
-    mut last_boost_amounts: Local<HashMap<u32, f32>>,
+    mut last_boost_amounts: Local<AHashMap<u32, f32>>,
 ) {
     for (car, children) in &mut cars {
         let Some(target_car) = states.current.cars.iter().find(|car_info| car.0 == car_info.id) else {
@@ -1278,15 +1278,15 @@ fn update_time(states: Res<GameStates>, show_time: Res<ShowTime>, mut text_displ
         if val > 0 {
             let val_str = itoa_buf.format(val);
 
+            if !text.is_empty() {
+                text.push(':');
+            }
+
             if val_str.len() < round {
                 let num_pad = round - val_str.len();
                 for _ in 0..num_pad {
                     text.push('0');
                 }
-            }
-
-            if !text.is_empty() {
-                text.push(':');
             }
 
             text.push_str(val_str);

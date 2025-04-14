@@ -1,11 +1,11 @@
 use crate::{GameLoadState, assets::load_assets, mesh::MeshBuilder};
+use ahash::AHashMap;
 use bevy::{
     image::{CompressedImageFormats, ImageSampler, ImageType},
     prelude::*,
     render::{render_asset::RenderAssetUsages, renderer::RenderDevice},
 };
 use std::{
-    collections::HashMap,
     fs::{File, copy, create_dir_all, read_to_string},
     io::Read,
     path::{MAIN_SEPARATOR, Path},
@@ -13,9 +13,9 @@ use std::{
 };
 use walkdir::WalkDir;
 
-static MESHES: RwLock<Option<HashMap<String, Vec<Handle<Mesh>>>>> = RwLock::new(None);
-static MESH_MATERIALS: RwLock<Option<HashMap<String, Vec<MeshMaterial>>>> = RwLock::new(None);
-static TEXTURES: RwLock<Option<HashMap<String, Handle<Image>>>> = RwLock::new(None);
+static MESHES: RwLock<Option<AHashMap<String, Vec<Handle<Mesh>>>>> = RwLock::new(None);
+static MESH_MATERIALS: RwLock<Option<AHashMap<String, Vec<MeshMaterial>>>> = RwLock::new(None);
+static TEXTURES: RwLock<Option<AHashMap<String, Handle<Image>>>> = RwLock::new(None);
 
 #[cfg(debug_assertions)]
 mod cache {
@@ -30,7 +30,8 @@ mod cache {
 #[cfg(not(debug_assertions))]
 mod cache {
     use crate::GameLoadState;
-    use bevy::{prelude::*, render::renderer::RenderDevice, utils::HashMap};
+    use ahash::AHashMap;
+    use bevy::{prelude::*, render::renderer::RenderDevice};
     use include_flate::flate;
     use std::io::Cursor;
     use zip::ZipArchive;
@@ -50,9 +51,9 @@ mod cache {
         let mut material_cache_lock = super::MESH_MATERIALS.write().unwrap();
         let mut texture_cache_lock = super::TEXTURES.write().unwrap();
 
-        let mesh_cache = mesh_cache_lock.get_or_insert_with(HashMap::new);
-        let material_cache = material_cache_lock.get_or_insert_with(HashMap::new);
-        let texture_cache = texture_cache_lock.get_or_insert_with(HashMap::new);
+        let mesh_cache = mesh_cache_lock.get_or_insert_with(AHashMap::new);
+        let material_cache = material_cache_lock.get_or_insert_with(AHashMap::new);
+        let texture_cache = texture_cache_lock.get_or_insert_with(AHashMap::new);
 
         for i in 0..archive.len() {
             let file = archive.by_index(i).unwrap();
@@ -122,7 +123,7 @@ pub fn get_default_mesh_cache(path: &'static str, assets: &AssetServer, meshes: 
     MESHES
         .write()
         .unwrap()
-        .get_or_insert_with(HashMap::new)
+        .get_or_insert_with(AHashMap::new)
         .insert(name.to_string(), vec![handle.clone()]);
 
     handle
@@ -176,7 +177,7 @@ fn insert_mesh_cache(name: String, builder: MeshBuilder, meshes: &mut Assets<Mes
     let meshes: Vec<_> = builder.build_meshes().into_iter().map(|mesh| meshes.add(mesh)).collect();
 
     let mut map_lock = MESHES.write().unwrap();
-    map_lock.get_or_insert_with(HashMap::new).insert(name, meshes.clone());
+    map_lock.get_or_insert_with(AHashMap::new).insert(name, meshes.clone());
 
     meshes
 }

@@ -1,6 +1,6 @@
 use crate::udp::ToBevyVec;
+use ahash::AHashMap;
 use bevy::prelude::*;
-use std::collections::HashMap;
 
 #[derive(Clone, Copy, Debug)]
 pub struct CustomColor {
@@ -38,7 +38,7 @@ pub enum RenderMessage {
 
 #[derive(Resource, Default)]
 pub struct RenderGroups {
-    pub groups: HashMap<i32, Vec<Render>>,
+    pub groups: AHashMap<i32, Vec<Render>>,
 }
 
 fn render_gizmos(mut renders: ResMut<RenderGroups>, mut gizmos: Gizmos) {

@@ -3,9 +3,9 @@ use crate::{
     morton::Morton,
     udp::{Connection, GameStates, SendableUdp},
 };
+use ahash::AHashMap;
 use bevy::{math::Vec3A, prelude::*};
 use bevy_egui::{EguiContexts, egui};
-use std::collections::HashMap;
 
 pub struct StateSettingInterface;
 
@@ -66,12 +66,12 @@ fn set_bool_from_usize(b: &mut bool, i: usize) {
 struct UserSetPadState(u64);
 
 #[derive(Resource, PartialEq, Eq)]
-pub struct EnablePadInfo(HashMap<u64, bool>);
+pub struct EnablePadInfo(AHashMap<u64, bool>);
 
 impl Default for EnablePadInfo {
     #[inline]
     fn default() -> Self {
-        Self(HashMap::with_capacity(48))
+        Self(AHashMap::with_capacity(48))
     }
 }
 
@@ -92,12 +92,12 @@ struct UserPadState {
 }
 
 #[derive(Resource)]
-pub struct UserPadStates(HashMap<u64, UserPadState>);
+pub struct UserPadStates(AHashMap<u64, UserPadState>);
 
 impl Default for UserPadStates {
     #[inline]
     fn default() -> Self {
-        Self(HashMap::with_capacity(48))
+        Self(AHashMap::with_capacity(48))
     }
 }
 
@@ -342,12 +342,12 @@ fn update_ball_info(
 struct UserSetCarState(u32, SetCarStateAmount);
 
 #[derive(Resource, PartialEq, Eq)]
-pub struct EnableCarInfo(HashMap<u32, bool>);
+pub struct EnableCarInfo(AHashMap<u32, bool>);
 
 impl Default for EnableCarInfo {
     #[inline]
     fn default() -> Self {
-        Self(HashMap::with_capacity(8))
+        Self(AHashMap::with_capacity(8))
     }
 }
 
@@ -374,12 +374,12 @@ struct UserCarState {
 }
 
 #[derive(Resource)]
-pub struct UserCarStates(HashMap<u32, UserCarState>);
+pub struct UserCarStates(AHashMap<u32, UserCarState>);
 
 impl Default for UserCarStates {
     #[inline]
     fn default() -> Self {
-        Self(HashMap::with_capacity(8))
+        Self(AHashMap::with_capacity(8))
     }
 }
 

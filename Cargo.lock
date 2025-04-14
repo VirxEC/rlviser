@@ -385,6 +385,7 @@ checksum = "fdd1a95f467119c45876e04814e17501ad14af8ff2f94f5721d0b065d6a654ac"
 dependencies = [
  "bevy_dylib",
  "bevy_internal",
+ "tracing",
 ]
 
 [[package]]
@@ -4071,6 +4072,7 @@ checksum = "3582f63211428f83597b51b2ddb88e2a91a9d52d12831f9d08f5e624e8977422"
 name = "rlviser"
 version = "0.7.17"
 dependencies = [
+ "ahash",
  "bevy",
  "bevy_egui",
  "bevy_framepace",

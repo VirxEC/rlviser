@@ -3,6 +3,7 @@ use crate::{
     rocketsim::Team,
     settings::cache_handler::{get_default_mesh_cache, get_material_cache, get_mesh_cache, get_texture_cache},
 };
+use ahash::AHashMap;
 use bevy::{
     asset::{AssetLoader, io::Reader},
     color::palettes::css,
@@ -12,7 +13,6 @@ use bevy::{
 };
 use byteorder::{LittleEndian, ReadBytesExt};
 use std::{
-    collections::HashMap,
     ffi::OsStr,
     io::{self, Read},
     path::Path,
@@ -398,7 +398,7 @@ fn get_default_material(name: &str, side: Option<Team>) -> Option<StandardMateri
 }
 
 type MaterialsKey = (&'static str, Option<Team>);
-static MATERIALS: Mutex<Option<HashMap<MaterialsKey, Handle<StandardMaterial>>>> = Mutex::new(None);
+static MATERIALS: Mutex<Option<AHashMap<MaterialsKey, Handle<StandardMaterial>>>> = Mutex::new(None);
 
 pub fn get_material(
     name: &str,
@@ -410,7 +410,7 @@ pub fn get_material(
     render_device: Option<&RenderDevice>,
 ) -> Handle<StandardMaterial> {
     let mut material_names_lock = MATERIALS.lock().unwrap();
-    let material_names = material_names_lock.get_or_insert_with(HashMap::new);
+    let material_names = material_names_lock.get_or_insert_with(AHashMap::new);
 
     let name: &'static str = Box::leak(Box::from(name));
     let key = (name, side);
