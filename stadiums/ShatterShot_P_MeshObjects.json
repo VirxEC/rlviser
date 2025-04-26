@@ -1,0 +1,160 @@
+[
+  {
+    "name": "TheWorld",
+    "subNodes": [
+      {
+        "name": "PersistentLevel",
+        "subNodes": [
+          {
+            "name": "BreakoutFloor_TA_2",
+            "Location": [
+              0.001438346,
+              -0.001239777,
+              -2.279192
+            ],
+            "Scale": [
+              13.56013,
+              13.56013,
+              13.56013
+            ],
+            "subNodes": [
+              {
+                "name": "StaticMeshComponent_3",
+                "StaticMesh": "Breakout_FX.SM.FloorCollision_Plane",
+                "Materials": [
+                  "Breakout_FX.OOB.Materials.BO_Pitchtek_Floor_INST"
+                ]
+              }
+            ]
+          },
+          {
+            "name": "DynamicMeshActor_TA",
+            "Location": [
+              0.0,
+              0.0,
+              -256.0
+            ],
+            "Scale": [
+              0.394,
+              0.394,
+              0.394
+            ],
+            "subNodes": [
+              {
+                "name": "StaticMeshComponent_79",
+                "StaticMesh": "Breakout_FX.SM.breakout_wall2",
+                "Materials": [
+                  "Breakout_FX.OOB.Materials.BOStadiumWall_MAT_INST"
+                ]
+              }
+            ]
+          },
+          {
+            "name": "MeshCollector0",
+            "subNodes": [
+              {
+                "name": "StaticMeshActor_SMC_1",
+                "Translation": [
+                  0.0,
+                  0.0,
+                  2024.0
+                ],
+                "Rotation": [
+                  0.0,
+                  -179.994629,
+                  -179.994629
+                ],
+                "Scale": [
+                  10.6445,
+                  10.6445,
+                  10.6445
+                ],
+                "StaticMesh": "Breakout_FX.SM.FloorCollision_Plane",
+                "Materials": [
+                  "EngineMaterials.DefaultMaterial"
+                ]
+              },
+              {
+                "name": "StaticMeshActor_SMC_4",
+                "Scale": [
+                  1.3,
+                  1.0,
+                  1.0
+                ],
+                "StaticMesh": "BreakOut_Assets.Meshes.BO_CenterPiece_02_COLL",
+                "Materials": null
+              },
+              {
+                "name": "StaticMeshActor_SMC_7",
+                "Translation": [
+                  0.0,
+                  0.0,
+                  1.5
+                ],
+                "Scale": [
+                  10.64457,
+                  10.64457,
+                  10.64457
+                ],
+                "StaticMesh": "Breakout_FX.SM.FloorCollision_Plane",
+                "Materials": [
+                  "EngineMaterials.DefaultMaterial"
+                ]
+              },
+              {
+                "name": "StaticMeshActor_SMC_8",
+                "Translation": [
+                  0.0,
+                  0.0,
+                  -208.5
+                ],
+                "Scale": [
+                  0.393,
+                  0.393,
+                  0.393
+                ],
+                "StaticMesh": "BreakOut_Assets.Meshes.BO_collision_03",
+                "Materials": [
+                  "CollisionMeshes.Collision_Mat"
+                ]
+              }
+            ]
+          },
+          {
+            "name": "MeshCollector1",
+            "subNodes": [
+              {
+                "name": "StaticMeshActor_SMC_2",
+                "Scale": [
+                  1.3,
+                  1.0,
+                  1.0
+                ],
+                "StaticMesh": "BreakOut_Assets.Meshes.BO_CenterPiece",
+                "Materials": [
+                  "BreakOut_Assets.Materials.MIC_BreakOut_CenterStrip",
+                  "Breakout_FX.OOB.Materials.MAT_Breakout_Walls_Generic"
+                ]
+              }
+            ]
+          },
+          {
+            "name": "SceneCaptureCubeMapActor_2",
+            "Location": [
+              0.0,
+              0.0,
+              635.9998
+            ],
+            "StaticMesh": "TheWorld.PersistentLevel.SceneCaptureCubeMapActor_2.StaticMeshComponent_111",
+            "subNodes": [
+              {
+                "name": "StaticMeshComponent_111",
+                "Materials": null
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]
