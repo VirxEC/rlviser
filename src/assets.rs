@@ -75,7 +75,7 @@ pub struct BoostPickupGlows {
     pub large_hitbox: Handle<Mesh>,
 }
 
-const BLOCK_MESHES: [&str; 8] = [
+const BLOCK_MESHES: [&str; 9] = [
     "CollisionMeshes",
     "DecalBlocker",
     "FieldCollision_Standard",
@@ -84,13 +84,14 @@ const BLOCK_MESHES: [&str; 8] = [
     "Glow",
     "Fog",
     "FX_General",
+    "Collision_Plane",
 ];
 
 #[cfg(not(feature = "full_load"))]
 const EXTRA_BLACKLIST: [&str; 1] = ["Side_Trim"];
 
 #[cfg(not(feature = "full_load"))]
-const WHITELIST_MESHES: [&str; 21] = [
+const WHITELIST_MESHES: [&str; 22] = [
     "Field_STD",
     "FF",
     "BoostPads",
@@ -112,6 +113,7 @@ const WHITELIST_MESHES: [&str; 21] = [
     "BBall_Edges_01",
     "BackBoard",
     "Net_Rim",
+    "BO_collision_03",
 ];
 
 #[cfg(not(feature = "full_load"))]
@@ -373,6 +375,10 @@ fn get_default_material(name: &str, side: Option<Team>) -> Option<StandardMateri
         Color::srgb_u8(152, 29, 23)
     } else if name.contains("Advert") || name.contains("DarkMetal") {
         Color::srgb_u8(191, 192, 192)
+    } else if name.contains("Collision") {
+        let mut color = css::SILVER;
+        color.set_alpha(0.5);
+        Color::from(color)
     } else {
         warn!("Unknown material {name}");
         return None;
@@ -412,29 +418,28 @@ pub fn get_material(
     let mut material_names_lock = MATERIALS.lock().unwrap();
     let material_names = material_names_lock.get_or_insert_with(AHashMap::new);
 
-    let name: &'static str = Box::leak(Box::from(name));
-    let key = (name, side);
-
-    if let Some(material) = material_names.get(&key) {
+    if let Some(material) = material_names.get(&(name, side)) {
         return material.clone();
     }
 
-    let base_color = base_color.unwrap_or(Color::srgb(0.3, 0.3, 0.3));
+    let name: &'static str = Box::leak(Box::from(name));
+    let key = (name, side);
 
-    material_names
-        .entry(key)
-        .or_insert_with(|| {
-            materials.add(
-                retreive_material(name, asset_server, base_color, side, images, render_device).unwrap_or(StandardMaterial {
-                    base_color,
-                    metallic: 0.1,
-                    cull_mode: None,
-                    double_sided: true,
-                    ..default()
-                }),
-            )
-        })
-        .clone()
+    let base_color = base_color.unwrap_or(Color::from(css::GREY));
+
+    let mat = materials.add(
+        retreive_material(name, asset_server, base_color, side, images, render_device).unwrap_or(StandardMaterial {
+            base_color,
+            metallic: 0.1,
+            cull_mode: None,
+            double_sided: true,
+            ..default()
+        }),
+    );
+
+    material_names.insert(key, mat.clone());
+
+    mat
 }
 
 pub fn read_vertices(chunk_data: &[u8], data_count: usize, vertices: &mut Vec<f32>) {
@@ -713,11 +718,12 @@ pub mod umodel {
         }
     }
 
-    const UPK_FILES: [&str; 10] = [
+    const UPK_FILES: [&str; 11] = [
         "Startup.upk",
         "MENU_Main_p.upk",
         "Stadium_P.upk",
         "HoopsStadium_P.upk",
+        "ShatterShot_P.upk",
         "Body_MuscleCar_SF.upk",
         "Body_Darkcar_SF.upk",
         "Body_CarCar_SF.upk",

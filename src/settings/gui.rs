@@ -203,9 +203,9 @@ fn ui_system(
                     ui.label("Game speed");
                     ui.add(
                         egui::DragValue::new(&mut options.game_speed)
-                            .range(0.1..=10.0)
+                            .range(0.01..=10.0)
                             .speed(0.02)
-                            .fixed_decimals(1),
+                            .fixed_decimals(2),
                     );
                     ui.checkbox(&mut options.paused, "Paused");
                 });

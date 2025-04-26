@@ -6,13 +6,14 @@ use crate::{
     mesh::LargeBoostPadLocRots,
     morton::Morton,
     renderer::{RenderGroups, RenderMessage, UdpRendererPlugin},
-    rocketsim::{CarInfo, GameMode, GameState, Team},
+    rocketsim::{CarInfo, GameMode, GameState, Team, TileState},
     settings::options::{BallCam, CalcBallRot, GameSpeed, Options, PacketSmoothing, ShowTime},
 };
 use ahash::AHashMap;
 use bevy::{
     app::AppExit,
     asset::LoadState,
+    color::palettes::css,
     math::{Mat3A, Vec3A},
     pbr::{NotShadowCaster, NotShadowReceiver},
     picking::mesh_picking::ray_cast::SimplifiedMesh,
@@ -1562,6 +1563,97 @@ impl LastPacketTimesElapsed {
     }
 }
 
+#[derive(Resource)]
+struct TileInfo {
+    pub index: usize,
+    pub morton: u64,
+    pub state: TileState,
+}
+
+#[derive(Component)]
+pub struct Tile(pub u64);
+
+pub fn get_tile_color(state: TileState) -> Color {
+    match state {
+        TileState::Full => css::GREEN,
+        TileState::Damaged => css::RED,
+        TileState::Broken => css::BLACK,
+    }
+    .into()
+}
+
+fn update_tiles(
+    game_states: Res<GameStates>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut tiles: Query<(&Tile, &MeshMaterial3d<StandardMaterial>)>,
+    mut tile_states: Local<[Vec<TileInfo>; 2]>,
+) {
+    if tile_states[0].len() != game_states.current.tiles[0].len() {
+        tile_states[0].clear();
+        tile_states[1].clear();
+
+        let morton_gen = Morton::default();
+
+        for (i, team_tiles) in game_states.current.tiles.iter().enumerate() {
+            for (index, tile) in team_tiles.iter().enumerate() {
+                tile_states[i].push(TileInfo {
+                    index,
+                    morton: morton_gen.get_code(tile.pos),
+                    state: tile.state,
+                });
+            }
+        }
+
+        tile_states[0].sort_by_key(|tile| tile.morton);
+        tile_states[1].sort_by_key(|tile| tile.morton);
+        return;
+    }
+
+    // check if the color needs to be updated because the state has changed
+    for (tile, material) in &mut tiles {
+        let mut state = None;
+
+        for (i, states) in tile_states.iter_mut().enumerate() {
+            if let Ok(tile_idx) = states.binary_search_by_key(&tile.0, |tile| tile.morton) {
+                let proper_state = game_states.current.tiles[i][states[tile_idx].index].state;
+                if proper_state != states[tile_idx].state {
+                    states[tile_idx].state = proper_state;
+                    state = Some(proper_state);
+                }
+            }
+        }
+
+        if let Some(state) = state {
+            let material = materials.get_mut(material).unwrap();
+            material.base_color = get_tile_color(state);
+        }
+    }
+}
+
+fn dropshot_update_ball(
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    ball: Query<&MeshMaterial3d<StandardMaterial>, With<Ball>>,
+    game_state: Res<GameStates>,
+    mut y_target_dir: Local<f32>,
+) {
+    if (game_state.current.ball.ds_info.y_target_dir - *y_target_dir).abs() <= f32::EPSILON {
+        return;
+    }
+
+    let material = materials.get_mut(ball.single().unwrap()).unwrap();
+    *y_target_dir = game_state.current.ball.ds_info.y_target_dir;
+
+    let base_color = if game_state.current.ball.ds_info.y_target_dir < 0.0 {
+        css::RED
+    } else if game_state.current.ball.ds_info.y_target_dir > 0.0 {
+        css::BLUE
+    } else {
+        css::WHITE
+    };
+
+    material.base_color = base_color.into();
+}
+
 pub struct RocketSimPlugin;
 
 impl Plugin for RocketSimPlugin {
@@ -1586,43 +1678,50 @@ impl Plugin for RocketSimPlugin {
                                 (
                                     (
                                         (
-                                            interpolate_calc_next_ball_rot.run_if(|ps: Res<PacketSmoothing>| {
-                                                matches!(*ps, PacketSmoothing::Interpolate)
-                                            }),
-                                            update_ball_rotation.run_if(|ps: Res<PacketSmoothing>| {
-                                                !matches!(*ps, PacketSmoothing::Interpolate)
-                                            }),
+                                            (
+                                                interpolate_calc_next_ball_rot.run_if(|ps: Res<PacketSmoothing>| {
+                                                    matches!(*ps, PacketSmoothing::Interpolate)
+                                                }),
+                                                update_ball_rotation.run_if(|ps: Res<PacketSmoothing>| {
+                                                    !matches!(*ps, PacketSmoothing::Interpolate)
+                                                }),
+                                            )
+                                                .run_if(|calc_ball_rot: Res<CalcBallRot>| calc_ball_rot.0),
+                                            update_ball,
                                         )
-                                            .run_if(|calc_ball_rot: Res<CalcBallRot>| calc_ball_rot.0),
-                                        update_ball,
+                                            .chain(),
+                                        (
+                                            pre_update_car,
+                                            (update_car, update_car_extra, update_car_wheels),
+                                            update_camera,
+                                        )
+                                            .chain(),
+                                        (update_pads_count, update_pad_colors).chain(),
+                                        update_field,
                                     )
-                                        .chain(),
+                                        .run_if(|updated: Res<PacketUpdated>| updated.0),
                                     (
-                                        pre_update_car,
-                                        (update_car, update_car_extra, update_car_wheels),
-                                        update_camera,
+                                        (
+                                            (extrapolate_packet, update_ball_rotation),
+                                            (update_ball, (update_car, update_camera).chain(), update_car_wheels),
+                                        )
+                                            .chain()
+                                            .run_if(|ps: Res<PacketSmoothing>| matches!(*ps, PacketSmoothing::Extrapolate)),
+                                        (
+                                            interpolate_packets,
+                                            (update_ball, (update_car, update_camera).chain(), update_car_wheels),
+                                        )
+                                            .chain()
+                                            .run_if(|ps: Res<PacketSmoothing>| matches!(*ps, PacketSmoothing::Interpolate)),
                                     )
-                                        .chain(),
-                                    (update_pads_count, update_pad_colors).chain(),
-                                    update_field,
-                                )
-                                    .run_if(|updated: Res<PacketUpdated>| updated.0),
+                                        .run_if(|updated: Res<PacketUpdated>| !updated.0),
+                                ),
                                 (
-                                    (
-                                        (extrapolate_packet, update_ball_rotation),
-                                        (update_ball, (update_car, update_camera).chain(), update_car_wheels),
-                                    )
-                                        .chain()
-                                        .run_if(|ps: Res<PacketSmoothing>| matches!(*ps, PacketSmoothing::Extrapolate)),
-                                    (
-                                        interpolate_packets,
-                                        (update_ball, (update_car, update_camera).chain(), update_car_wheels),
-                                    )
-                                        .chain()
-                                        .run_if(|ps: Res<PacketSmoothing>| matches!(*ps, PacketSmoothing::Interpolate)),
-                                )
-                                    .run_if(|updated: Res<PacketUpdated>| !updated.0),
-                                (listen, update_boost_meter),
+                                    listen,
+                                    update_boost_meter,
+                                    (dropshot_update_ball, update_tiles)
+                                        .run_if(|game_mode: Res<GameMode>| *game_mode == GameMode::Dropshot),
+                                ),
                             ),
                         )
                             .chain(),

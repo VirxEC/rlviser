@@ -127,31 +127,30 @@ fn setup(mut commands: Commands) {
         BoostAmount,
     ));
 
-    commands
-        .spawn(Node {
+    commands.spawn((
+        Node {
             width: Val::Percent(100.),
             position_type: PositionType::Absolute,
             flex_direction: FlexDirection::Column,
             justify_content: JustifyContent::Center,
             align_items: AlignItems::Center,
             ..default()
-        })
-        .with_children(|parent| {
-            parent.spawn((
-                Text::new("00m:00s"),
-                TextFont {
-                    font_size: 40.0,
-                    ..default()
-                },
-                TextColor(Color::from(css::DARK_GRAY)),
-                Node {
-                    position_type: PositionType::Absolute,
-                    top: Val::Px(TIME_DISPLAY_POS.x),
-                    ..default()
-                },
-                TimeDisplay,
-            ));
-        });
+        },
+        children![(
+            Text::new("00m:00s"),
+            TextFont {
+                font_size: 40.0,
+                ..default()
+            },
+            TextColor(Color::from(css::DARK_GRAY)),
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Px(TIME_DISPLAY_POS.x),
+                ..default()
+            },
+            TimeDisplay,
+        )],
+    ));
 }
 
 #[derive(Resource, Default)]

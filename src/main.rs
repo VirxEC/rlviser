@@ -2,7 +2,8 @@
     clippy::too_many_arguments,
     clippy::needless_pass_by_value,
     clippy::module_name_repetitions,
-    clippy::significant_drop_tightening
+    clippy::significant_drop_tightening,
+    clippy::large_enum_variant
 )]
 
 mod assets;
@@ -59,6 +60,9 @@ fn main() {
         })
         .add_plugins((
             DefaultPlugins
+                .set(TaskPoolPlugin {
+                    task_pool_options: TaskPoolOptions::with_num_threads(if cfg!(feature = "threaded") { 3 } else { 1 }),
+                })
                 .set(ImagePlugin {
                     default_sampler: ImageSamplerDescriptor {
                         address_mode_u: ImageAddressMode::Repeat,

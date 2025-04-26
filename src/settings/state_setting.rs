@@ -328,6 +328,51 @@ fn update_ball_info(
                     set_user_state.write(UserSetBallState(SetBallStateAmount::AngVel));
                 }
             });
+
+            ui.add_space(5.0);
+            ui.label("Heatseeker info:");
+            ui.horizontal(|ui| {
+                ui.label(format!(
+                    "Current target speed: {:.1}",
+                    game_states.current.ball.hs_info.cur_target_speed
+                ));
+
+                ui.label(format!(
+                    "Time since hit: {:.1}",
+                    game_states.current.ball.hs_info.time_since_hit
+                ));
+
+                ui.label(format!(
+                    "Y target direction: {:.1}",
+                    game_states.current.ball.hs_info.y_target_dir
+                ));
+            });
+
+            ui.add_space(5.0);
+            ui.label("Dropshot info:");
+            ui.horizontal(|ui| {
+                ui.label(format!(
+                    "Accumulated hit force: {:.1}",
+                    game_states.current.ball.ds_info.accumulated_hit_force
+                ));
+
+                ui.label(format!("Charge level: {:.1}", game_states.current.ball.ds_info.charge_level));
+
+                ui.label(format!(
+                    "Y target direction: {:.1}",
+                    game_states.current.ball.ds_info.y_target_dir
+                ));
+            });
+
+            ui.horizontal(|ui| {
+                ui.label(format!("Has damaged: {}", game_states.current.ball.ds_info.has_damaged));
+
+                ui.label(format!(
+                    "Last damage tick: {}",
+                    game_states.current.ball.ds_info.last_damage_tick
+                ));
+            });
+
             if ui
                 .button("     Set all     ")
                 .on_hover_text("Set all (defined) ball properties")
@@ -548,7 +593,7 @@ fn update_car_info(
                         ui.label(format!("Is flipping: {}", car.state.is_flipping));
                         ui.label(format!("Is jumping: {}", car.state.is_jumping));
                         ui.label(format!("Is jumping: {}", car.state.is_jumping));
-                        ui.label(format!("Time spent boosting: {:.1}", car.state.time_spent_boosting));
+                        ui.label(format!("Boosting time: {:.1}", car.state.boosting_time));
                         ui.label(format!("Is supersonic: {}", car.state.is_supersonic));
                         ui.label(format!("Supersonic time: {:.1}", car.state.supersonic_time));
                         ui.label(format!("Handbrake val: {:.1}", car.state.handbrake_val));

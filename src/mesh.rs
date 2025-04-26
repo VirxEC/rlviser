@@ -1,8 +1,9 @@
 use crate::{
     GameLoadState,
     assets::*,
+    morton::Morton,
     rocketsim::{GameMode, Team},
-    udp::{Ball, ToBevyVec, ToBevyVecFlat, send_event, target_insert, target_remove},
+    udp::{Ball, Tile, ToBevyVec, ToBevyVecFlat, get_tile_color, send_event, target_insert, target_remove},
 };
 use bevy::{
     asset::LoadState,
@@ -11,11 +12,7 @@ use bevy::{
     pbr::{NotShadowCaster, NotShadowReceiver},
     picking::mesh_picking::ray_cast::SimplifiedMesh,
     prelude::*,
-    render::{
-        mesh::{self, VertexAttributeValues},
-        render_asset::RenderAssetUsages,
-        renderer::RenderDevice,
-    },
+    render::{mesh, render_asset::RenderAssetUsages, renderer::RenderDevice},
     time::Stopwatch,
     window::PrimaryWindow,
 };
@@ -328,19 +325,17 @@ fn load_extra_field(
             Pickable::default(),
             Mesh3d(ball_mesh),
             MeshMaterial3d(materials.add(ball_material)),
-        ))
-        .observe(target_insert::<Pointer<Over>>(HighlightedEntity))
-        .observe(target_remove::<Pointer<Out>, HighlightedEntity>)
-        .observe(send_event::<Pointer<Drag>, ChangeBallPos>)
-        .observe(send_event::<Pointer<Click>, BallClicked>)
-        .with_children(|parent| {
-            parent.spawn(PointLight {
+            children![PointLight {
                 color: initial_ball_color,
                 intensity: 200_000_000.,
                 range: 1000.,
                 ..default()
-            });
-        });
+            }],
+        ))
+        .observe(target_insert::<Pointer<Over>>(HighlightedEntity))
+        .observe(target_remove::<Pointer<Out>, HighlightedEntity>)
+        .observe(send_event::<Pointer<Drag>, ChangeBallPos>)
+        .observe(send_event::<Pointer<Click>, BallClicked>);
 
     state.set(GameLoadState::Field);
 }
@@ -455,6 +450,7 @@ pub struct StaticFieldEntity;
 
 flate!(pub static STADIUM_P_LAYOUT: str from "stadiums/Stadium_P_MeshObjects.json");
 flate!(pub static HOOPS_STADIUM_P_LAYOUT: str from "stadiums/HoopsStadium_P_MeshObjects.json");
+flate!(pub static SHATTER_SHOT_P_LAYOUT: str from "stadiums/ShatterShot_P_MeshObjects.json");
 
 fn despawn_old_field(
     mut commands: Commands,
@@ -481,7 +477,7 @@ fn load_goals(
     meshes: &mut Assets<Mesh>,
 ) {
     match game_mode {
-        GameMode::Soccar | GameMode::Snowday | GameMode::HeatSeeker => {
+        GameMode::Soccar | GameMode::Snowday | GameMode::Heatseeker => {
             commands
                 .spawn((
                     Mesh3d(meshes.add(Rectangle::from_size(Vec2::splat(1000.)))),
@@ -551,6 +547,7 @@ fn load_field(
     game_mode: Res<GameMode>,
     render_device: Option<Res<RenderDevice>>,
     asset_server: Res<AssetServer>,
+    game_states: Res<GameStates>,
 ) {
     let layout: &str = match *game_mode {
         GameMode::TheVoid => {
@@ -558,31 +555,50 @@ fn load_field(
             return;
         }
         GameMode::Hoops => &HOOPS_STADIUM_P_LAYOUT,
+        GameMode::Dropshot => &SHATTER_SHOT_P_LAYOUT,
         _ => &STADIUM_P_LAYOUT,
     };
 
-    let (_pickup_boost, structures, the_world): (Section, Node, Node) = serde_json::from_str(layout).unwrap();
-    #[cfg(debug_assertions)]
-    {
-        // this double-layer of debug_assertion checks is because 'name' won't be present in release mode
-        debug_assert_eq!(_pickup_boost.name.as_ref(), "Pickup_Boost");
-        debug_assert_eq!(
-            structures.name.as_ref(),
-            match *game_mode {
-                GameMode::Hoops => "Archetypes",
-                _ => "Standard_Common_Prefab",
+    let (the_world, structures) = match *game_mode {
+        GameMode::Dropshot => {
+            let (the_world,): (Node,) = serde_json::from_str(layout).unwrap();
+
+            (the_world, None)
+        }
+        _ => {
+            let (_pickup_boost, structures, the_world): (Section, Node, Node) = serde_json::from_str(layout).unwrap();
+
+            #[cfg(debug_assertions)]
+            {
+                // this double-layer of debug_assertion checks is because 'name' won't be present in release mode
+                debug_assert_eq!(_pickup_boost.name.as_ref(), "Pickup_Boost");
+
+                debug_assert_eq!(
+                    structures.name.as_ref(),
+                    match *game_mode {
+                        GameMode::Hoops => "Archetypes",
+                        _ => "Standard_Common_Prefab",
+                    }
+                );
             }
-        );
-        debug_assert_eq!(the_world.name.as_ref(), "TheWorld");
-    }
+
+            (the_world, Some(structures))
+        }
+    };
+
+    #[cfg(debug_assertions)]
+    debug_assert_eq!(the_world.name.as_ref(), "TheWorld");
+
     let persistent_level = &the_world.sub_nodes[0];
     #[cfg(debug_assertions)]
     debug_assert_eq!(persistent_level.name.as_ref(), "PersistentLevel");
 
-    let all_nodes = structures.sub_nodes[0]
-        .sub_nodes
-        .iter()
-        .chain(persistent_level.sub_nodes.iter());
+    let all_nodes = persistent_level.sub_nodes.iter().chain(
+        structures
+            .as_ref()
+            .map(|s| s.sub_nodes[0].sub_nodes.iter())
+            .unwrap_or_default(),
+    );
 
     for obj in all_nodes {
         if let Some(node) = obj.get_info_node() {
@@ -610,6 +626,120 @@ fn load_field(
                 &mut images,
                 render_device.as_deref(),
             );
+        }
+    }
+
+    if *game_mode == GameMode::Dropshot {
+        let mut middle_mesh = Mesh::new(mesh::PrimitiveTopology::TriangleList, RenderAssetUsages::all());
+        middle_mesh.insert_attribute(
+            Mesh::ATTRIBUTE_POSITION,
+            vec![
+                Vec3::new(4980.0, 0.0, 2.54736 * 50.0),
+                Vec3::new(-4980.0, 0.0, 2.54736 * 50.0),
+                Vec3::new(4980.0, 0.0, -2.54736 * 50.0),
+                Vec3::new(-4980.0, 0.0, -2.54736 * 50.0),
+            ],
+        );
+        middle_mesh.insert_indices(mesh::Indices::U16(vec![0, 2, 1, 1, 2, 3]));
+        middle_mesh.compute_normals();
+
+        commands.spawn((
+            Mesh3d(meshes.add(middle_mesh)),
+            MeshMaterial3d(materials.add(StandardMaterial::from(Color::from(css::BEIGE)))),
+            #[cfg(debug_assertions)]
+            EntityName::from("dropshot neutral ground"),
+            StaticFieldEntity,
+        ));
+
+        let verts = vec![
+            Vec3::ZERO,
+            Vec3::new(0.0, 0.0, -8.85) * 50.,
+            Vec3::new(7.6643, 0.0, -4.425) * 50.,
+            Vec3::new(7.6643, 0.0, 4.425) * 50.,
+            Vec3::new(0.0, 0.0, 8.85) * 50.,
+            Vec3::new(-7.6643, 0.0, 4.425) * 50.,
+            Vec3::new(-7.6643, 0.0, -4.425) * 50.,
+        ];
+
+        let indices = mesh::Indices::U16(vec![0, 2, 1, 0, 3, 2, 0, 4, 3, 0, 5, 4, 0, 6, 5, 0, 1, 6]);
+
+        let mut raw_blue_tile_mesh = Mesh::new(mesh::PrimitiveTopology::TriangleList, RenderAssetUsages::all());
+        raw_blue_tile_mesh.insert_attribute(
+            Mesh::ATTRIBUTE_POSITION,
+            verts
+                .iter()
+                .map(|vert| (*vert).with_z((vert.z - 127.0).min(-2.54736 * 50.0) + 127.0))
+                .collect::<Vec<_>>(),
+        );
+        raw_blue_tile_mesh.insert_indices(indices.clone());
+        raw_blue_tile_mesh.compute_normals();
+        let blue_tile_mesh = meshes.add(raw_blue_tile_mesh);
+
+        let mut raw_orange_tile_mesh = Mesh::new(mesh::PrimitiveTopology::TriangleList, RenderAssetUsages::all());
+        raw_orange_tile_mesh.insert_attribute(
+            Mesh::ATTRIBUTE_POSITION,
+            verts
+                .iter()
+                .map(|vert| (*vert).with_z((vert.z + 127.0).max(2.54736 * 50.0) - 127.0))
+                .collect::<Vec<_>>(),
+        );
+        raw_orange_tile_mesh.insert_indices(indices.clone());
+        raw_orange_tile_mesh.compute_normals();
+        let orange_tile_mesh = meshes.add(raw_orange_tile_mesh);
+
+        let mut raw_full_tile_mesh = Mesh::new(mesh::PrimitiveTopology::TriangleList, RenderAssetUsages::all());
+        raw_full_tile_mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, verts);
+        raw_full_tile_mesh.insert_indices(indices);
+        raw_full_tile_mesh.compute_normals();
+        let full_tile_mesh = meshes.add(raw_full_tile_mesh);
+
+        let morton_gen = Morton::default();
+
+        for (i, team_tiles) in game_states.current.tiles.iter().enumerate() {
+            let team_color = materials.add(StandardMaterial::from(Color::from(if i == 0 {
+                css::BLUE
+            } else {
+                css::ORANGE
+            })));
+
+            for (j, tile) in team_tiles.iter().enumerate() {
+                commands
+                    .spawn((
+                        Mesh3d(if tile.pos.y.abs() < 150.0 {
+                            if tile.pos.y.signum().is_sign_positive() {
+                                orange_tile_mesh.clone()
+                            } else {
+                                blue_tile_mesh.clone()
+                            }
+                        } else {
+                            full_tile_mesh.clone()
+                        }),
+                        MeshMaterial3d(team_color.clone()),
+                        Transform::from_translation(tile.pos.to_bevy()),
+                        NotShadowCaster,
+                        StaticFieldEntity,
+                        #[cfg(debug_assertions)]
+                        EntityName::from(format!("dropshot_tile_{}", i * 70 + j)),
+                        Pickable::default(),
+                        children![(
+                            Tile(morton_gen.get_code(tile.pos)),
+                            Mesh3d(if tile.pos.y.abs() < 150.0 {
+                                if tile.pos.y.signum().is_sign_positive() {
+                                    orange_tile_mesh.clone()
+                                } else {
+                                    blue_tile_mesh.clone()
+                                }
+                            } else {
+                                full_tile_mesh.clone()
+                            }),
+                            MeshMaterial3d(materials.add(StandardMaterial::from(get_tile_color(tile.state)))),
+                            NotShadowCaster,
+                            Transform::from_translation(Vec3::Y).with_scale(Vec3::splat(0.9)),
+                        )],
+                    ))
+                    .observe(target_insert::<Pointer<Over>>(HighlightedEntity))
+                    .observe(target_remove::<Pointer<Out>, HighlightedEntity>);
+            }
         }
     }
 
@@ -648,7 +778,7 @@ fn process_info_node(
     debug!("Spawning {}", node.static_mesh);
 
     for (mesh, mat) in mesh.into_iter().zip(mats.iter()) {
-        if BLACKLIST_MESH_MATS.contains(&mat.as_ref()) {
+        if !node.static_mesh.contains("BreakOut") && BLACKLIST_MESH_MATS.contains(&mat.as_ref()) {
             continue;
         }
 
@@ -748,15 +878,16 @@ impl MeshBuilder {
         let initial_mesh = self.build_mesh();
 
         let all_verts = initial_mesh.attribute(Mesh::ATTRIBUTE_POSITION).unwrap().as_float3().unwrap();
-        let VertexAttributeValues::Float32x2(all_uvs) = initial_mesh.attribute(Mesh::ATTRIBUTE_UV_0).unwrap() else {
+        let mesh::VertexAttributeValues::Float32x2(all_uvs) = initial_mesh.attribute(Mesh::ATTRIBUTE_UV_0).unwrap() else {
             panic!("No UVs found");
         };
         let all_normals = initial_mesh.attribute(Mesh::ATTRIBUTE_NORMAL).unwrap().as_float3().unwrap();
-        let VertexAttributeValues::Float32x4(all_tangents) = initial_mesh.attribute(Mesh::ATTRIBUTE_TANGENT).unwrap() else {
+        let mesh::VertexAttributeValues::Float32x4(all_tangents) = initial_mesh.attribute(Mesh::ATTRIBUTE_TANGENT).unwrap()
+        else {
             panic!("No tangents found");
         };
         let all_colors = initial_mesh.attribute(Mesh::ATTRIBUTE_COLOR).map(|colors| match colors {
-            VertexAttributeValues::Float32x4(colors) => colors,
+            mesh::VertexAttributeValues::Float32x4(colors) => colors,
             _ => panic!("No colors found"),
         });
 

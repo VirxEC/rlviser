@@ -1,5 +1,5 @@
 [package]
-version = "0.7.17"
+version = "0.8.0"
 name = "rlviser"
 edition = "2024"
 publish = false
@@ -9,7 +9,7 @@ publish = false
 [dependencies]
 # bevy_framepace = { version = "0.18", default-features = false }
 bevy_framepace = { git = "https://github.com/aloucks/bevy_framepace", branch = "bevy-0.16", default-features = false }
-bevy_egui = { version = "0.34.0-rc.2", default-features = false, features = ["default_fonts", "render"] }
+bevy_egui = { version = "0.34.0", default-features = false, features = ["default_fonts", "render"] }
 # bevy_vector_shapes = "0.9"
 bevy_vector_shapes = { git = "https://github.com/patrickariel/bevy_vector_shapes", branch = "016rc2" }
 byteorder = "1.4.3"
@@ -29,7 +29,7 @@ itoa = "1.0.15"
 ahash = "0.8.11"
 
 [dependencies.bevy]
-version = "=0.16.0-rc.5"
+version = "0.16.0"
 default-features = false
 features = ["bevy_core_pipeline", "bevy_log", "bevy_gizmos", "bevy_window", "bevy_mesh_picking_backend", "bevy_pbr", "bevy_picking", "bevy_state", "bevy_ui", "default_font", "std", "tga", "wayland", "x11"]
 
@@ -38,6 +38,7 @@ default = ["bevy/dynamic_linking"]
 full_load = []
 ssao = []
 team_goal_barriers = []
+threaded = ["bevy/multi_threaded"]
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]

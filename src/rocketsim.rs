@@ -8,10 +8,39 @@ use bevy::{
 pub enum GameMode {
     Soccar = 0,
     Hoops,
-    HeatSeeker,
+    Heatseeker,
     Snowday,
+    Dropshot,
     #[default]
     TheVoid,
+}
+
+impl TryFrom<u8> for GameMode {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Soccar),
+            1 => Ok(Self::Hoops),
+            2 => Ok(Self::Heatseeker),
+            3 => Ok(Self::Snowday),
+            4 => Ok(Self::Dropshot),
+            5 => Ok(Self::TheVoid),
+            _ => Err(()),
+        }
+    }
+}
+
+impl TryFrom<u8> for Team {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Blue),
+            1 => Ok(Self::Orange),
+            _ => Err(()),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Default, Debug)]
@@ -45,25 +74,56 @@ impl Default for HeatseekerInfo {
 }
 
 #[derive(Clone, Copy, Debug)]
+pub struct DropshotInfo {
+    /// Charge level number, which controls the radius of damage when hitting tiles
+    /// 1 = damages r=1 -> 1 tile
+    /// 2 = damages r=2 -> 7 tiles
+    /// 3 = damages r=3 -> 19 tiles
+    pub charge_level: i32,
+    /// Resets when a tile is damaged
+    pub accumulated_hit_force: f32,
+    /// Which side of the field the ball can damage (0=none, -1=blue, 1=orange)
+    pub y_target_dir: f32,
+    pub has_damaged: bool,
+    /// Only valid if `has_damaged`
+    pub last_damage_tick: u64,
+}
+
+impl Default for DropshotInfo {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            charge_level: 1,
+            accumulated_hit_force: 0.,
+            y_target_dir: 0.,
+            has_damaged: false,
+            last_damage_tick: 0,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 pub struct BallState {
-    pub update_counter: u64,
+    pub tick_count_since_update: u64,
     pub pos: Vec3,
     pub rot_mat: RotMat,
     pub vel: Vec3,
     pub ang_vel: Vec3,
     pub hs_info: HeatseekerInfo,
+    pub ds_info: DropshotInfo,
 }
 
 impl Default for BallState {
     #[inline]
     fn default() -> Self {
         Self {
-            update_counter: 0,
+            tick_count_since_update: 0,
             pos: Vec3::new(0., 0., 93.15),
             rot_mat: RotMat::IDENTITY,
             vel: Vec3::ZERO,
             ang_vel: Vec3::ZERO,
             hs_info: HeatseekerInfo::default(),
+            ds_info: DropshotInfo::default(),
         }
     }
 }
@@ -89,6 +149,7 @@ pub struct CarConfig {
     pub hitbox_pos_offset: Vec3,
     pub front_wheels: WheelPairConfig,
     pub back_wheels: WheelPairConfig,
+    pub three_wheels: bool,
     pub dodge_deadzone: f32,
 }
 
@@ -123,7 +184,7 @@ pub struct CarState {
     pub rot_mat: RotMat,
     pub vel: Vec3,
     pub ang_vel: Vec3,
-    pub update_counter: u64,
+    pub tick_count_since_update: u64,
     pub is_on_ground: bool,
     pub wheels_with_contact: [bool; 4],
     pub has_jumped: bool,
@@ -137,7 +198,9 @@ pub struct CarState {
     pub air_time: f32,
     pub air_time_since_jump: f32,
     pub boost: f32,
-    pub time_spent_boosting: f32,
+    pub time_since_boosted: f32,
+    pub is_boosting: bool,
+    pub boosting_time: f32,
     pub is_supersonic: bool,
     pub supersonic_time: f32,
     pub handbrake_val: f32,
@@ -175,6 +238,34 @@ pub struct BoostPad {
     pub state: BoostPadState,
 }
 
+#[repr(u8)]
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
+pub enum TileState {
+    #[default]
+    Full,
+    Damaged,
+    Broken,
+}
+
+impl TryFrom<u8> for TileState {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Full),
+            1 => Ok(Self::Damaged),
+            2 => Ok(Self::Broken),
+            _ => Err(()),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Default, Debug)]
+pub struct DropshotTile {
+    pub pos: Vec3,
+    pub state: TileState,
+}
+
 #[derive(Clone, Resource, Default, Debug)]
 pub struct GameState {
     pub tick_count: u64,
@@ -183,4 +274,5 @@ pub struct GameState {
     pub ball: BallState,
     pub pads: Box<[BoostPad]>,
     pub cars: Box<[CarInfo]>,
+    pub tiles: [Vec<DropshotTile>; 2],
 }
