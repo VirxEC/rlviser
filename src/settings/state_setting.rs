@@ -1,6 +1,7 @@
 use super::options::MenuFocused;
 use crate::{
     morton::Morton,
+    rocketsim::TileState,
     udp::{Connection, GameStates, SendableUdp},
 };
 use ahash::AHashMap;
@@ -17,19 +18,24 @@ impl Plugin for StateSettingInterface {
             .insert_resource(UserCarStates::default())
             .insert_resource(EnablePadInfo::default())
             .insert_resource(UserPadStates::default())
+            .insert_resource(EnableTileInfo::default())
+            .insert_resource(UserTileStates::default())
             .add_event::<UserSetBallState>()
             .add_event::<UserSetCarState>()
             .add_event::<UserSetPadState>()
+            .add_event::<UserSetTileState>()
             .add_systems(
                 Update,
                 (
                     update_ball_info.run_if(resource_equals(EnableBallInfo(true))),
                     update_car_info.run_if(|enable_menu: Res<EnableCarInfo>| !enable_menu.0.is_empty()),
                     update_boost_pad_info.run_if(|enable_menu: Res<EnablePadInfo>| !enable_menu.0.is_empty()),
+                    update_tile_info.run_if(|enable_menu: Res<EnableTileInfo>| !enable_menu.0.is_empty()),
                     (
                         set_user_ball_state.run_if(on_event::<UserSetBallState>),
                         set_user_car_state.run_if(on_event::<UserSetCarState>),
                         set_user_pad_state.run_if(on_event::<UserSetPadState>),
+                        set_user_tile_state.run_if(on_event::<UserSetTileState>),
                     )
                         .run_if(resource_exists::<Connection>),
                 )
@@ -228,12 +234,17 @@ struct UserBallState {
     pub pos: [String; 3],
     pub vel: [String; 3],
     pub ang_vel: [String; 3],
+    pub hs_y_target_dir: String,
+    pub ds_accum_hit_force: String,
+    pub ds_y_target_dir: String,
 }
 
 enum SetBallStateAmount {
     Pos,
     Vel,
     AngVel,
+    Heatseeker,
+    Dropshot,
     All,
 }
 
@@ -257,6 +268,33 @@ fn set_user_ball_state(
                 set_vec3_from_arr_str(&mut game_states.current.ball.ang_vel, &user_ball.ang_vel);
                 game_states.next.ball.ang_vel = game_states.current.ball.ang_vel;
             }
+            SetBallStateAmount::Heatseeker => {
+                set_f32_from_str(&mut game_states.current.ball.hs_info.y_target_dir, &user_ball.hs_y_target_dir);
+                game_states.next.ball.hs_info.y_target_dir = game_states.current.ball.hs_info.y_target_dir;
+            }
+            SetBallStateAmount::Dropshot => {
+                set_f32_from_str(
+                    &mut game_states.current.ball.ds_info.accumulated_hit_force,
+                    &user_ball.ds_accum_hit_force,
+                );
+
+                let force = game_states.current.ball.ds_info.accumulated_hit_force;
+                game_states.next.ball.ds_info.accumulated_hit_force = force;
+
+                if force >= 11000. {
+                    game_states.current.ball.ds_info.charge_level = 3;
+                    game_states.next.ball.ds_info.charge_level = 3;
+                } else if force >= 2500. {
+                    game_states.current.ball.ds_info.charge_level = 2;
+                    game_states.next.ball.ds_info.charge_level = 2;
+                } else {
+                    game_states.current.ball.ds_info.charge_level = 1;
+                    game_states.next.ball.ds_info.charge_level = 1;
+                }
+
+                set_f32_from_str(&mut game_states.current.ball.ds_info.y_target_dir, &user_ball.ds_y_target_dir);
+                game_states.next.ball.ds_info.y_target_dir = game_states.current.ball.ds_info.y_target_dir;
+            }
             SetBallStateAmount::All => {
                 set_vec3_from_arr_str(&mut game_states.current.ball.pos, &user_ball.pos);
                 game_states.next.ball.pos = game_states.current.ball.pos;
@@ -266,6 +304,33 @@ fn set_user_ball_state(
 
                 set_vec3_from_arr_str(&mut game_states.current.ball.ang_vel, &user_ball.ang_vel);
                 game_states.next.ball.ang_vel = game_states.current.ball.ang_vel;
+
+                // heatseekr
+                set_f32_from_str(&mut game_states.current.ball.hs_info.y_target_dir, &user_ball.hs_y_target_dir);
+                game_states.next.ball.hs_info.y_target_dir = game_states.current.ball.hs_info.y_target_dir;
+
+                // dropshot
+                set_f32_from_str(
+                    &mut game_states.current.ball.ds_info.accumulated_hit_force,
+                    &user_ball.ds_accum_hit_force,
+                );
+
+                let force = game_states.current.ball.ds_info.accumulated_hit_force;
+                game_states.next.ball.ds_info.accumulated_hit_force = force;
+
+                if force >= 2500. {
+                    game_states.current.ball.ds_info.charge_level = 2;
+                    game_states.next.ball.ds_info.charge_level = 2;
+                } else if force >= 11000. {
+                    game_states.current.ball.ds_info.charge_level = 3;
+                    game_states.next.ball.ds_info.charge_level = 3;
+                } else {
+                    game_states.current.ball.ds_info.charge_level = 1;
+                    game_states.next.ball.ds_info.charge_level = 1;
+                }
+
+                set_f32_from_str(&mut game_states.current.ball.ds_info.y_target_dir, &user_ball.ds_y_target_dir);
+                game_states.next.ball.ds_info.y_target_dir = game_states.current.ball.ds_info.y_target_dir;
             }
         }
     }
@@ -329,7 +394,7 @@ fn update_ball_info(
                 }
             });
 
-            ui.add_space(5.0);
+            ui.add_space(10.0);
             ui.label("Heatseeker info:");
             ui.horizontal(|ui| {
                 ui.label(format!(
@@ -341,38 +406,57 @@ fn update_ball_info(
                     "Time since hit: {:.1}",
                     game_states.current.ball.hs_info.time_since_hit
                 ));
-
+            });
+            ui.horizontal(|ui| {
                 ui.label(format!(
-                    "Y target direction: {:.1}",
+                    "Y target direction: {:.1} - ",
                     game_states.current.ball.hs_info.y_target_dir
                 ));
+                ui.add(egui::TextEdit::singleline(&mut user_ball.hs_y_target_dir).desired_width(50.));
             });
+            ui.horizontal(|ui| {
+                ui.label(format!(
+                    "Target speed: {:.1}",
+                    game_states.current.ball.hs_info.cur_target_speed
+                ));
+                ui.label(format!(
+                    "Time since hit: {:.1}",
+                    game_states.current.ball.hs_info.time_since_hit
+                ));
+            });
+            if ui.button("Set").on_hover_text("Set heatseeker info").clicked() {
+                set_user_state.write(UserSetBallState(SetBallStateAmount::Heatseeker));
+            }
 
-            ui.add_space(5.0);
+            ui.add_space(10.0);
             ui.label("Dropshot info:");
             ui.horizontal(|ui| {
                 ui.label(format!(
-                    "Accumulated hit force: {:.1}",
+                    "Accumulated hit force: {:.1} - ",
                     game_states.current.ball.ds_info.accumulated_hit_force
                 ));
-
-                ui.label(format!("Charge level: {:.1}", game_states.current.ball.ds_info.charge_level));
-
+                ui.add(egui::TextEdit::singleline(&mut user_ball.ds_accum_hit_force).desired_width(50.));
+            });
+            ui.horizontal(|ui| {
                 ui.label(format!(
-                    "Y target direction: {:.1}",
+                    "Y target direction: {:.1} - ",
                     game_states.current.ball.ds_info.y_target_dir
                 ));
+                ui.add(egui::TextEdit::singleline(&mut user_ball.ds_y_target_dir).desired_width(50.));
             });
-
             ui.horizontal(|ui| {
+                ui.label(format!("Charge level: {:.1}", game_states.current.ball.ds_info.charge_level));
                 ui.label(format!("Has damaged: {}", game_states.current.ball.ds_info.has_damaged));
-
                 ui.label(format!(
                     "Last damage tick: {}",
                     game_states.current.ball.ds_info.last_damage_tick
                 ));
             });
+            if ui.button("Set").on_hover_text("Set dropshot info").clicked() {
+                set_user_state.write(UserSetBallState(SetBallStateAmount::Dropshot));
+            }
 
+            ui.add_space(10.0);
             if ui
                 .button("     Set all     ")
                 .on_hover_text("Set all (defined) ball properties")
@@ -381,6 +465,125 @@ fn update_ball_info(
                 set_user_state.write(UserSetBallState(SetBallStateAmount::All));
             }
         });
+}
+
+#[derive(Event)]
+struct UserSetTileState((usize, usize), SetTileStateAmount);
+
+#[derive(Resource, PartialEq, Eq)]
+pub struct EnableTileInfo(AHashMap<(usize, usize), bool>);
+
+impl Default for EnableTileInfo {
+    #[inline]
+    fn default() -> Self {
+        Self(AHashMap::new())
+    }
+}
+
+impl EnableTileInfo {
+    pub fn toggle(&mut self, id: (usize, usize)) {
+        if let Some(enabled) = self.0.get_mut(&id) {
+            *enabled = !*enabled;
+        } else {
+            self.0.insert(id, true);
+        }
+    }
+}
+
+#[derive(Default)]
+struct UserTileState {
+    pub damage_state: usize,
+}
+
+#[derive(Resource)]
+pub struct UserTileStates(AHashMap<(usize, usize), UserTileState>);
+
+impl Default for UserTileStates {
+    #[inline]
+    fn default() -> Self {
+        Self(AHashMap::new())
+    }
+}
+
+impl UserTileStates {
+    pub fn clear(&mut self) {
+        self.0.clear();
+    }
+}
+
+enum SetTileStateAmount {
+    All,
+}
+
+fn set_user_tile_state(
+    mut events: EventReader<UserSetTileState>,
+    mut game_states: ResMut<GameStates>,
+    user_tiles: Res<UserTileStates>,
+    socket: Res<Connection>,
+) {
+    for event in events.read() {
+        let team = event.0.0;
+        let index = event.0.1;
+
+        let Some(user_tile) = user_tiles.0.get(&event.0) else {
+            continue;
+        };
+
+        match event.1 {
+            SetTileStateAmount::All => {
+                game_states.current.tiles[team][index].state = TileState::try_from(user_tile.damage_state as u8).unwrap();
+                game_states.next.tiles[team][index].state = game_states.current.tiles[team][index].state;
+            }
+        }
+    }
+
+    socket.send(SendableUdp::State(game_states.next.clone())).unwrap();
+}
+
+fn update_tile_info(
+    mut contexts: EguiContexts,
+    game_states: Res<GameStates>,
+    mut enable_menu: ResMut<EnableTileInfo>,
+    mut set_user_state: EventWriter<UserSetTileState>,
+    mut user_tile: ResMut<UserTileStates>,
+) {
+    const TEAM_NAMES: [&str; 2] = ["Blue", "Orange"];
+    const USER_DAMAGE_NAMES: [&str; 3] = ["Full", "Damaged", "Broken"];
+
+    let ctx = contexts.ctx_mut();
+
+    for (team, team_tiles) in game_states.current.tiles.iter().enumerate() {
+        for (index, tile) in team_tiles.iter().enumerate() {
+            let id = (team, index);
+            let Some(entry) = enable_menu.0.get_mut(&id) else {
+                continue;
+            };
+
+            if !*entry {
+                continue;
+            }
+
+            let user_tile = user_tile.0.entry(id).or_default();
+
+            egui::Window::new(format!("{} Tile #{}", TEAM_NAMES[team], index))
+                .open(entry)
+                .show(ctx, |ui| {
+                    ui.label(format!("Damage state: {}", USER_DAMAGE_NAMES[tile.state as usize]));
+                    ui.horizontal(|ui| {
+                        egui::ComboBox::from_id_salt("Damage state").width(60.).show_index(
+                            ui,
+                            &mut user_tile.damage_state,
+                            USER_DAMAGE_NAMES.len(),
+                            |i| USER_DAMAGE_NAMES[i],
+                        );
+
+                        if ui.button("Set").on_hover_text("Set tile damage state").clicked() {
+                            set_user_state.write(UserSetTileState(id, SetTileStateAmount::All));
+                        }
+                    });
+                });
+        }
+    }
 }
 
 #[derive(Event)]

@@ -7,11 +7,9 @@ publish = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-# bevy_framepace = { version = "0.18", default-features = false }
-bevy_framepace = { git = "https://github.com/aloucks/bevy_framepace", branch = "bevy-0.16", default-features = false }
+bevy_framepace = { version = "0.19", default-features = false }
 bevy_egui = { version = "0.34.0", default-features = false, features = ["default_fonts", "render"] }
-# bevy_vector_shapes = "0.9"
-bevy_vector_shapes = { git = "https://github.com/patrickariel/bevy_vector_shapes", branch = "016rc2" }
+bevy_vector_shapes = "0.10"
 byteorder = "1.4.3"
 include-flate = "0.3.0"
 serde = { version = "1.0.160", features = ["derive", "rc"] }

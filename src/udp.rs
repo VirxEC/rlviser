@@ -337,14 +337,15 @@ fn spawn_car(
                 let wheel_offset = -Vec3::Y * (wheel_pair.suspension_rest_length - 12.);
 
                 for side in 0..=1 {
-                    let offset = Vec3::new(1., 1., 2.0f32.mul_add(-(side as f32), 1.));
+                    let fside = side as f32;
+                    let offset = Vec3::new(1., 1., -2.0f32 * fside + 1.);
 
                     parent.spawn((
                         Mesh3d(car_wheel_mesh.mesh.clone()),
                         MeshMaterial3d(wheel_material.clone()),
                         Transform {
                             translation: wheel_pair.connection_point_offset.to_bevy() * offset + wheel_offset,
-                            rotation: Quat::from_rotation_x(PI * side as f32),
+                            rotation: Quat::from_rotation_x(PI * fside),
                             ..default()
                         },
                         CarWheel::new(i == 0, side == 0),
@@ -1565,13 +1566,14 @@ impl LastPacketTimesElapsed {
 
 #[derive(Resource)]
 struct TileInfo {
-    pub index: usize,
-    pub morton: u64,
     pub state: TileState,
 }
 
 #[derive(Component)]
-pub struct Tile(pub u64);
+pub struct Tile {
+    pub team: usize,
+    pub index: usize,
+}
 
 pub fn get_tile_color(state: TileState) -> Color {
     match state {
@@ -1589,43 +1591,22 @@ fn update_tiles(
     mut tile_states: Local<[Vec<TileInfo>; 2]>,
 ) {
     if tile_states[0].len() != game_states.current.tiles[0].len() {
-        tile_states[0].clear();
-        tile_states[1].clear();
-
-        let morton_gen = Morton::default();
-
-        for (i, team_tiles) in game_states.current.tiles.iter().enumerate() {
-            for (index, tile) in team_tiles.iter().enumerate() {
-                tile_states[i].push(TileInfo {
-                    index,
-                    morton: morton_gen.get_code(tile.pos),
-                    state: tile.state,
-                });
+        for (sim_team_tiles, world_team_tiles) in game_states.current.tiles.iter().zip(&mut tile_states) {
+            world_team_tiles.clear();
+            for tile in sim_team_tiles.iter() {
+                world_team_tiles.push(TileInfo { state: tile.state });
             }
         }
-
-        tile_states[0].sort_by_key(|tile| tile.morton);
-        tile_states[1].sort_by_key(|tile| tile.morton);
         return;
     }
 
     // check if the color needs to be updated because the state has changed
     for (tile, material) in &mut tiles {
-        let mut state = None;
-
-        for (i, states) in tile_states.iter_mut().enumerate() {
-            if let Ok(tile_idx) = states.binary_search_by_key(&tile.0, |tile| tile.morton) {
-                let proper_state = game_states.current.tiles[i][states[tile_idx].index].state;
-                if proper_state != states[tile_idx].state {
-                    states[tile_idx].state = proper_state;
-                    state = Some(proper_state);
-                }
-            }
-        }
-
-        if let Some(state) = state {
+        let proper_state = game_states.current.tiles[tile.team][tile.index].state;
+        if proper_state != tile_states[tile.team][tile.index].state {
+            tile_states[tile.team][tile.index].state = proper_state;
             let material = materials.get_mut(material).unwrap();
-            material.base_color = get_tile_color(state);
+            material.base_color = get_tile_color(proper_state);
         }
     }
 }

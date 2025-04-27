@@ -643,17 +643,18 @@ dependencies = [
 
 [[package]]
 name = "bevy_framepace"
-version = "0.19.0"
-source = "git+https://github.com/aloucks/bevy_framepace?branch=bevy-0.16#4accc9275349238ff9c97ef62fff954d28e9191d"
+version = "0.19.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "71feda15f8c1ff799e8f0914204b56d86760b2c64304317fdacf444e2ef0f8a3"
 dependencies = [
  "bevy_app",
  "bevy_diagnostic",
  "bevy_ecs",
  "bevy_log",
+ "bevy_platform",
  "bevy_reflect",
  "bevy_render",
  "bevy_time",
- "bevy_utils",
  "bevy_window",
  "bevy_winit",
  "spin_sleep",
@@ -1275,8 +1276,9 @@ dependencies = [
 
 [[package]]
 name = "bevy_vector_shapes"
-version = "0.9.3"
-source = "git+https://github.com/patrickariel/bevy_vector_shapes?branch=016rc2#ae6e8e89763394fbba45d2111fcd977b1dd0fd06"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fd7e998b1dcf03ec2630916024674a0d1c1a2fdc9dc999df498f84e75aada1da"
 dependencies = [
  "any_vec",
  "bevy",
@@ -1416,9 +1418,23 @@ checksum = "dc827186963e592360843fb5ba4b973e145841266c1357f7180c43526f2e5b61"
 
 [[package]]
 name = "bitfield"
-version = "0.17.0"
+version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f798d2d157e547aa99aab0967df39edd0b70307312b6f8bd2848e6abe40896e0"
+checksum = "786e53b0c071573a28956cec19a92653e42de34c683e2f6e86c197a349fba318"
+dependencies = [
+ "bitfield-macros",
+]
+
+[[package]]
+name = "bitfield-macros"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "07805405d3f1f3a55aab895718b488821d40458f9188059909091ae0935c344a"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "bitflags"

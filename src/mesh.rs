@@ -1,8 +1,8 @@
 use crate::{
     GameLoadState,
     assets::*,
-    morton::Morton,
     rocketsim::{GameMode, Team},
+    settings::state_setting::{EnableTileInfo, UserTileStates},
     udp::{Ball, Tile, ToBevyVec, ToBevyVecFlat, get_tile_color, send_event, target_insert, target_remove},
 };
 use bevy::{
@@ -50,6 +50,7 @@ impl Plugin for FieldLoaderPlugin {
                 .add_event::<ChangeCarPos>()
                 .add_event::<BallClicked>()
                 .add_event::<CarClicked>()
+                .add_event::<TileClicked>()
                 .add_event::<BoostPadClicked>()
                 .insert_resource(StateSetTime::default())
                 .add_systems(
@@ -58,6 +59,7 @@ impl Plugin for FieldLoaderPlugin {
                         handle_ball_clicked.run_if(on_event::<BallClicked>),
                         handle_car_clicked.run_if(on_event::<CarClicked>),
                         handle_boost_pad_clicked.run_if(on_event::<BoostPadClicked>),
+                        handle_tile_clicked.run_if(on_event::<TileClicked>),
                         (
                             advance_stopwatch,
                             (
@@ -195,19 +197,12 @@ impl From<Pointer<Click>> for CarClicked {
 }
 
 fn handle_car_clicked(mut events: EventReader<CarClicked>, mut enable_car_info: ResMut<EnableCarInfo>, cars: Query<&Car>) {
-    let toggle_car_ids = events
-        .read()
-        .filter_map(|event| {
-            if event.0 != PointerButton::Secondary {
-                return None;
-            }
+    for event in events.read() {
+        if event.0 != PointerButton::Secondary {
+            continue;
+        }
 
-            cars.get(event.1).map(Car::id).ok()
-        })
-        .collect::<Vec<_>>();
-
-    for car in cars.iter() {
-        if toggle_car_ids.contains(&car.id()) {
+        if let Ok(car) = cars.get(event.1) {
             enable_car_info.toggle(car.id());
         }
     }
@@ -458,9 +453,11 @@ fn despawn_old_field(
     static_field_entities: Query<Entity, With<StaticFieldEntity>>,
     mut user_pads: ResMut<UserPadStates>,
     mut user_cars: ResMut<UserCarStates>,
+    mut user_tiles: ResMut<UserTileStates>,
 ) {
     user_pads.clear();
     user_cars.clear();
+    user_tiles.clear();
 
     static_field_entities.iter().for_each(|entity| {
         commands.entity(entity).despawn();
@@ -534,6 +531,36 @@ fn load_goals(
         }
         // TODO: hoops
         _ => {}
+    }
+}
+
+#[derive(Event)]
+pub struct TileClicked(PointerButton, Entity);
+
+impl From<Pointer<Click>> for TileClicked {
+    fn from(event: Pointer<Click>) -> Self {
+        Self(event.button, event.target)
+    }
+}
+
+fn handle_tile_clicked(
+    mut events: EventReader<TileClicked>,
+    mut enable_tile_info: ResMut<EnableTileInfo>,
+    entities: Query<(&Children, Entity)>,
+    tiles: Query<&Tile>,
+) {
+    for event in events.read() {
+        if event.0 != PointerButton::Secondary {
+            continue;
+        }
+
+        let children = entities.get(event.1).unwrap().0;
+        for child in children {
+            if let Ok(tile) = tiles.get(*child) {
+                let id = (tile.team, tile.index);
+                enable_tile_info.toggle(id);
+            }
+        }
     }
 }
 
@@ -693,8 +720,6 @@ fn load_field(
         raw_full_tile_mesh.compute_normals();
         let full_tile_mesh = meshes.add(raw_full_tile_mesh);
 
-        let morton_gen = Morton::default();
-
         for (i, team_tiles) in game_states.current.tiles.iter().enumerate() {
             let team_color = materials.add(StandardMaterial::from(Color::from(if i == 0 {
                 css::BLUE
@@ -722,7 +747,7 @@ fn load_field(
                         EntityName::from(format!("dropshot_tile_{}", i * 70 + j)),
                         Pickable::default(),
                         children![(
-                            Tile(morton_gen.get_code(tile.pos)),
+                            Tile { team: i, index: j },
                             Mesh3d(if tile.pos.y.abs() < 150.0 {
                                 if tile.pos.y.signum().is_sign_positive() {
                                     orange_tile_mesh.clone()
@@ -738,7 +763,8 @@ fn load_field(
                         )],
                     ))
                     .observe(target_insert::<Pointer<Over>>(HighlightedEntity))
-                    .observe(target_remove::<Pointer<Out>, HighlightedEntity>);
+                    .observe(target_remove::<Pointer<Out>, HighlightedEntity>)
+                    .observe(send_event::<Pointer<Click>, TileClicked>);
             }
         }
     }
@@ -822,7 +848,10 @@ fn process_info_node(
             #[cfg(debug_assertions)]
             EntityName::from(format!("{} | {mat}", node.static_mesh)),
             StaticFieldEntity,
+            #[cfg(debug_assertions)]
+            Pickable::default(),
         ));
+        #[cfg(debug_assertions)]
         obj.observe(target_insert::<Pointer<Over>>(HighlightedEntity))
             .observe(target_remove::<Pointer<Out>, HighlightedEntity>);
 
