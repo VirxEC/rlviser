@@ -268,7 +268,7 @@ macro_rules! impl_bytes_exact {
 
 impl_bytes_exact!(Vec2, f32::NUM_BYTES * 2, x, y);
 impl_bytes_exact!(BVec3, f32::NUM_BYTES * 3, x, y, z);
-impl_bytes_exact!(Color, u8::NUM_BYTES * 4, r, g, b, a);
+impl_bytes_exact!(Color, f32::NUM_BYTES * 4, r, g, b, a);
 impl_bytes_exact!(RotMat, Vec3::NUM_BYTES * 3, x_axis, y_axis, z_axis);
 impl_bytes_exact!(
     HeatseekerInfo,
