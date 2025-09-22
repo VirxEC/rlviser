@@ -3804,11 +3804,11 @@ dependencies = [
  "include-flate",
  "itertools 0.14.0",
  "itoa",
- "log",
  "rust_search",
  "serde",
  "serde_json",
  "thiserror 2.0.16",
+ "tracing",
  "walkdir",
  "zip",
 ]

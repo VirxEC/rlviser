@@ -19,11 +19,13 @@ mod udp;
 
 use bevy::{
     image::{ImageAddressMode, ImageSamplerDescriptor},
+    log::LogPlugin,
     prelude::*,
     window::PresentMode,
 };
 use settings::{cache_handler, gui};
 use std::env;
+use tracing::Level;
 
 #[derive(Clone, Eq, PartialEq, Debug, Hash, Default, States)]
 enum GameLoadState {
@@ -62,6 +64,15 @@ fn main() {
             DefaultPlugins
                 .set(TaskPoolPlugin {
                     task_pool_options: TaskPoolOptions::with_num_threads(if cfg!(feature = "threaded") { 3 } else { 1 }),
+                })
+                .set(LogPlugin {
+                    level: if cfg!(debug_assertions) { Level::INFO } else { Level::ERROR },
+                    filter: if cfg!(debug_assertions) {
+                        String::from("wgpu=error,naga=warn")
+                    } else {
+                        String::new()
+                    },
+                    ..Default::default()
                 })
                 .set(ImagePlugin {
                     default_sampler: ImageSamplerDescriptor {
