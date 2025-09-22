@@ -285,13 +285,13 @@ impl MeshMaterial {
                             None
                         }
                     };
-                } else if key == "OpacityMaskClipValue" {
-                    if let Ok(mask_value) = value.parse() {
-                        mask_clip_value = mask_value;
+                } else if key == "OpacityMaskClipValue"
+                    && let Ok(mask_value) = value.parse()
+                {
+                    mask_clip_value = mask_value;
 
-                        if let Some(CAlphaMode::Mask(_)) = alpha_mode {
-                            alpha_mode = Some(CAlphaMode::Mask(mask_clip_value));
-                        }
+                    if let Some(CAlphaMode::Mask(_)) = alpha_mode {
+                        alpha_mode = Some(CAlphaMode::Mask(mask_clip_value));
                     }
                 }
             }

@@ -70,11 +70,11 @@ fn spectator_update(
         return;
     }
 
-    if let Ok(window) = windows.single() {
-        if window.cursor_options.grab_mode == CursorGrabMode::None {
-            motion.clear();
-            return;
-        }
+    if let Ok(window) = windows.single()
+        && window.cursor_options.grab_mode == CursorGrabMode::None
+    {
+        motion.clear();
+        return;
     }
 
     let Ok(mut camera_transform) = camera_transforms.get_mut(camera_id) else {

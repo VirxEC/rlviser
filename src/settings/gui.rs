@@ -16,10 +16,7 @@ use bevy::{
 use std::time::Duration;
 
 use super::state_setting::StateSettingInterface;
-use bevy_egui::{
-    EguiContexts, EguiPlugin,
-    egui::{self, CollapsingHeader},
-};
+use bevy_egui::{EguiContext, EguiPlugin, EguiPrimaryContextPass, PrimaryEguiContext, egui};
 use bevy_framepace::{FramepaceSettings, Limiter};
 
 #[cfg(debug_assertions)]
@@ -29,52 +26,48 @@ pub struct DebugOverlayPlugin;
 
 impl Plugin for DebugOverlayPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((
-            GameOptions,
-            StateSettingInterface,
-            EguiPlugin {
-                enable_multipass_for_primary_context: false,
-            },
-        ))
-        .insert_resource(RenderInfo::default())
-        .insert_resource(UpdateRenderInfoTime::default())
-        .insert_resource(PacketSendTime::default())
-        .add_systems(
-            Update,
-            (
-                listen,
-                (read_speed_update_event, read_paused_update_event),
+        app.add_plugins((GameOptions, StateSettingInterface, EguiPlugin::default()))
+            .insert_resource(RenderInfo::default())
+            .insert_resource(UpdateRenderInfoTime::default())
+            .insert_resource(PacketSendTime::default())
+            .add_systems(
+                EguiPrimaryContextPass,
                 (
-                    advance_time,
-                    ui_system,
-                    toggle_vsync,
-                    toggle_ballcam,
-                    toggle_show_time,
-                    update_daytime,
-                    #[cfg(not(feature = "ssao"))]
-                    update_msaa,
-                    update_ui_scale,
-                    update_shadows,
-                    update_sensitivity,
-                    update_allow_rendering,
-                    update_render_info,
-                    update_packet_smoothing,
-                    update_calc_ball_rot,
+                    listen,
+                    (read_speed_update_event, read_paused_update_event),
                     (
-                        update_speed.run_if(|options: Res<Options>, last: Res<GameSpeed>| options.game_speed != last.speed),
-                        update_paused.run_if(|options: Res<Options>, last: Res<GameSpeed>| options.paused != last.paused),
+                        advance_time,
+                        ui_system,
+                        toggle_vsync,
+                        toggle_ballcam,
+                        toggle_show_time,
+                        update_daytime,
+                        #[cfg(not(feature = "ssao"))]
+                        update_msaa,
+                        update_ui_scale,
+                        update_shadows,
+                        update_sensitivity,
+                        update_allow_rendering,
+                        update_render_info,
+                        update_packet_smoothing,
+                        update_calc_ball_rot,
+                        (
+                            update_speed
+                                .run_if(|options: Res<Options>, last: Res<GameSpeed>| options.game_speed != last.speed),
+                            update_paused
+                                .run_if(|options: Res<Options>, last: Res<GameSpeed>| options.paused != last.paused),
+                        )
+                            .run_if(resource_exists::<Connection>),
                     )
-                        .run_if(resource_exists::<Connection>),
+                        .run_if(resource_equals(MenuFocused::default())),
+                    update_camera_state,
+                    write_settings_to_file,
                 )
-                    .run_if(resource_equals(MenuFocused::default())),
-                update_camera_state,
-                write_settings_to_file,
-            )
-                .chain(),
-        );
+                    .chain(),
+            );
 
         #[cfg(debug_assertions)]
-        app.add_systems(Update, debug_ui);
+        app.add_systems(EguiPrimaryContextPass, debug_ui);
     }
 }
 
@@ -87,11 +80,11 @@ fn advance_time(mut last_packet_send: ResMut<PacketSendTime>, time: Res<Time>) {
 
 #[cfg(debug_assertions)]
 fn debug_ui(
-    mut contexts: EguiContexts,
+    mut contexts: Single<&mut EguiContext, With<PrimaryEguiContext>>,
     heq: Query<(&Transform, &EntityName), With<HighlightedEntity>>,
     cam_pos: Query<&Transform, With<PrimaryCamera>>,
 ) {
-    let ctx = contexts.ctx_mut();
+    let ctx = contexts.get_mut();
     let camera_pos = cam_pos.single().unwrap().translation;
 
     let (he_pos, highlighted_entity_name) = heq.single().map_or_else(
@@ -138,7 +131,7 @@ fn update_render_info(
 fn ui_system(
     mut menu_focused: ResMut<MenuFocused>,
     mut options: ResMut<Options>,
-    mut contexts: EguiContexts,
+    mut context: Single<&mut EguiContext, With<PrimaryEguiContext>>,
     render_info: Res<RenderInfo>,
     time: Res<Time>,
 ) {
@@ -147,7 +140,7 @@ fn ui_system(
     const SHADOW_NAMES: [&str; 4] = ["Off", "0.5x", "1x", "1.5x"];
     const SMOOTHING_NAMES: [&str; 3] = ["None", "Interpolate", "Extrapolate"];
 
-    let ctx = contexts.ctx_mut();
+    let ctx = context.get_mut();
 
     let dt = time.delta_secs();
     if dt == 0.0 {
@@ -198,34 +191,36 @@ fn ui_system(
                 ui.checkbox(&mut options.calc_ball_rot, "Ignore packet ball rotation");
             });
 
-            CollapsingHeader::new("World settings").default_open(true).show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label("Game speed");
-                    ui.add(
-                        egui::DragValue::new(&mut options.game_speed)
-                            .range(0.01..=10.0)
-                            .speed(0.02)
-                            .fixed_decimals(2),
-                    );
-                    ui.checkbox(&mut options.paused, "Paused");
+            egui::CollapsingHeader::new("World settings")
+                .default_open(true)
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Game speed");
+                        ui.add(
+                            egui::DragValue::new(&mut options.game_speed)
+                                .range(0.01..=10.0)
+                                .speed(0.02)
+                                .fixed_decimals(2),
+                        );
+                        ui.checkbox(&mut options.paused, "Paused");
+                    });
+
+                    ui.add_space(15.);
+
+                    ui.horizontal(|ui| {
+                        ui.checkbox(&mut options.show_time, "In-game time");
+                        ui.checkbox(&mut options.ball_cam, "Ball cam");
+                    });
+                    ui.add(egui::Slider::new(&mut options.ui_scale, 0.4..=4.0).text("UI scale"));
+                    ui.label("Mouse sensitivity:");
+                    ui.add(egui::Slider::new(&mut options.mouse_sensitivity, 0.01..=4.0));
+
+                    ui.add_space(15.);
+
+                    ui.checkbox(&mut options.stop_day, "Stop day cycle");
+                    ui.add(egui::Slider::new(&mut options.daytime, 0.0..=150.0).text("Daytime"));
+                    ui.add(egui::Slider::new(&mut options.day_speed, 0.0..=10.0).text("Day speed"));
                 });
-
-                ui.add_space(15.);
-
-                ui.horizontal(|ui| {
-                    ui.checkbox(&mut options.show_time, "In-game time");
-                    ui.checkbox(&mut options.ball_cam, "Ball cam");
-                });
-                ui.add(egui::Slider::new(&mut options.ui_scale, 0.4..=4.0).text("UI scale"));
-                ui.label("Mouse sensitivity:");
-                ui.add(egui::Slider::new(&mut options.mouse_sensitivity, 0.01..=4.0));
-
-                ui.add_space(15.);
-
-                ui.checkbox(&mut options.stop_day, "Stop day cycle");
-                ui.add(egui::Slider::new(&mut options.daytime, 0.0..=150.0).text("Daytime"));
-                ui.add(egui::Slider::new(&mut options.day_speed, 0.0..=10.0).text("Day speed"));
-            });
 
             ui.collapsing("Rendering manager", |ui| {
                 ui.checkbox(&mut options.allow_rendering, "Allow rendering");
@@ -393,10 +388,10 @@ fn write_settings_to_file(
 }
 
 fn update_camera_state(mut primary_camera: Query<&mut PrimaryCamera>, options: Res<Options>) {
-    if PrimaryCamera::Director(0) == options.camera_state {
-        if let PrimaryCamera::Director(_) = primary_camera.single().unwrap() {
-            return;
-        }
+    if PrimaryCamera::Director(0) == options.camera_state
+        && let PrimaryCamera::Director(_) = primary_camera.single().unwrap()
+    {
+        return;
     }
 
     *primary_camera.single_mut().unwrap() = options.camera_state;

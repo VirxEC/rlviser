@@ -143,12 +143,11 @@ pub fn get_mesh_info(name: &str, meshes: &mut Assets<Mesh>) -> Option<Vec<Handle
         .replace('.', "/");
 
     let mut split = local_path.split('/');
-    if let Some(first) = split.next() {
-        if let Some(second) = split.next() {
-            if split.next().is_none() {
-                local_path = format!("{first}/StaticMesh3/{second}");
-            }
-        }
+    if let Some(first) = split.next()
+        && let Some(second) = split.next()
+        && split.next().is_none()
+    {
+        local_path = format!("{first}/StaticMesh3/{second}");
     }
 
     let file_name = local_path.split('/').next_back().unwrap();
@@ -263,12 +262,11 @@ fn retreive_material(
         .replace('.', "/");
 
     let mut split = pre_path.split('/');
-    if let Some(first) = split.next() {
-        if let Some(second) = split.next() {
-            if split.next().is_none() {
-                pre_path = format!("{first}/{}/{second}", &material_folder[1..material_folder.len() - 1]);
-            }
-        }
+    if let Some(first) = split.next()
+        && let Some(second) = split.next()
+        && split.next().is_none()
+    {
+        pre_path = format!("{first}/{}/{second}", &material_folder[1..material_folder.len() - 1]);
     }
 
     let file_name = pre_path.split('/').next_back().unwrap();

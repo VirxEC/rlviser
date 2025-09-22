@@ -6,7 +6,7 @@ use crate::{
 };
 use ahash::AHashMap;
 use bevy::{math::Vec3A, prelude::*};
-use bevy_egui::{EguiContexts, egui};
+use bevy_egui::{EguiContext, EguiPrimaryContextPass, PrimaryEguiContext, egui};
 
 pub struct StateSettingInterface;
 
@@ -25,21 +25,25 @@ impl Plugin for StateSettingInterface {
             .add_event::<UserSetPadState>()
             .add_event::<UserSetTileState>()
             .add_systems(
-                Update,
+                EguiPrimaryContextPass,
                 (
                     update_ball_info.run_if(resource_equals(EnableBallInfo(true))),
                     update_car_info.run_if(|enable_menu: Res<EnableCarInfo>| !enable_menu.0.is_empty()),
                     update_boost_pad_info.run_if(|enable_menu: Res<EnablePadInfo>| !enable_menu.0.is_empty()),
                     update_tile_info.run_if(|enable_menu: Res<EnableTileInfo>| !enable_menu.0.is_empty()),
-                    (
-                        set_user_ball_state.run_if(on_event::<UserSetBallState>),
-                        set_user_car_state.run_if(on_event::<UserSetCarState>),
-                        set_user_pad_state.run_if(on_event::<UserSetPadState>),
-                        set_user_tile_state.run_if(on_event::<UserSetTileState>),
-                    )
-                        .run_if(resource_exists::<Connection>),
                 )
-                    .run_if(resource_equals(MenuFocused::default())),
+                    .chain()
+                    .run_if(resource_exists::<Connection>.and(resource_equals(MenuFocused::default()))),
+            )
+            .add_systems(
+                Update,
+                (
+                    set_user_ball_state.run_if(on_event::<UserSetBallState>),
+                    set_user_car_state.run_if(on_event::<UserSetCarState>),
+                    set_user_pad_state.run_if(on_event::<UserSetPadState>),
+                    set_user_tile_state.run_if(on_event::<UserSetTileState>),
+                )
+                    .run_if(resource_exists::<Connection>.and(resource_equals(MenuFocused::default()))),
             );
     }
 }
@@ -114,7 +118,7 @@ impl UserPadStates {
 }
 
 fn update_boost_pad_info(
-    mut contexts: EguiContexts,
+    mut context: Single<&mut EguiContext, With<PrimaryEguiContext>>,
     game_states: Res<GameStates>,
     mut enable_menu: ResMut<EnablePadInfo>,
     mut set_user_state: EventWriter<UserSetPadState>,
@@ -122,7 +126,7 @@ fn update_boost_pad_info(
 ) {
     const USER_BOOL_NAMES: [&str; 3] = ["", "True", "False"];
 
-    let ctx = contexts.ctx_mut();
+    let ctx = context.get_mut();
 
     let morton_generator = Morton::default();
     for (i, pad) in game_states.current.pads.iter().enumerate() {
@@ -339,132 +343,132 @@ fn set_user_ball_state(
 }
 
 fn update_ball_info(
-    mut contexts: EguiContexts,
+    mut context: Single<&mut EguiContext, With<PrimaryEguiContext>>,
     game_states: Res<GameStates>,
     mut enable_menu: ResMut<EnableBallInfo>,
     mut set_user_state: EventWriter<UserSetBallState>,
     mut user_ball: ResMut<UserBallState>,
 ) {
-    egui::Window::new("Ball")
-        .open(&mut enable_menu.0)
-        .show(contexts.ctx_mut(), |ui| {
-            ui.label(format!(
-                "Position: [{:.1}, {:.1}, {:.1}]",
-                game_states.current.ball.pos.x, game_states.current.ball.pos.y, game_states.current.ball.pos.z
-            ));
-            ui.horizontal(|ui| {
-                ui.label("X: ");
-                ui.add(egui::TextEdit::singleline(&mut user_ball.pos[0]).desired_width(50.));
-                ui.label("Y: ");
-                ui.add(egui::TextEdit::singleline(&mut user_ball.pos[1]).desired_width(50.));
-                ui.label("Z: ");
-                ui.add(egui::TextEdit::singleline(&mut user_ball.pos[2]).desired_width(50.));
-                if ui.button("Set").on_hover_text("Set ball position").clicked() {
-                    set_user_state.write(UserSetBallState(SetBallStateAmount::Pos));
-                }
-            });
-            ui.label(format!(
-                "Velocity: [{:.1}, {:.1}, {:.1}]",
-                game_states.current.ball.vel.x, game_states.current.ball.vel.y, game_states.current.ball.vel.z
-            ));
-            ui.horizontal(|ui| {
-                ui.label("X: ");
-                ui.add(egui::TextEdit::singleline(&mut user_ball.vel[0]).desired_width(50.));
-                ui.label("Y: ");
-                ui.add(egui::TextEdit::singleline(&mut user_ball.vel[1]).desired_width(50.));
-                ui.label("Z: ");
-                ui.add(egui::TextEdit::singleline(&mut user_ball.vel[2]).desired_width(50.));
-                if ui.button("Set").on_hover_text("Set ball velocity").clicked() {
-                    set_user_state.write(UserSetBallState(SetBallStateAmount::Vel));
-                }
-            });
-            ui.label(format!(
-                "Angular velocity: [{:.1}, {:.1}, {:.1}]",
-                game_states.current.ball.ang_vel.x, game_states.current.ball.ang_vel.y, game_states.current.ball.ang_vel.z
-            ));
-            ui.horizontal(|ui| {
-                ui.label("X: ");
-                ui.add(egui::TextEdit::singleline(&mut user_ball.ang_vel[0]).desired_width(50.));
-                ui.label("Y: ");
-                ui.add(egui::TextEdit::singleline(&mut user_ball.ang_vel[1]).desired_width(50.));
-                ui.label("Z: ");
-                ui.add(egui::TextEdit::singleline(&mut user_ball.ang_vel[2]).desired_width(50.));
-                if ui.button("Set").on_hover_text("Set ball angular velocity").clicked() {
-                    set_user_state.write(UserSetBallState(SetBallStateAmount::AngVel));
-                }
-            });
+    let ctx = context.get_mut();
 
-            ui.add_space(10.0);
-            ui.label("Heatseeker info:");
-            ui.horizontal(|ui| {
-                ui.label(format!(
-                    "Current target speed: {:.1}",
-                    game_states.current.ball.hs_info.cur_target_speed
-                ));
-
-                ui.label(format!(
-                    "Time since hit: {:.1}",
-                    game_states.current.ball.hs_info.time_since_hit
-                ));
-            });
-            ui.horizontal(|ui| {
-                ui.label(format!(
-                    "Y target direction: {:.1} - ",
-                    game_states.current.ball.hs_info.y_target_dir
-                ));
-                ui.add(egui::TextEdit::singleline(&mut user_ball.hs_y_target_dir).desired_width(50.));
-            });
-            ui.horizontal(|ui| {
-                ui.label(format!(
-                    "Target speed: {:.1}",
-                    game_states.current.ball.hs_info.cur_target_speed
-                ));
-                ui.label(format!(
-                    "Time since hit: {:.1}",
-                    game_states.current.ball.hs_info.time_since_hit
-                ));
-            });
-            if ui.button("Set").on_hover_text("Set heatseeker info").clicked() {
-                set_user_state.write(UserSetBallState(SetBallStateAmount::Heatseeker));
-            }
-
-            ui.add_space(10.0);
-            ui.label("Dropshot info:");
-            ui.horizontal(|ui| {
-                ui.label(format!(
-                    "Accumulated hit force: {:.1} - ",
-                    game_states.current.ball.ds_info.accumulated_hit_force
-                ));
-                ui.add(egui::TextEdit::singleline(&mut user_ball.ds_accum_hit_force).desired_width(50.));
-            });
-            ui.horizontal(|ui| {
-                ui.label(format!(
-                    "Y target direction: {:.1} - ",
-                    game_states.current.ball.ds_info.y_target_dir
-                ));
-                ui.add(egui::TextEdit::singleline(&mut user_ball.ds_y_target_dir).desired_width(50.));
-            });
-            ui.horizontal(|ui| {
-                ui.label(format!("Charge level: {:.1}", game_states.current.ball.ds_info.charge_level));
-                ui.label(format!("Has damaged: {}", game_states.current.ball.ds_info.has_damaged));
-                ui.label(format!(
-                    "Last damage tick: {}",
-                    game_states.current.ball.ds_info.last_damage_tick
-                ));
-            });
-            if ui.button("Set").on_hover_text("Set dropshot info").clicked() {
-                set_user_state.write(UserSetBallState(SetBallStateAmount::Dropshot));
-            }
-
-            ui.add_space(10.0);
-            if ui
-                .button("     Set all     ")
-                .on_hover_text("Set all (defined) ball properties")
-                .clicked()
-            {
-                set_user_state.write(UserSetBallState(SetBallStateAmount::All));
+    egui::Window::new("Ball").open(&mut enable_menu.0).show(ctx, |ui| {
+        ui.label(format!(
+            "Position: [{:.1}, {:.1}, {:.1}]",
+            game_states.current.ball.pos.x, game_states.current.ball.pos.y, game_states.current.ball.pos.z
+        ));
+        ui.horizontal(|ui| {
+            ui.label("X: ");
+            ui.add(egui::TextEdit::singleline(&mut user_ball.pos[0]).desired_width(50.));
+            ui.label("Y: ");
+            ui.add(egui::TextEdit::singleline(&mut user_ball.pos[1]).desired_width(50.));
+            ui.label("Z: ");
+            ui.add(egui::TextEdit::singleline(&mut user_ball.pos[2]).desired_width(50.));
+            if ui.button("Set").on_hover_text("Set ball position").clicked() {
+                set_user_state.write(UserSetBallState(SetBallStateAmount::Pos));
             }
         });
+        ui.label(format!(
+            "Velocity: [{:.1}, {:.1}, {:.1}]",
+            game_states.current.ball.vel.x, game_states.current.ball.vel.y, game_states.current.ball.vel.z
+        ));
+        ui.horizontal(|ui| {
+            ui.label("X: ");
+            ui.add(egui::TextEdit::singleline(&mut user_ball.vel[0]).desired_width(50.));
+            ui.label("Y: ");
+            ui.add(egui::TextEdit::singleline(&mut user_ball.vel[1]).desired_width(50.));
+            ui.label("Z: ");
+            ui.add(egui::TextEdit::singleline(&mut user_ball.vel[2]).desired_width(50.));
+            if ui.button("Set").on_hover_text("Set ball velocity").clicked() {
+                set_user_state.write(UserSetBallState(SetBallStateAmount::Vel));
+            }
+        });
+        ui.label(format!(
+            "Angular velocity: [{:.1}, {:.1}, {:.1}]",
+            game_states.current.ball.ang_vel.x, game_states.current.ball.ang_vel.y, game_states.current.ball.ang_vel.z
+        ));
+        ui.horizontal(|ui| {
+            ui.label("X: ");
+            ui.add(egui::TextEdit::singleline(&mut user_ball.ang_vel[0]).desired_width(50.));
+            ui.label("Y: ");
+            ui.add(egui::TextEdit::singleline(&mut user_ball.ang_vel[1]).desired_width(50.));
+            ui.label("Z: ");
+            ui.add(egui::TextEdit::singleline(&mut user_ball.ang_vel[2]).desired_width(50.));
+            if ui.button("Set").on_hover_text("Set ball angular velocity").clicked() {
+                set_user_state.write(UserSetBallState(SetBallStateAmount::AngVel));
+            }
+        });
+
+        ui.add_space(10.0);
+        ui.label("Heatseeker info:");
+        ui.horizontal(|ui| {
+            ui.label(format!(
+                "Current target speed: {:.1}",
+                game_states.current.ball.hs_info.cur_target_speed
+            ));
+
+            ui.label(format!(
+                "Time since hit: {:.1}",
+                game_states.current.ball.hs_info.time_since_hit
+            ));
+        });
+        ui.horizontal(|ui| {
+            ui.label(format!(
+                "Y target direction: {:.1} - ",
+                game_states.current.ball.hs_info.y_target_dir
+            ));
+            ui.add(egui::TextEdit::singleline(&mut user_ball.hs_y_target_dir).desired_width(50.));
+        });
+        ui.horizontal(|ui| {
+            ui.label(format!(
+                "Target speed: {:.1}",
+                game_states.current.ball.hs_info.cur_target_speed
+            ));
+            ui.label(format!(
+                "Time since hit: {:.1}",
+                game_states.current.ball.hs_info.time_since_hit
+            ));
+        });
+        if ui.button("Set").on_hover_text("Set heatseeker info").clicked() {
+            set_user_state.write(UserSetBallState(SetBallStateAmount::Heatseeker));
+        }
+
+        ui.add_space(10.0);
+        ui.label("Dropshot info:");
+        ui.horizontal(|ui| {
+            ui.label(format!(
+                "Accumulated hit force: {:.1} - ",
+                game_states.current.ball.ds_info.accumulated_hit_force
+            ));
+            ui.add(egui::TextEdit::singleline(&mut user_ball.ds_accum_hit_force).desired_width(50.));
+        });
+        ui.horizontal(|ui| {
+            ui.label(format!(
+                "Y target direction: {:.1} - ",
+                game_states.current.ball.ds_info.y_target_dir
+            ));
+            ui.add(egui::TextEdit::singleline(&mut user_ball.ds_y_target_dir).desired_width(50.));
+        });
+        ui.horizontal(|ui| {
+            ui.label(format!("Charge level: {:.1}", game_states.current.ball.ds_info.charge_level));
+            ui.label(format!("Has damaged: {}", game_states.current.ball.ds_info.has_damaged));
+            ui.label(format!(
+                "Last damage tick: {}",
+                game_states.current.ball.ds_info.last_damage_tick
+            ));
+        });
+        if ui.button("Set").on_hover_text("Set dropshot info").clicked() {
+            set_user_state.write(UserSetBallState(SetBallStateAmount::Dropshot));
+        }
+
+        ui.add_space(10.0);
+        if ui
+            .button("     Set all     ")
+            .on_hover_text("Set all (defined) ball properties")
+            .clicked()
+        {
+            set_user_state.write(UserSetBallState(SetBallStateAmount::All));
+        }
+    });
 }
 
 #[derive(Event)]
@@ -541,7 +545,7 @@ fn set_user_tile_state(
 }
 
 fn update_tile_info(
-    mut contexts: EguiContexts,
+    mut context: Single<&mut EguiContext, With<PrimaryEguiContext>>,
     game_states: Res<GameStates>,
     mut enable_menu: ResMut<EnableTileInfo>,
     mut set_user_state: EventWriter<UserSetTileState>,
@@ -550,7 +554,7 @@ fn update_tile_info(
     const TEAM_NAMES: [&str; 2] = ["Blue", "Orange"];
     const USER_DAMAGE_NAMES: [&str; 3] = ["Full", "Damaged", "Broken"];
 
-    let ctx = contexts.ctx_mut();
+    let ctx = context.get_mut();
 
     for (team, team_tiles) in game_states.current.tiles.iter().enumerate() {
         for (index, tile) in team_tiles.iter().enumerate() {
@@ -764,7 +768,7 @@ fn set_user_car_state(
 }
 
 fn update_car_info(
-    mut contexts: EguiContexts,
+    mut context: Single<&mut EguiContext, With<PrimaryEguiContext>>,
     game_states: Res<GameStates>,
     mut enable_menu: ResMut<EnableCarInfo>,
     mut set_user_state: EventWriter<UserSetCarState>,
@@ -772,7 +776,7 @@ fn update_car_info(
 ) {
     const USER_BOOL_NAMES: [&str; 2] = ["", "False"];
 
-    let ctx = contexts.ctx_mut();
+    let ctx = context.get_mut();
 
     for car in game_states.current.cars.iter() {
         let Some(entry) = enable_menu.0.get_mut(&car.id) else {

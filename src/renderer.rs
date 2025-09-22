@@ -41,8 +41,8 @@ pub struct RenderGroups {
     pub groups: AHashMap<i32, Vec<Render>>,
 }
 
-fn render_gizmos(mut renders: ResMut<RenderGroups>, mut gizmos: Gizmos) {
-    for renders in renders.groups.values_mut() {
+fn render_gizmos(renders: Res<RenderGroups>, mut gizmos: Gizmos) {
+    for renders in renders.groups.values() {
         for render in renders.iter() {
             match render {
                 Render::Line2D { start, end, color } => {
