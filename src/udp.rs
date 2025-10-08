@@ -4,7 +4,6 @@ use crate::{
     bytes::{FromBytes, ToBytes, ToBytesExact},
     camera::{PrimaryCamera, TimeDisplay},
     mesh::LargeBoostPadLocRots,
-    morton::Morton,
     renderer::{RenderGroups, RenderMessage, UdpRendererPlugin},
     rocketsim::{CarInfo, GameMode, GameState, Team, TileState},
     settings::options::{BallCam, CalcBallRot, GameSpeed, Options, PacketSmoothing, ShowTime},
@@ -14,8 +13,8 @@ use bevy::{
     app::AppExit,
     asset::LoadState,
     color::palettes::css,
+    light::{NotShadowCaster, NotShadowReceiver},
     math::{Mat3A, Vec3A},
-    pbr::{NotShadowCaster, NotShadowReceiver},
     picking::mesh_picking::ray_cast::SimplifiedMesh,
     prelude::*,
     render::renderer::RenderDevice,
@@ -45,11 +44,11 @@ use crate::camera::EntityName;
 
 #[derive(Component)]
 #[require(Mesh3d, MeshMaterial3d<StandardMaterial>, NotShadowCaster, NotShadowReceiver)]
-pub struct BoostPadI(u64);
+pub struct BoostPadI(usize);
 
 impl BoostPadI {
     #[inline]
-    pub const fn id(&self) -> u64 {
+    pub const fn idx(&self) -> usize {
         self.0
     }
 }
@@ -206,23 +205,20 @@ impl CarWheel {
     }
 }
 
-pub fn target_insert<E>(component: impl Component + Clone) -> impl Fn(Trigger<E>, Commands) {
-    move |mut trigger, mut commands| {
-        let entity = trigger.target();
+pub fn target_insert<M: EntityEvent>(component: impl Component + Clone) -> impl Fn(On<M>, Commands) {
+    move |event, mut commands| {
+        let entity = event.event().event_target();
         commands.entity(entity).insert(component.clone());
-        trigger.propagate(false);
     }
 }
 
-pub fn target_remove<E, C: Component>(mut trigger: Trigger<E>, mut commands: Commands) {
-    let entity = trigger.target();
-    trigger.propagate(false);
+pub fn target_remove<M: EntityEvent, C: Component>(event: On<M>, mut commands: Commands) {
+    let entity = event.event().event_target();
     commands.entity(entity).remove::<C>();
 }
 
-pub fn send_event<E: Clone, S: Event + From<E>>(mut trigger: Trigger<E>, mut events: EventWriter<S>) {
-    trigger.propagate(false);
-    events.write(S::from(trigger.event().to_owned()));
+pub fn write_message<M: EntityEvent, S: Message + for<'a> From<&'a M>>(event: On<M>, mut events: MessageWriter<S>) {
+    events.write(S::from(event.event()));
 }
 
 fn spawn_car(
@@ -285,8 +281,8 @@ fn spawn_car(
         ))
         .observe(target_insert::<Pointer<Over>>(HighlightedEntity))
         .observe(target_remove::<Pointer<Out>, HighlightedEntity>)
-        .observe(send_event::<Pointer<Drag>, ChangeCarPos>)
-        .observe(send_event::<Pointer<Click>, CarClicked>)
+        .observe(write_message::<Pointer<Drag>, ChangeCarPos>)
+        .observe(write_message::<Pointer<Click>, CarClicked>)
         .with_children(|parent| {
             const CAR_BOOST_LENGTH: f32 = 50.;
 
@@ -424,10 +420,10 @@ impl UdpPacketTypes {
     }
 }
 
-#[derive(Event)]
+#[derive(Message)]
 pub struct SpeedUpdate(pub f32);
 
-#[derive(Event)]
+#[derive(Message)]
 pub struct PausedUpdate(pub bool);
 
 enum UdpUpdate {
@@ -621,13 +617,13 @@ fn apply_udp_updates(
     calc_ball_rot: Res<CalcBallRot>,
     packet_smoothing: Res<PacketSmoothing>,
     mut game_states: ResMut<GameStates>,
-    mut exit: EventWriter<AppExit>,
+    mut exit: MessageWriter<AppExit>,
     mut packet_updated: ResMut<PacketUpdated>,
     mut render_groups: ResMut<RenderGroups>,
     mut packet_time_elapsed: ResMut<PacketTimeElapsed>,
     mut last_packet_time_elapsed: ResMut<LastPacketTimesElapsed>,
-    mut speed_update: EventWriter<SpeedUpdate>,
-    mut paused_update: EventWriter<PausedUpdate>,
+    mut speed_update: MessageWriter<SpeedUpdate>,
+    mut paused_update: MessageWriter<PausedUpdate>,
 ) {
     packet_time_elapsed.tick(time.delta());
 
@@ -882,7 +878,13 @@ fn pre_update_car(
     car_wheel_mesh: Res<CarWheelMesh>,
     mut images: ResMut<Assets<Image>>,
     render_device: Option<Res<RenderDevice>>,
+    mut prev_tick_count: Local<u64>,
 ) {
+    if *prev_tick_count == states.current.tick_count {
+        return;
+    }
+
+    *prev_tick_count = states.current.tick_count;
     correct_car_count(
         &cars,
         &states.current,
@@ -927,7 +929,7 @@ fn update_camera(
             ids[index]
         }
         PrimaryCamera::Director(id) => {
-            if *id == 0 || timer.0.finished() {
+            if *id == 0 || timer.0.is_finished() {
                 // get the car closest to the ball
                 let mut min_dist = f32::MAX;
                 let mut new_id = *id;
@@ -1024,119 +1026,118 @@ fn update_pads_count(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut commands: Commands,
 ) {
-    if pads.iter().count() != states.current.pads.len() && !large_boost_pad_loc_rots.rots.is_empty() {
-        // The number of pads shouldn't change often
-        // There's also not an easy way to determine
-        // if a previous pad a new pad are same pad
-        // It is the easiest to despawn and respawn all pads
-        for (entity, _) in pads.iter() {
-            commands.entity(entity).despawn();
-        }
+    if pads.iter().count() == states.current.pads.len() || large_boost_pad_loc_rots.rots.is_empty() {
+        return;
+    }
 
-        let large_pad_mesh = match asset_server.get_load_state(&pad_glows.large) {
-            Some(LoadState::Failed(_)) => pad_glows.large_hitbox.clone(),
-            _ => pad_glows.large.clone(),
-        };
+    // The number of pads shouldn't change often
+    // There's also not an easy way to determine
+    // if a previous pad a new pad are same pad
+    // It is the easiest to despawn and respawn all pads
+    for (entity, _) in pads.iter() {
+        commands.entity(entity).despawn();
+    }
 
-        let small_pad_mesh = match asset_server.get_load_state(&pad_glows.small) {
-            Some(LoadState::Failed(_)) => pad_glows.small_hitbox.clone(),
-            _ => pad_glows.small.clone(),
-        };
+    let large_pad_mesh = match asset_server.get_load_state(&pad_glows.large) {
+        Some(LoadState::Failed(_)) => pad_glows.large_hitbox.clone(),
+        _ => pad_glows.large.clone(),
+    };
 
-        let morton_generator = Morton::default();
+    let small_pad_mesh = match asset_server.get_load_state(&pad_glows.small) {
+        Some(LoadState::Failed(_)) => pad_glows.small_hitbox.clone(),
+        _ => pad_glows.small.clone(),
+    };
 
-        for pad in &states.current.pads {
-            let code = morton_generator.get_code(pad.position);
-            let mut transform = Transform::from_translation(pad.position.to_bevy() - Vec3::Y * 70.);
+    for (i, pad) in states.current.pads.iter().enumerate() {
+        let mut transform = Transform::from_translation(pad.position.to_bevy() - Vec3::Y * 70.);
 
-            let (visual_mesh, hitbox) = if pad.is_big {
-                let rotation = large_boost_pad_loc_rots
-                    .locs
-                    .iter()
-                    .enumerate()
-                    .find(|(_, loc)| loc.distance_squared(pad.position.xy()) < 25.)
-                    .map(|(i, _)| large_boost_pad_loc_rots.rots[i]);
-                transform.rotate_y(rotation.unwrap_or_default().to_radians());
-                if states.current.game_mode == GameMode::Soccar {
-                    transform.translation.y += 2.6;
-                } else if states.current.game_mode == GameMode::Hoops {
-                    transform.translation.y += 5.2;
+        let (visual_mesh, hitbox) = if pad.is_big {
+            let rotation = large_boost_pad_loc_rots
+                .locs
+                .iter()
+                .enumerate()
+                .find(|(_, loc)| loc.distance_squared(pad.position.xy()) < 25.)
+                .map(|(i, _)| large_boost_pad_loc_rots.rots[i]);
+            transform.rotate_y(rotation.unwrap_or_default().to_radians());
+            if states.current.game_mode == GameMode::Soccar {
+                transform.translation.y += 2.6;
+            } else if states.current.game_mode == GameMode::Hoops {
+                transform.translation.y += 5.2;
+            }
+
+            (large_pad_mesh.clone(), pad_glows.large_hitbox.clone())
+        } else {
+            if states.current.game_mode == GameMode::Soccar {
+                if transform.translation.z > 10. {
+                    transform.rotate_y(PI);
                 }
 
-                (large_pad_mesh.clone(), pad_glows.large_hitbox.clone())
-            } else {
-                if states.current.game_mode == GameMode::Soccar {
-                    if transform.translation.z > 10. {
+                if (1023f32..1025.).contains(&transform.translation.x.abs()) {
+                    transform.rotate_y(PI / 6.);
+
+                    if transform.translation.x > 1. {
                         transform.rotate_y(PI);
                     }
-
-                    if (1023f32..1025.).contains(&transform.translation.x.abs()) {
-                        transform.rotate_y(PI / 6.);
-
-                        if transform.translation.x > 1. {
-                            transform.rotate_y(PI);
-                        }
-                    }
-
-                    if (1023f32..1025.).contains(&transform.translation.z.abs()) {
-                        transform.rotate_y(PI / 3.);
-                    }
-
-                    if (1787f32..1789.).contains(&transform.translation.x.abs())
-                        && (2299f32..2301.).contains(&transform.translation.z.abs())
-                    {
-                        transform.rotate_y(PI.copysign(transform.translation.x * transform.translation.z) / 4.);
-                    }
-                } else if states.current.game_mode == GameMode::Hoops {
-                    if transform.translation.z > 2810. {
-                        transform.rotate_y(PI / 3.);
-                    }
-
-                    if (-2400f32..-2200.).contains(&transform.translation.z) {
-                        transform.rotate_y(3. * PI.copysign(transform.translation.x) / 12.);
-                    }
-
-                    if (500f32..1537.).contains(&transform.translation.x.abs())
-                        && (0f32..1025.).contains(&transform.translation.z)
-                    {
-                        transform.rotate_y(PI / 3.);
-                    }
-
-                    if (511f32..513.).contains(&transform.translation.x.abs())
-                        && (511f32..513.).contains(&transform.translation.z.abs())
-                    {
-                        transform.rotate_y(PI.copysign(transform.translation.x * transform.translation.z) / 12.);
-                    }
-
-                    transform.translation.y += 5.7;
                 }
 
-                (small_pad_mesh.clone(), pad_glows.small_hitbox.clone())
-            };
+                if (1023f32..1025.).contains(&transform.translation.z.abs()) {
+                    transform.rotate_y(PI / 3.);
+                }
 
-            commands
-                .spawn((
-                    BoostPadI(code),
-                    SimplifiedMesh(hitbox),
-                    Mesh3d(visual_mesh),
-                    MeshMaterial3d(materials.add(StandardMaterial {
-                        base_color: Color::srgba(0.9, 0.9, 0.1, 0.6),
-                        alpha_mode: AlphaMode::Add,
-                        double_sided: true,
-                        cull_mode: None,
-                        ..default()
-                    })),
-                    NotShadowCaster,
-                    NotShadowReceiver,
-                    transform,
-                    #[cfg(debug_assertions)]
-                    EntityName::from("generic_boost_pad"),
-                    Pickable::default(),
-                ))
-                .observe(target_insert::<Pointer<Over>>(HighlightedEntity))
-                .observe(target_remove::<Pointer<Out>, HighlightedEntity>)
-                .observe(send_event::<Pointer<Click>, BoostPadClicked>);
-        }
+                if (1787f32..1789.).contains(&transform.translation.x.abs())
+                    && (2299f32..2301.).contains(&transform.translation.z.abs())
+                {
+                    transform.rotate_y(PI.copysign(transform.translation.x * transform.translation.z) / 4.);
+                }
+            } else if states.current.game_mode == GameMode::Hoops {
+                if transform.translation.z > 2810. {
+                    transform.rotate_y(PI / 3.);
+                }
+
+                if (-2400f32..-2200.).contains(&transform.translation.z) {
+                    transform.rotate_y(3. * PI.copysign(transform.translation.x) / 12.);
+                }
+
+                if (500f32..1537.).contains(&transform.translation.x.abs())
+                    && (0f32..1025.).contains(&transform.translation.z)
+                {
+                    transform.rotate_y(PI / 3.);
+                }
+
+                if (511f32..513.).contains(&transform.translation.x.abs())
+                    && (511f32..513.).contains(&transform.translation.z.abs())
+                {
+                    transform.rotate_y(PI.copysign(transform.translation.x * transform.translation.z) / 12.);
+                }
+
+                transform.translation.y += 5.7;
+            }
+
+            (small_pad_mesh.clone(), pad_glows.small_hitbox.clone())
+        };
+
+        commands
+            .spawn((
+                BoostPadI(i),
+                SimplifiedMesh(hitbox),
+                Mesh3d(visual_mesh),
+                MeshMaterial3d(materials.add(StandardMaterial {
+                    base_color: Color::srgba(0.9, 0.9, 0.1, 0.6),
+                    alpha_mode: AlphaMode::Add,
+                    double_sided: true,
+                    cull_mode: None,
+                    ..default()
+                })),
+                NotShadowCaster,
+                NotShadowReceiver,
+                transform,
+                #[cfg(debug_assertions)]
+                EntityName::from("generic_boost_pad"),
+                Pickable::default(),
+            ))
+            .observe(target_insert::<Pointer<Over>>(HighlightedEntity))
+            .observe(target_remove::<Pointer<Out>, HighlightedEntity>)
+            .observe(write_message::<Pointer<Click>, BoostPadClicked>);
     }
 }
 
@@ -1144,25 +1145,15 @@ fn update_pad_colors(
     states: Res<GameStates>,
     query: Query<(&BoostPadI, &MeshMaterial3d<StandardMaterial>)>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut sorted_pads: Local<Vec<(usize, u64)>>,
+    mut prev_tick_count: Local<u64>,
 ) {
-    if sorted_pads.len() != states.current.pads.len() {
-        let morton_generator = Morton::default();
-
-        *sorted_pads = states
-            .current
-            .pads
-            .iter()
-            .enumerate()
-            .map(|(i, pad)| (i, morton_generator.get_code(pad.position)))
-            .collect::<Vec<_>>();
-        sorted_pads.sort_by_key(|(_, code)| *code);
+    if *prev_tick_count == states.current.tick_count {
+        return;
     }
 
-    for (id, material) in query.iter() {
-        let index = sorted_pads.binary_search_by_key(&id.id(), |(_, code)| *code).unwrap();
-
-        let new_alpha = if states.current.pads[sorted_pads[index].0].state.is_active {
+    *prev_tick_count = states.current.tick_count;
+    for (pad, material) in query.iter() {
+        let new_alpha = if states.current.pads[pad.idx()].state.is_active {
             0.6
         } else {
             // make the glow on inactive pads disappear
@@ -1249,7 +1240,13 @@ fn update_boost_meter(
     *was_last_director = true;
 }
 
-fn update_time(states: Res<GameStates>, show_time: Res<ShowTime>, mut text_display: Query<&mut Text, With<TimeDisplay>>) {
+fn update_time(
+    states: Res<GameStates>,
+    show_time: Res<ShowTime>,
+    mut text_display: Query<&mut Text, With<TimeDisplay>>,
+    mut prev_tick_count: Local<u64>,
+    mut prev_enabled: Local<bool>,
+) {
     const MINUTE: u64 = 60;
     const HOUR: u64 = 60 * MINUTE;
     const DAY: u64 = 24 * HOUR;
@@ -1261,6 +1258,12 @@ fn update_time(states: Res<GameStates>, show_time: Res<ShowTime>, mut text_displ
         [(YEAR, 'y', 0), (MONTH, 'm', 2), (WEEK, 'w', 2), (DAY, 'd', 0), (HOUR, 'h', 2)];
 
     const REQUIRED_TIME_SEGMENTS: [(u64, char, usize); 2] = [(MINUTE, 'm', 2), (1, 's', 2)];
+
+    if *prev_tick_count == states.current.tick_count && show_time.enabled == *prev_enabled {
+        return;
+    }
+    *prev_tick_count = states.current.tick_count;
+    *prev_enabled = show_time.enabled;
 
     let text = &mut text_display.single_mut().unwrap().0;
     text.clear();
@@ -1589,7 +1592,13 @@ fn update_tiles(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut tiles: Query<(&Tile, &MeshMaterial3d<StandardMaterial>)>,
     mut tile_states: Local<[Vec<TileInfo>; 2]>,
+    mut prev_tick_count: Local<u64>,
 ) {
+    if *prev_tick_count == game_states.current.tick_count {
+        return;
+    }
+
+    *prev_tick_count = game_states.current.tick_count;
     if tile_states[0].len() != game_states.current.tiles[0].len() {
         for (sim_team_tiles, world_team_tiles) in game_states.current.tiles.iter().zip(&mut tile_states) {
             world_team_tiles.clear();
@@ -1639,8 +1648,8 @@ pub struct RocketSimPlugin;
 
 impl Plugin for RocketSimPlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<PausedUpdate>()
-            .add_event::<SpeedUpdate>()
+        app.add_message::<PausedUpdate>()
+            .add_message::<SpeedUpdate>()
             .insert_resource(GameStates::default())
             .insert_resource(DirectorTimer(Timer::new(Duration::from_secs(12), TimerMode::Repeating)))
             .insert_resource(PacketTimeElapsed::default())

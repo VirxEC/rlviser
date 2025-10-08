@@ -1,5 +1,5 @@
 [package]
-version = "0.8.2"
+version = "0.8.3"
 name = "rlviser"
 edition = "2024"
 publish = false
@@ -7,9 +7,10 @@ publish = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bevy_framepace = { version = "0.19", default-features = false }
-bevy_egui = { version = "0.36.0", default-features = false, features = ["default_fonts", "render"] }
-bevy_vector_shapes = "0.10"
+# bevy_framepace = { version = "0.19", default-features = false }
+bevy_framepace = { git = "https://github.com/janhohenheim/bevy_framepace", branch = "no-rc", default-features = false }
+bevy_egui = { version = "0.37.0", default-features = false, features = ["default_fonts", "render"] }
+bevy_vector_shapes = "0.11"
 byteorder = "1.4.3"
 include-flate = "0.3.0"
 serde = { version = "1.0.160", features = ["derive", "rc"] }
@@ -27,30 +28,43 @@ itoa = "1.0.15"
 ahash = "0.8.11"
 
 [dependencies.bevy]
-version = "0.16.0"
+version = "0.17.0"
 default-features = false
 features = [
-  "std",
-  "bevy_core_pipeline",
-  "bevy_gizmos",
-  "bevy_log",
-  "bevy_mesh_picking_backend",
-  "bevy_pbr",
-  "bevy_picking",
-  "bevy_state",
-  "bevy_ui",
-  "bevy_window",
-  "default_font",
-  "tga",
-  # wayland is causing a seg fault on exit atm
-  # "wayland",
-  "x11",
+    "std",
+    "bevy_asset",
+    "bevy_color",
+    "bevy_core_pipeline",
+    "bevy_gizmos",
+    "bevy_input_focus",
+    "bevy_log",
+    "bevy_mesh_picking_backend",
+    "bevy_pbr",
+    "bevy_picking",
+    "bevy_render",
+    "bevy_image",
+    "bevy_mesh",
+    "bevy_camera",
+    "bevy_light",
+    "bevy_shader",
+    "bevy_state",
+    "bevy_text",
+    "bevy_ui",
+    "bevy_ui_picking_backend",
+    "bevy_ui_render",
+    "bevy_window",
+    "bevy_winit",
+    "default_font",
+    "reflect_auto_register",
+    "custom_cursor",
+    "tga",
+    "x11",
+    "wayland",
 ]
 
 [features]
 default = ["bevy/dynamic_linking"]
 full_load = []
-ssao = []
 team_goal_barriers = []
 threaded = ["bevy/multi_threaded"]
 

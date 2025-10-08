@@ -10,7 +10,6 @@ mod assets;
 mod bytes;
 mod camera;
 mod mesh;
-mod morton;
 mod renderer;
 mod rocketsim;
 mod settings;

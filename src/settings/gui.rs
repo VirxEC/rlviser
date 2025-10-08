@@ -2,16 +2,17 @@ use super::options::{
     BallCam, CalcBallRot, GameOptions, GameSpeed, MenuFocused, Options, PacketSmoothing, ShowTime, UiOverlayScale,
 };
 use crate::{
-    camera::{DaylightOffset, PrimaryCamera, Sun},
+    camera::{DaylightOffset, PrimaryCamera},
     renderer::{DoRendering, RenderGroups},
     spectator::SpectatorSettings,
     udp::{Connection, LastPacketTimesElapsed, PausedUpdate, SendableUdp, SpeedUpdate},
 };
 use bevy::{
-    pbr::DirectionalLightShadowMap,
+    light::{DirectionalLightShadowMap, SunDisk},
+    picking::PickingSettings,
     prelude::*,
     time::Stopwatch,
-    window::{CursorGrabMode, PrimaryWindow},
+    window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 use std::time::Duration;
 
@@ -42,7 +43,6 @@ impl Plugin for DebugOverlayPlugin {
                         toggle_ballcam,
                         toggle_show_time,
                         update_daytime,
-                        #[cfg(not(feature = "ssao"))]
                         update_msaa,
                         update_ui_scale,
                         update_shadows,
@@ -135,7 +135,6 @@ fn ui_system(
     render_info: Res<RenderInfo>,
     time: Res<Time>,
 ) {
-    #[cfg(not(feature = "ssao"))]
     const MSAA_NAMES: [&str; 4] = ["Off", "2x", "4x", "8x"];
     const SHADOW_NAMES: [&str; 4] = ["Off", "0.5x", "1x", "1.5x"];
     const SMOOTHING_NAMES: [&str; 3] = ["None", "Interpolate", "Extrapolate"];
@@ -176,7 +175,6 @@ fn ui_system(
                         SHADOW_NAMES.len(),
                         |i| SHADOW_NAMES[i],
                     );
-                    #[cfg(not(feature = "ssao"))]
                     egui::ComboBox::from_label("MSAA")
                         .width(40.)
                         .show_index(ui, &mut options.msaa, MSAA_NAMES.len(), |i| MSAA_NAMES[i]);
@@ -246,7 +244,7 @@ fn update_sensitivity(options: Res<Options>, mut settings: ResMut<SpectatorSetti
 }
 
 fn read_speed_update_event(
-    mut events: EventReader<SpeedUpdate>,
+    mut events: MessageReader<SpeedUpdate>,
     mut options: ResMut<Options>,
     mut game_speed: ResMut<GameSpeed>,
 ) {
@@ -257,7 +255,7 @@ fn read_speed_update_event(
 }
 
 fn read_paused_update_event(
-    mut events: EventReader<PausedUpdate>,
+    mut events: MessageReader<PausedUpdate>,
     mut options: ResMut<Options>,
     mut game_speed: ResMut<GameSpeed>,
 ) {
@@ -297,7 +295,7 @@ fn update_paused(options: Res<Options>, socket: Res<Connection>, mut global: Res
 
 fn update_shadows(
     options: Res<Options>,
-    mut query: Query<&mut DirectionalLight, With<Sun>>,
+    mut query: Query<&mut DirectionalLight, With<SunDisk>>,
     mut shadow_map: ResMut<DirectionalLightShadowMap>,
 ) {
     query.single_mut().unwrap().shadows_enabled = options.shadows != 0;
@@ -327,7 +325,6 @@ fn update_calc_ball_rot(options: Res<Options>, mut calc_ball_rot: ResMut<CalcBal
     calc_ball_rot.0 = options.calc_ball_rot;
 }
 
-#[cfg(not(feature = "ssao"))]
 fn update_msaa(options: Res<Options>, mut msaa_query: Query<&mut Msaa>) {
     const MSAA_SAMPLES: [u32; 4] = [1, 2, 4, 8];
 
@@ -398,8 +395,8 @@ fn update_camera_state(mut primary_camera: Query<&mut PrimaryCamera>, options: R
 }
 
 fn listen(
-    mut windows: Query<&mut Window, With<PrimaryWindow>>,
-    mut picking_state: ResMut<PickingPlugin>,
+    mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
+    mut picking_state: ResMut<PickingSettings>,
     key: Res<ButtonInput<KeyCode>>,
     mut menu_focused: ResMut<MenuFocused>,
     mut last_focus: Local<bool>,
@@ -410,8 +407,8 @@ fn listen(
     }
 
     if *last_focus != menu_focused.0 {
-        let mut window = windows.single_mut().unwrap();
-        window.cursor_options.grab_mode = if menu_focused.0 {
+        let mut cursor_options = cursor_options.single_mut().unwrap();
+        cursor_options.grab_mode = if menu_focused.0 {
             CursorGrabMode::None
         } else if cfg!(windows) {
             CursorGrabMode::Confined
@@ -419,7 +416,7 @@ fn listen(
             CursorGrabMode::Locked
         };
 
-        window.cursor_options.visible = menu_focused.0;
+        cursor_options.visible = menu_focused.0;
         picking_state.is_enabled = menu_focused.0;
     }
 

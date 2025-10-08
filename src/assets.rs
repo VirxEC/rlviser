@@ -7,8 +7,9 @@ use ahash::AHashMap;
 use bevy::{
     asset::{AssetLoader, io::Reader},
     color::palettes::css,
+    mesh::CylinderMeshBuilder,
     prelude::*,
-    render::{mesh::CylinderMeshBuilder, renderer::RenderDevice},
+    render::renderer::RenderDevice,
     tasks::ConditionalSendFuture,
 };
 use byteorder::{LittleEndian, ReadBytesExt};

@@ -1,6 +1,5 @@
 use super::options::MenuFocused;
 use crate::{
-    morton::Morton,
     rocketsim::TileState,
     udp::{Connection, GameStates, SendableUdp},
 };
@@ -20,10 +19,10 @@ impl Plugin for StateSettingInterface {
             .insert_resource(UserPadStates::default())
             .insert_resource(EnableTileInfo::default())
             .insert_resource(UserTileStates::default())
-            .add_event::<UserSetBallState>()
-            .add_event::<UserSetCarState>()
-            .add_event::<UserSetPadState>()
-            .add_event::<UserSetTileState>()
+            .add_message::<UserSetBallState>()
+            .add_message::<UserSetCarState>()
+            .add_message::<UserSetPadState>()
+            .add_message::<UserSetTileState>()
             .add_systems(
                 EguiPrimaryContextPass,
                 (
@@ -38,10 +37,10 @@ impl Plugin for StateSettingInterface {
             .add_systems(
                 Update,
                 (
-                    set_user_ball_state.run_if(on_event::<UserSetBallState>),
-                    set_user_car_state.run_if(on_event::<UserSetCarState>),
-                    set_user_pad_state.run_if(on_event::<UserSetPadState>),
-                    set_user_tile_state.run_if(on_event::<UserSetTileState>),
+                    set_user_ball_state.run_if(on_message::<UserSetBallState>),
+                    set_user_car_state.run_if(on_message::<UserSetCarState>),
+                    set_user_pad_state.run_if(on_message::<UserSetPadState>),
+                    set_user_tile_state.run_if(on_message::<UserSetTileState>),
                 )
                     .run_if(resource_exists::<Connection>.and(resource_equals(MenuFocused::default()))),
             );
@@ -72,11 +71,11 @@ fn set_bool_from_usize(b: &mut bool, i: usize) {
     }
 }
 
-#[derive(Event)]
-struct UserSetPadState(u64);
+#[derive(Message)]
+struct UserSetPadState(usize);
 
 #[derive(Resource, PartialEq, Eq)]
-pub struct EnablePadInfo(AHashMap<u64, bool>);
+pub struct EnablePadInfo(AHashMap<usize, bool>);
 
 impl Default for EnablePadInfo {
     #[inline]
@@ -86,7 +85,7 @@ impl Default for EnablePadInfo {
 }
 
 impl EnablePadInfo {
-    pub fn toggle(&mut self, id: u64) {
+    pub fn toggle(&mut self, id: usize) {
         if let Some(enabled) = self.0.get_mut(&id) {
             *enabled = !*enabled;
         } else {
@@ -102,7 +101,7 @@ struct UserPadState {
 }
 
 #[derive(Resource)]
-pub struct UserPadStates(AHashMap<u64, UserPadState>);
+pub struct UserPadStates(AHashMap<usize, UserPadState>);
 
 impl Default for UserPadStates {
     #[inline]
@@ -121,17 +120,15 @@ fn update_boost_pad_info(
     mut context: Single<&mut EguiContext, With<PrimaryEguiContext>>,
     game_states: Res<GameStates>,
     mut enable_menu: ResMut<EnablePadInfo>,
-    mut set_user_state: EventWriter<UserSetPadState>,
+    mut set_user_state: MessageWriter<UserSetPadState>,
     mut user_pads: ResMut<UserPadStates>,
 ) {
     const USER_BOOL_NAMES: [&str; 3] = ["", "True", "False"];
 
     let ctx = context.get_mut();
 
-    let morton_generator = Morton::default();
     for (i, pad) in game_states.current.pads.iter().enumerate() {
-        let code = morton_generator.get_code(pad.position);
-        let Some(entry) = enable_menu.0.get_mut(&code) else {
+        let Some(entry) = enable_menu.0.get_mut(&i) else {
             continue;
         };
 
@@ -139,7 +136,7 @@ fn update_boost_pad_info(
             continue;
         }
 
-        let user_pad = user_pads.0.entry(code).or_default();
+        let user_pad = user_pads.0.entry(i).or_default();
 
         let title = format!("{}Boost pad {}", if pad.is_big { "(Large) " } else { "" }, i);
         egui::Window::new(title).open(entry).show(ctx, |ui| {
@@ -169,43 +166,25 @@ fn update_boost_pad_info(
                 .on_hover_text("Set all (defined) boost pad properties")
                 .clicked()
             {
-                set_user_state.write(UserSetPadState(code));
+                set_user_state.write(UserSetPadState(i));
             }
         });
     }
 }
 
 fn set_user_pad_state(
-    mut events: EventReader<UserSetPadState>,
+    mut events: MessageReader<UserSetPadState>,
     mut game_states: ResMut<GameStates>,
     user_pads: Res<UserPadStates>,
     socket: Res<Connection>,
-    mut sorted_pads: Local<Vec<(usize, u64)>>,
 ) {
-    if sorted_pads.len() != game_states.current.pads.len() {
-        let morton_generator = Morton::default();
-
-        *sorted_pads = game_states
-            .current
-            .pads
-            .iter()
-            .enumerate()
-            .map(|(i, pad)| (i, morton_generator.get_code(pad.position)))
-            .collect::<Vec<_>>();
-        sorted_pads.sort_by_key(|(_, code)| *code);
-    }
-
     for event in events.read() {
         let Some(user_pad) = user_pads.0.get(&event.0) else {
             continue;
         };
 
-        let Ok(index) = sorted_pads.binary_search_by_key(&event.0, |(_, code)| *code) else {
-            continue;
-        };
-
         let (is_active, cooldown) = {
-            let pad = &mut game_states.current.pads[sorted_pads[index].0];
+            let pad = &mut game_states.current.pads[event.0];
 
             set_bool_from_usize(&mut pad.state.is_active, user_pad.is_active);
             set_f32_from_str(&mut pad.state.cooldown, &user_pad.timer);
@@ -213,7 +192,7 @@ fn set_user_pad_state(
             (pad.state.is_active, pad.state.cooldown)
         };
 
-        let pad = &mut game_states.next.pads[sorted_pads[index].0];
+        let pad = &mut game_states.next.pads[event.0];
         pad.state.is_active = is_active;
         pad.state.cooldown = cooldown;
     }
@@ -221,7 +200,7 @@ fn set_user_pad_state(
     socket.send(SendableUdp::State(game_states.next.clone())).unwrap();
 }
 
-#[derive(Event)]
+#[derive(Message)]
 struct UserSetBallState(SetBallStateAmount);
 
 #[derive(Resource, Default, PartialEq, Eq)]
@@ -253,7 +232,7 @@ enum SetBallStateAmount {
 }
 
 fn set_user_ball_state(
-    mut events: EventReader<UserSetBallState>,
+    mut events: MessageReader<UserSetBallState>,
     mut game_states: ResMut<GameStates>,
     user_ball: Res<UserBallState>,
     socket: Res<Connection>,
@@ -346,7 +325,7 @@ fn update_ball_info(
     mut context: Single<&mut EguiContext, With<PrimaryEguiContext>>,
     game_states: Res<GameStates>,
     mut enable_menu: ResMut<EnableBallInfo>,
-    mut set_user_state: EventWriter<UserSetBallState>,
+    mut set_user_state: MessageWriter<UserSetBallState>,
     mut user_ball: ResMut<UserBallState>,
 ) {
     let ctx = context.get_mut();
@@ -471,7 +450,7 @@ fn update_ball_info(
     });
 }
 
-#[derive(Event)]
+#[derive(Message)]
 struct UserSetTileState((usize, usize), SetTileStateAmount);
 
 #[derive(Resource, PartialEq, Eq)]
@@ -520,7 +499,7 @@ enum SetTileStateAmount {
 }
 
 fn set_user_tile_state(
-    mut events: EventReader<UserSetTileState>,
+    mut events: MessageReader<UserSetTileState>,
     mut game_states: ResMut<GameStates>,
     user_tiles: Res<UserTileStates>,
     socket: Res<Connection>,
@@ -548,7 +527,7 @@ fn update_tile_info(
     mut context: Single<&mut EguiContext, With<PrimaryEguiContext>>,
     game_states: Res<GameStates>,
     mut enable_menu: ResMut<EnableTileInfo>,
-    mut set_user_state: EventWriter<UserSetTileState>,
+    mut set_user_state: MessageWriter<UserSetTileState>,
     mut user_tile: ResMut<UserTileStates>,
 ) {
     const TEAM_NAMES: [&str; 2] = ["Blue", "Orange"];
@@ -590,7 +569,7 @@ fn update_tile_info(
     }
 }
 
-#[derive(Event)]
+#[derive(Message)]
 struct UserSetCarState(u32, SetCarStateAmount);
 
 #[derive(Resource, PartialEq, Eq)]
@@ -658,7 +637,7 @@ enum SetCarStateAmount {
 }
 
 fn set_user_car_state(
-    mut events: EventReader<UserSetCarState>,
+    mut events: MessageReader<UserSetCarState>,
     mut game_states: ResMut<GameStates>,
     user_cars: Res<UserCarStates>,
     socket: Res<Connection>,
@@ -771,7 +750,7 @@ fn update_car_info(
     mut context: Single<&mut EguiContext, With<PrimaryEguiContext>>,
     game_states: Res<GameStates>,
     mut enable_menu: ResMut<EnableCarInfo>,
-    mut set_user_state: EventWriter<UserSetCarState>,
+    mut set_user_state: MessageWriter<UserSetCarState>,
     mut user_cars: ResMut<UserCarStates>,
 ) {
     const USER_BOOL_NAMES: [&str; 2] = ["", "False"];

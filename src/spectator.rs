@@ -4,7 +4,7 @@ use crate::camera::PrimaryCamera;
 use bevy::{
     input::mouse::MouseMotion,
     prelude::*,
-    window::{CursorGrabMode, PrimaryWindow},
+    window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 
 /// A marker `Component` for spectating cameras.
@@ -54,28 +54,28 @@ fn spectator_init(cameras: Query<Entity, With<Spectator>>, mut settings: ResMut<
 fn spectator_update(
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
-    windows: Query<&Window, With<PrimaryWindow>>,
+    cursor_options: Query<&CursorOptions, With<PrimaryWindow>>,
     primary_camera: Query<&PrimaryCamera>,
-    mut motion: EventReader<MouseMotion>,
+    mut motion: MessageReader<MouseMotion>,
     mut settings: ResMut<SpectatorSettings>,
     mut camera_transforms: Query<&mut Transform, With<Spectator>>,
 ) {
-    let Some(camera_id) = settings.active_spectator else {
-        motion.clear();
-        return;
-    };
-
     if primary_camera.single().is_ok_and(|state| *state != PrimaryCamera::Spectator) {
         motion.clear();
         return;
     }
 
-    if let Ok(window) = windows.single()
-        && window.cursor_options.grab_mode == CursorGrabMode::None
+    if let Ok(cursor_options) = cursor_options.single()
+        && cursor_options.grab_mode == CursorGrabMode::None
     {
         motion.clear();
         return;
     }
+
+    let Some(camera_id) = settings.active_spectator else {
+        motion.clear();
+        return;
+    };
 
     let Ok(mut camera_transform) = camera_transforms.get_mut(camera_id) else {
         error!("Failed to find camera for active camera entity ({camera_id:?})");

@@ -1,9 +1,10 @@
 use crate::{GameLoadState, assets::load_assets, mesh::MeshBuilder};
 use ahash::AHashMap;
 use bevy::{
+    asset::RenderAssetUsages,
     image::{CompressedImageFormats, ImageSampler, ImageType},
     prelude::*,
-    render::{render_asset::RenderAssetUsages, renderer::RenderDevice},
+    render::renderer::RenderDevice,
 };
 use std::{
     fs::{File, copy, create_dir_all, read_to_string},

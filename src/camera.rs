@@ -1,30 +1,20 @@
 use crate::spectator::{Spectator, SpectatorPlugin, SpectatorSettings};
 use bevy::{
+    camera::Exposure,
     color::palettes::css,
     core_pipeline::tonemapping::Tonemapping,
-    pbr::{
-        Atmosphere, AtmosphereSettings, CascadeShadowConfigBuilder, DirectionalLightShadowMap, ShadowFilteringMethod,
-        light_consts::lux,
-    },
+    light::{CascadeShadowConfigBuilder, DirectionalLightShadowMap, ShadowFilteringMethod, SunDisk, light_consts::lux},
+    pbr::{Atmosphere, AtmosphereSettings},
     prelude::*,
-    render::camera::Exposure,
+    render::view::Hdr,
 };
 use serde::{Deserialize, Serialize};
 use std::f32::consts::PI;
 
-use bevy_egui::{EguiGlobalSettings, PrimaryEguiContext};
+use bevy_egui::{EguiGlobalSettings, EguiStartupSet, PrimaryEguiContext};
 use bevy_framepace::{FramepacePlugin, FramepaceSettings};
 use bevy_vector_shapes::prelude::*;
 use std::time::Duration;
-
-#[cfg(feature = "ssao")]
-use bevy::{
-    core_pipeline::experimental::taa::{TemporalAntiAliasPlugin, TemporalAntiAliasing},
-    pbr::ScreenSpaceAmbientOcclusion,
-};
-
-#[derive(Component)]
-pub struct Sun;
 
 #[derive(Resource)]
 struct CycleTimer(Timer);
@@ -67,13 +57,13 @@ fn setup(mut commands: Commands, mut egui_global_settings: ResMut<EguiGlobalSett
         DirectionalLight::default(),
         ShadowFilteringMethod::Hardware2x2,
         cascade_shadow_config,
-        Sun,
+        SunDisk::EARTH,
     ));
 
     commands.spawn((
         PrimaryCamera::default(),
-        Camera { hdr: true, ..default() },
         Camera3d::default(),
+        Hdr,
         Projection::Perspective(PerspectiveProjection {
             near: 5.,
             far: 50_000.,
@@ -82,12 +72,8 @@ fn setup(mut commands: Commands, mut egui_global_settings: ResMut<EguiGlobalSett
         }),
         Transform::from_translation(Vec3::new(-3000., 1000., 0.)).looking_to(Vec3::X, Vec3::Y),
         Tonemapping::ReinhardLuminance,
-        if cfg!(feature = "ssao") {
-            ShadowFilteringMethod::Temporal
-        } else {
-            ShadowFilteringMethod::Gaussian
-        },
-        if cfg!(feature = "ssao") { Msaa::Off } else { Msaa::default() },
+        ShadowFilteringMethod::Gaussian,
+        Msaa::default(),
         Spectator,
         MeshPickingCamera,
         Atmosphere::EARTH,
@@ -97,32 +83,17 @@ fn setup(mut commands: Commands, mut egui_global_settings: ResMut<EguiGlobalSett
             scene_units_to_m: 0.01,
             ..default()
         },
-        PrimaryEguiContext,
-        #[cfg(feature = "ssao")]
-        ScreenSpaceAmbientOcclusion::default(),
-        #[cfg(feature = "ssao")]
-        TemporalAntiAliasing::default(),
     ));
 
     commands.spawn((
         Camera2d,
         Camera {
             order: 1,
-            hdr: true,
             clear_color: ClearColorConfig::None,
             ..default()
         },
-    ));
-
-    #[cfg(debug_assertions)]
-    commands.spawn((
-        Camera2d,
-        Camera {
-            order: 2,
-            hdr: true,
-            clear_color: ClearColorConfig::None,
-            ..default()
-        },
+        Hdr,
+        PrimaryEguiContext,
     ));
 
     commands.spawn((
@@ -176,14 +147,14 @@ pub struct DaylightOffset {
 }
 
 fn daylight_cycle(
-    mut query: Query<(&mut Transform, &mut DirectionalLight), With<Sun>>,
+    mut query: Query<(&mut Transform, &mut DirectionalLight), With<SunDisk>>,
     mut timer: ResMut<CycleTimer>,
     offset: Res<DaylightOffset>,
     time: Res<Time>,
 ) {
     timer.0.tick(time.delta());
 
-    if timer.0.finished() {
+    if timer.0.is_finished() {
         let secs = if offset.stop_day { 0. } else { time.elapsed_secs_wrapped() };
         let t = (offset.offset + secs) / (200. / offset.day_speed);
 
@@ -253,12 +224,7 @@ impl Plugin for CameraPlugin {
                 require_markers: true,
                 ray_cast_visibility: RayCastVisibility::Any,
             })
-            .add_plugins((
-                SpectatorPlugin,
-                MeshPickingPlugin,
-                #[cfg(feature = "ssao")]
-                TemporalAntiAliasPlugin,
-            ))
-            .add_systems(Startup, setup);
+            .add_plugins((SpectatorPlugin, MeshPickingPlugin))
+            .add_systems(PreStartup, setup.before(EguiStartupSet::InitContexts));
     }
 }

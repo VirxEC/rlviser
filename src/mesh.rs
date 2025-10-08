@@ -3,16 +3,17 @@ use crate::{
     assets::*,
     rocketsim::{GameMode, Team},
     settings::state_setting::{EnableTileInfo, UserTileStates},
-    udp::{Ball, Tile, ToBevyVec, ToBevyVecFlat, get_tile_color, send_event, target_insert, target_remove},
+    udp::{Ball, Tile, ToBevyVec, ToBevyVecFlat, get_tile_color, target_insert, target_remove, write_message},
 };
 use bevy::{
-    asset::LoadState,
+    asset::{LoadState, RenderAssetUsages},
     color::palettes::css,
+    light::{NotShadowCaster, NotShadowReceiver},
     math::Vec3A,
-    pbr::{NotShadowCaster, NotShadowReceiver},
+    mesh,
     picking::mesh_picking::ray_cast::SimplifiedMesh,
     prelude::*,
-    render::{mesh, render_asset::RenderAssetUsages, renderer::RenderDevice},
+    render::renderer::RenderDevice,
     time::Stopwatch,
     window::PrimaryWindow,
 };
@@ -46,25 +47,25 @@ pub struct FieldLoaderPlugin;
 impl Plugin for FieldLoaderPlugin {
     fn build(&self, app: &mut App) {
         {
-            app.add_event::<ChangeBallPos>()
-                .add_event::<ChangeCarPos>()
-                .add_event::<BallClicked>()
-                .add_event::<CarClicked>()
-                .add_event::<TileClicked>()
-                .add_event::<BoostPadClicked>()
+            app.add_message::<ChangeBallPos>()
+                .add_message::<ChangeCarPos>()
+                .add_message::<BallClicked>()
+                .add_message::<CarClicked>()
+                .add_message::<TileClicked>()
+                .add_message::<BoostPadClicked>()
                 .insert_resource(StateSetTime::default())
                 .add_systems(
                     Update,
                     (
-                        handle_ball_clicked.run_if(on_event::<BallClicked>),
-                        handle_car_clicked.run_if(on_event::<CarClicked>),
-                        handle_boost_pad_clicked.run_if(on_event::<BoostPadClicked>),
-                        handle_tile_clicked.run_if(on_event::<TileClicked>),
+                        handle_ball_clicked.run_if(on_message::<BallClicked>),
+                        handle_car_clicked.run_if(on_message::<CarClicked>),
+                        handle_boost_pad_clicked.run_if(on_message::<BoostPadClicked>),
+                        handle_tile_clicked.run_if(on_message::<TileClicked>),
                         (
                             advance_stopwatch,
                             (
-                                change_ball_pos.run_if(on_event::<ChangeBallPos>),
-                                change_car_pos.run_if(on_event::<ChangeCarPos>),
+                                change_ball_pos.run_if(on_message::<ChangeBallPos>),
+                                change_car_pos.run_if(on_message::<ChangeCarPos>),
                             )
                                 .run_if(|last_state_set: Res<StateSetTime>| {
                                     // Limit state setting to avoid bogging down the simulation with state setting requests
@@ -91,11 +92,11 @@ fn advance_stopwatch(mut last_state_set: ResMut<StateSetTime>, time: Res<Time>) 
     last_state_set.0.tick(time.delta());
 }
 
-#[derive(Event)]
+#[derive(Message)]
 pub struct ChangeBallPos(PointerButton);
 
-impl From<Pointer<Drag>> for ChangeBallPos {
-    fn from(event: Pointer<Drag>) -> Self {
+impl From<&Pointer<Drag>> for ChangeBallPos {
+    fn from(event: &Pointer<Drag>) -> Self {
         Self(event.button)
     }
 }
@@ -107,7 +108,7 @@ fn change_ball_pos(
     windows: Query<&Window, With<PrimaryWindow>>,
     socket: Res<Connection>,
     mut game_states: ResMut<GameStates>,
-    mut events: EventReader<ChangeBallPos>,
+    mut events: MessageReader<ChangeBallPos>,
     camera: Query<(&Camera, &GlobalTransform), With<PrimaryCamera>>,
     mut last_state_set: ResMut<StateSetTime>,
 ) {
@@ -131,12 +132,12 @@ fn change_ball_pos(
     socket.send(SendableUdp::State(game_states.next.clone())).unwrap();
 }
 
-#[derive(Event)]
+#[derive(Message)]
 pub struct ChangeCarPos(PointerButton, Entity);
 
-impl From<Pointer<Drag>> for ChangeCarPos {
-    fn from(event: Pointer<Drag>) -> Self {
-        Self(event.button, event.target)
+impl From<&Pointer<Drag>> for ChangeCarPos {
+    fn from(event: &Pointer<Drag>) -> Self {
+        Self(event.button, event.event_target())
     }
 }
 
@@ -145,7 +146,7 @@ fn change_car_pos(
     windows: Query<&Window, With<PrimaryWindow>>,
     socket: Res<Connection>,
     mut game_states: ResMut<GameStates>,
-    mut events: EventReader<ChangeCarPos>,
+    mut events: MessageReader<ChangeCarPos>,
     camera: Query<(&Camera, &GlobalTransform), With<PrimaryCamera>>,
     mut last_state_set: ResMut<StateSetTime>,
 ) {
@@ -187,16 +188,16 @@ fn change_car_pos(
     socket.send(SendableUdp::State(game_states.next.clone())).unwrap();
 }
 
-#[derive(Event)]
+#[derive(Message)]
 pub struct CarClicked(PointerButton, Entity);
 
-impl From<Pointer<Click>> for CarClicked {
-    fn from(event: Pointer<Click>) -> Self {
-        Self(event.button, event.target)
+impl From<&Pointer<Click>> for CarClicked {
+    fn from(event: &Pointer<Click>) -> Self {
+        Self(event.button, event.event_target())
     }
 }
 
-fn handle_car_clicked(mut events: EventReader<CarClicked>, mut enable_car_info: ResMut<EnableCarInfo>, cars: Query<&Car>) {
+fn handle_car_clicked(mut events: MessageReader<CarClicked>, mut enable_car_info: ResMut<EnableCarInfo>, cars: Query<&Car>) {
     for event in events.read() {
         if event.0 != PointerButton::Secondary {
             continue;
@@ -235,16 +236,16 @@ fn get_move_object_target(cam_pos: Vec3A, cursor_dir: Vec3A, plane_normal: Vec3A
     cam_pos + lambda * cursor_dir
 }
 
-#[derive(Event)]
+#[derive(Message)]
 pub struct BallClicked(PointerButton);
 
-impl From<Pointer<Click>> for BallClicked {
-    fn from(event: Pointer<Click>) -> Self {
+impl From<&Pointer<Click>> for BallClicked {
+    fn from(event: &Pointer<Click>) -> Self {
         Self(event.button)
     }
 }
 
-fn handle_ball_clicked(mut events: EventReader<BallClicked>, mut enable_ball_info: ResMut<EnableBallInfo>) {
+fn handle_ball_clicked(mut events: MessageReader<BallClicked>, mut enable_ball_info: ResMut<EnableBallInfo>) {
     // ensure that it was an odd amount of right clicks
     // e.x. right click -> open then right click -> close (an event amount of clicks) wouldn't change the state
     if events.read().filter(|event| event.0 == PointerButton::Secondary).count() % 2 == 0 {
@@ -254,17 +255,17 @@ fn handle_ball_clicked(mut events: EventReader<BallClicked>, mut enable_ball_inf
     enable_ball_info.toggle();
 }
 
-#[derive(Event)]
+#[derive(Message)]
 pub struct BoostPadClicked(PointerButton, Entity);
 
-impl From<Pointer<Click>> for BoostPadClicked {
-    fn from(event: Pointer<Click>) -> Self {
-        Self(event.button, event.target)
+impl From<&Pointer<Click>> for BoostPadClicked {
+    fn from(event: &Pointer<Click>) -> Self {
+        Self(event.button, event.event_target())
     }
 }
 
 fn handle_boost_pad_clicked(
-    mut events: EventReader<BoostPadClicked>,
+    mut events: MessageReader<BoostPadClicked>,
     mut enable_boost_pad_info: ResMut<EnablePadInfo>,
     boost_pads: Query<&BoostPadI>,
 ) {
@@ -274,7 +275,7 @@ fn handle_boost_pad_clicked(
         }
 
         if let Ok(boost_pad) = boost_pads.get(event.1) {
-            enable_boost_pad_info.toggle(boost_pad.id());
+            enable_boost_pad_info.toggle(boost_pad.idx());
         }
     }
 }
@@ -329,8 +330,8 @@ fn load_extra_field(
         ))
         .observe(target_insert::<Pointer<Over>>(HighlightedEntity))
         .observe(target_remove::<Pointer<Out>, HighlightedEntity>)
-        .observe(send_event::<Pointer<Drag>, ChangeBallPos>)
-        .observe(send_event::<Pointer<Click>, BallClicked>);
+        .observe(write_message::<Pointer<Drag>, ChangeBallPos>)
+        .observe(write_message::<Pointer<Click>, BallClicked>);
 
     state.set(GameLoadState::Field);
 }
@@ -534,17 +535,17 @@ fn load_goals(
     }
 }
 
-#[derive(Event)]
+#[derive(Message)]
 pub struct TileClicked(PointerButton, Entity);
 
-impl From<Pointer<Click>> for TileClicked {
-    fn from(event: Pointer<Click>) -> Self {
-        Self(event.button, event.target)
+impl From<&Pointer<Click>> for TileClicked {
+    fn from(event: &Pointer<Click>) -> Self {
+        Self(event.button, event.event_target())
     }
 }
 
 fn handle_tile_clicked(
-    mut events: EventReader<TileClicked>,
+    mut events: MessageReader<TileClicked>,
     mut enable_tile_info: ResMut<EnableTileInfo>,
     entities: Query<(&Children, Entity)>,
     tiles: Query<&Tile>,
@@ -764,7 +765,7 @@ fn load_field(
                     ))
                     .observe(target_insert::<Pointer<Over>>(HighlightedEntity))
                     .observe(target_remove::<Pointer<Out>, HighlightedEntity>)
-                    .observe(send_event::<Pointer<Click>, TileClicked>);
+                    .observe(write_message::<Pointer<Click>, TileClicked>);
             }
         }
     }
