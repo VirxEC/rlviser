@@ -136,7 +136,7 @@ fn ui_system(
     time: Res<Time>,
 ) {
     const MSAA_NAMES: [&str; 4] = ["Off", "2x", "4x", "8x"];
-    const SHADOW_NAMES: [&str; 4] = ["Off", "0.5x", "1x", "1.5x"];
+    const SHADOW_NAMES: [&str; 4] = ["Off", "0.5x", "1x", "2x"];
     const SMOOTHING_NAMES: [&str; 3] = ["None", "Interpolate", "Extrapolate"];
 
     let ctx = context.get_mut();
@@ -299,12 +299,7 @@ fn update_shadows(
     mut shadow_map: ResMut<DirectionalLightShadowMap>,
 ) {
     query.single_mut().unwrap().shadows_enabled = options.shadows != 0;
-    shadow_map.size = 2048
-        * match options.shadows {
-            2 => 2,
-            3 => 3,
-            _ => 1,
-        };
+    shadow_map.size = 2048 * 2usize.pow(options.shadows.max(1) as u32 - 1);
 }
 
 fn toggle_ballcam(options: Res<Options>, mut ballcam: ResMut<BallCam>) {

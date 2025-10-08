@@ -55,8 +55,6 @@ features = [
     "bevy_window",
     "bevy_winit",
     "default_font",
-    "reflect_auto_register",
-    "custom_cursor",
     "tga",
     "x11",
     "wayland",
