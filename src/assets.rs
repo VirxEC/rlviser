@@ -54,8 +54,8 @@ pub fn load_assets(
 
     commands.insert_resource(BallAssets {
         ball_diffuse: get_texture_cache("Ball_Default00_D", &assets, &mut images, render_device.as_deref()),
-        // ball_normal: get_texture_cache("Ball_Default00_N", &assets),
-        // ball_occlude: get_texture_cache("Ball_Default00_RGB", &assets),
+        // ball_normal: get_texture_cache("Ball_Default00_N", &assets, &mut images, render_device.as_deref()),
+        // ball_occlude: get_texture_cache("Ball_Default00_RGB", &assets, &mut images, render_device.as_deref()),
         ball: get_default_mesh_cache("Ball_Default/StaticMesh3/Ball_DefaultBall00.pskx", &assets, &mut meshes),
     });
 }
@@ -160,7 +160,7 @@ pub fn get_mesh_info(name: &str, meshes: &mut Assets<Mesh>) -> Option<Vec<Handle
     get_mesh_cache(cache_path, asset_path, name, meshes)
 }
 
-const DOUBLE_SIDED_MATS: [&str; 28] = [
+const DOUBLE_SIDED_MATS: [&str; 31] = [
     "Trees.Materials.LombardyPoplar_B_NoWind_MIC",
     "Trees.Materials.LombardyPoplar_B_Mat",
     "FutureTech.Materials.ForceField_HexGage_MIC",
@@ -170,6 +170,7 @@ const DOUBLE_SIDED_MATS: [&str; 28] = [
     "Stadium.Materials.StadiumLight_Flare_Mat",
     "FutureTech.Materials.Frame_01_V2_Mat",
     "FutureTech.Materials.Reflective_Floor_V2_Mat",
+    "FutureTech.Materials.Reflective_Floor_B_Mat",
     "FutureTech.Materials.Frame_01_MIC",
     "Stadium.Materials.SeatBase_Mat",
     "Stadium.Materials.Crowd_ST_Team1_Mic",
@@ -189,6 +190,8 @@ const DOUBLE_SIDED_MATS: [&str; 28] = [
     "Proto_BBall.Materials.BBall_Rim_MAT_INST",
     "Pickup_Boost.Materials.BoostPad_Large_MIC",
     "Pickup_Boost.Materials.BoostPad_Small_MIC",
+    "OldCosmic_Assets.Materials.OLDCosmicGlass1",
+    "Proto_BBall.Materials.BBall_DarkMetal_MIC",
 ];
 
 const TRANSPARENT_MATS: [&str; 2] = [
@@ -276,7 +279,8 @@ fn retreive_material(
 
     let mut material = StandardMaterial {
         base_color,
-        metallic: 0.1,
+        reflectance: 0.25,
+        perceptual_roughness: 0.7,
         ..default()
     };
 
@@ -326,6 +330,7 @@ fn get_default_material(name: &str, side: Option<Team>) -> Option<StandardMateri
         Color::srgb_u8(45, 49, 66)
     } else if [
         "FutureTech.Materials.Reflective_Floor_V2_Mat",
+        "FutureTech.Materials.Reflective_Floor_B_Mat",
         "Proto_BBall.SM.BackBoard_Teams_MIC",
         "Proto_BBall.Materials.BBall_Rubber_MIC",
         "Proto_BBall.Materials.MIC_DarkGlass",
@@ -372,6 +377,8 @@ fn get_default_material(name: &str, side: Option<Team>) -> Option<StandardMateri
     .contains(&name)
     {
         Color::srgb_u8(152, 29, 23)
+    } else if name == "Goal.Materials.GoalGenerator_Team2_MIC" || name.contains("CrossHatched") {
+        Color::NONE
     } else if name.contains("Advert") || name.contains("DarkMetal") {
         Color::srgb_u8(191, 192, 192)
     } else if name.contains("Collision") {
@@ -441,8 +448,16 @@ pub fn get_material(
     mat
 }
 
-pub fn read_vertices(chunk_data: &[u8], data_count: usize, vertices: &mut Vec<f32>) {
+pub fn read_vertices(
+    chunk_data: &[u8],
+    data_count: usize,
+    vertices: &mut Vec<f32>,
+    uvs: &mut Vec<[f32; 2]>,
+    mat_ids: &mut Vec<usize>,
+) {
     vertices.reserve(data_count * 3);
+    uvs.reserve(data_count * 3);
+    mat_ids.reserve(data_count * 3);
 
     let mut reader = io::Cursor::new(chunk_data);
     for _ in 0..data_count {
@@ -450,30 +465,39 @@ pub fn read_vertices(chunk_data: &[u8], data_count: usize, vertices: &mut Vec<f3
         let y = reader.read_f32::<LittleEndian>().unwrap();
         vertices.push(reader.read_f32::<LittleEndian>().unwrap());
         vertices.push(-y);
+
+        uvs.push([0.0, 0.0]);
+        mat_ids.push(0);
     }
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct Wedge {
-    pub vertex_id: usize,
-    pub uv: [f32; 2],
-    pub material_index: usize,
+    pub vertex_id: u32,
 }
 
-pub fn read_wedges(chunk_data: &[u8], data_count: usize, wedges: &mut Vec<Wedge>) {
+pub fn read_wedges(
+    chunk_data: &[u8],
+    data_count: usize,
+    wedges: &mut Vec<Wedge>,
+    uvs: &mut [[f32; 2]],
+    mat_ids: &mut [usize],
+) {
     wedges.reserve(data_count);
 
     let mut reader = io::Cursor::new(chunk_data);
     for _ in 0..data_count {
-        let vertex_id = reader.read_u32::<LittleEndian>().unwrap() as usize;
+        let vertex_id = reader.read_u32::<LittleEndian>().unwrap();
         let u = reader.read_f32::<LittleEndian>().unwrap();
         let v = reader.read_f32::<LittleEndian>().unwrap();
         let material_index = reader.read_u8().unwrap() as usize;
-        wedges.push(Wedge {
-            vertex_id,
-            uv: [u, v],
-            material_index,
-        });
+
+        let idx = vertex_id as usize;
+        uvs[idx][0] = u;
+        uvs[idx][1] = v;
+        mat_ids[idx] = material_index;
+
+        wedges.push(Wedge { vertex_id });
 
         // read padding bytes
         reader.read_u8().unwrap();
@@ -482,17 +506,8 @@ pub fn read_wedges(chunk_data: &[u8], data_count: usize, wedges: &mut Vec<Wedge>
     }
 }
 
-pub fn read_faces(
-    chunk_data: &[u8],
-    data_count: usize,
-    wedges: &[Wedge],
-    ids: &mut Vec<usize>,
-    uvs: &mut Vec<[f32; 2]>,
-    mat_ids: &mut Vec<usize>,
-) {
+pub fn read_faces(chunk_data: &[u8], data_count: usize, wedges: &[Wedge], ids: &mut Vec<u32>) {
     ids.reserve(data_count * 3);
-    uvs.reserve(data_count * 3);
-    mat_ids.reserve(data_count * 3);
 
     let mut reader = io::Cursor::new(chunk_data);
     for _ in 0..data_count {
@@ -508,8 +523,6 @@ pub fn read_faces(
         let verts = [&wedges[wdg_idxs[0]], &wedges[wdg_idxs[1]], &wedges[wdg_idxs[2]]];
 
         ids.extend([verts[1].vertex_id, verts[0].vertex_id, verts[2].vertex_id]);
-        uvs.extend([verts[1].uv, verts[0].uv, verts[2].uv]);
-        mat_ids.extend([verts[1].material_index, verts[0].material_index, verts[2].material_index]);
     }
 }
 

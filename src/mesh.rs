@@ -363,8 +363,8 @@ impl InfoNode {
         Transform {
             translation: self.translation.unwrap_or_default().to_bevy(),
             rotation: {
-                let [a, b, c] = self.rotation.unwrap_or_default();
-                Quat::from_euler(EulerRot::ZYX, c.to_radians(), b.to_radians(), a.to_radians())
+                let [x, y, z] = self.rotation.unwrap_or_default();
+                Quat::from_euler(EulerRot::ZYX, z.to_radians(), -y.to_radians(), x.to_radians())
             },
             scale: self.scale.map_or(Vec3::ONE, ToBevyVec::to_bevy),
         }
@@ -839,7 +839,7 @@ fn process_info_node(
                 .push(node.translation.map(ToBevyVecFlat::to_bevy_flat).unwrap_or_default());
             large_boost_pad_loc_rots
                 .rots
-                .push(node.rotation.map(|r| r[1]).unwrap_or_default());
+                .push(node.rotation.map(|r| -r[1]).unwrap_or_default());
         }
 
         let mut obj = commands.spawn((
@@ -876,7 +876,7 @@ pub enum MeshBuilderError {
 /// A collection of inter-connected triangles.
 #[derive(Clone, Debug, Default, bincode::Encode, bincode::Decode)]
 pub struct MeshBuilder {
-    ids: Vec<usize>,
+    ids: Vec<u32>,
     verts: Vec<f32>,
     uvs: Vec<[f32; 2]>,
     colors: Vec<[f32; 4]>,
@@ -898,103 +898,39 @@ impl MeshBuilder {
     #[must_use]
     // Build the Bevy Mesh
     pub fn build_meshes(self) -> Vec<Mesh> {
-        let num_materials = self.num_materials;
-
-        if num_materials < 2 {
+        if self.num_materials < 2 {
             return vec![self.build_mesh()];
         }
 
-        let all_mat_ids = self.ids.iter().map(|&id| self.mat_ids[id]).collect::<Vec<_>>();
-        let initial_mesh = self.build_mesh();
+        let verts = self
+            .verts
+            .chunks_exact(3)
+            .map(|chunk| [chunk[0], chunk[1], chunk[2]])
+            .collect::<Vec<_>>();
 
-        let all_verts = initial_mesh.attribute(Mesh::ATTRIBUTE_POSITION).unwrap().as_float3().unwrap();
-        let mesh::VertexAttributeValues::Float32x2(all_uvs) = initial_mesh.attribute(Mesh::ATTRIBUTE_UV_0).unwrap() else {
-            panic!("No UVs found");
-        };
-        let all_normals = initial_mesh.attribute(Mesh::ATTRIBUTE_NORMAL).unwrap().as_float3().unwrap();
-        let mesh::VertexAttributeValues::Float32x4(all_tangents) = initial_mesh.attribute(Mesh::ATTRIBUTE_TANGENT).unwrap()
-        else {
-            panic!("No tangents found");
-        };
-        let all_colors = initial_mesh.attribute(Mesh::ATTRIBUTE_COLOR).map(|colors| match colors {
-            mesh::VertexAttributeValues::Float32x4(colors) => colors,
-            _ => panic!("No colors found"),
-        });
-
-        (0..num_materials)
+        (0..self.num_materials)
             .map(|mat_id| {
                 let mut mesh = Mesh::new(mesh::PrimitiveTopology::TriangleList, RenderAssetUsages::default());
 
-                let verts = all_mat_ids
+                let ids: Vec<_> = self
+                    .ids
                     .chunks_exact(3)
-                    .zip(all_verts.chunks_exact(3))
-                    .filter_map(|(mat_ids, verts)| {
-                        if mat_ids[0] == mat_id {
-                            Some([verts[0], verts[1], verts[2]])
-                        } else {
-                            None
-                        }
-                    })
+                    .filter(|ids| ids.iter().copied().any(|id| self.mat_ids[id as usize] == mat_id))
                     .flatten()
-                    .collect::<Vec<_>>();
-                mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, verts);
+                    .copied()
+                    .collect();
 
-                let uvs = all_mat_ids
-                    .chunks_exact(3)
-                    .zip(all_uvs.chunks_exact(3))
-                    .filter_map(|(mat_ids, uvs)| {
-                        if mat_ids[0] == mat_id {
-                            Some([uvs[0], uvs[1], uvs[2]])
-                        } else {
-                            None
-                        }
-                    })
-                    .flatten()
-                    .collect::<Vec<_>>();
-                mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+                if self.colors.len() == verts.len() {
+                    mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, self.colors.clone());
+                }
 
-                let normals = all_mat_ids
-                    .chunks_exact(3)
-                    .zip(all_normals.chunks_exact(3))
-                    .filter_map(|(mat_ids, normals)| {
-                        if mat_ids[0] == mat_id {
-                            Some([normals[0], normals[1], normals[2]])
-                        } else {
-                            None
-                        }
-                    })
-                    .flatten()
-                    .collect::<Vec<_>>();
-                mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+                mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, verts.clone());
+                mesh.insert_indices(mesh::Indices::U32(ids));
+                mesh.compute_smooth_normals();
 
-                let tangents = all_mat_ids
-                    .chunks_exact(3)
-                    .zip(all_tangents.chunks_exact(3))
-                    .filter_map(|(mat_ids, tangents)| {
-                        if mat_ids[0] == mat_id {
-                            Some([tangents[0], tangents[1], tangents[2]])
-                        } else {
-                            None
-                        }
-                    })
-                    .flatten()
-                    .collect::<Vec<_>>();
-                mesh.insert_attribute(Mesh::ATTRIBUTE_TANGENT, tangents);
-
-                if let Some(all_colors) = all_colors {
-                    let colors = all_mat_ids
-                        .chunks_exact(3)
-                        .zip(all_colors.chunks_exact(3))
-                        .filter_map(|(mat_ids, colors)| {
-                            if mat_ids[0] == mat_id {
-                                Some([colors[0], colors[1], colors[2]])
-                            } else {
-                                None
-                            }
-                        })
-                        .flatten()
-                        .collect::<Vec<_>>();
-                    mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
+                if !self.uvs.is_empty() {
+                    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, self.uvs.clone());
+                    mesh.generate_tangents().unwrap();
                 }
 
                 mesh
@@ -1013,25 +949,17 @@ impl MeshBuilder {
             .map(|chunk| [chunk[0], chunk[1], chunk[2]])
             .collect::<Vec<_>>();
 
-        let ids = self.ids.iter().map(|&id| verts[id]).collect::<Vec<_>>();
-        let num_verts = ids.len();
-        mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, ids);
+        if self.colors.len() == verts.len() {
+            mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, self.colors);
+        }
 
-        mesh.compute_flat_normals();
+        mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, verts);
+        mesh.insert_indices(mesh::Indices::U32(self.ids));
+        mesh.compute_smooth_normals();
 
         if !self.uvs.is_empty() {
             mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, self.uvs);
-
-            // compute tangents
-            mesh.insert_indices(mesh::Indices::U32((0..num_verts as u32).collect::<Vec<_>>()));
             mesh.generate_tangents().unwrap();
-        }
-
-        if !self.colors.is_empty() {
-            mesh.insert_attribute(
-                Mesh::ATTRIBUTE_COLOR,
-                self.ids.iter().map(|&id| self.colors[id]).collect::<Vec<_>>(),
-            );
         }
 
         mesh
@@ -1081,16 +1009,16 @@ impl MeshBuilder {
             // with no performance impact in release mode
             match chunk_id {
                 "PNTS0000" => {
-                    read_vertices(&chunk_data, chunk_data_count, &mut verts);
+                    read_vertices(&chunk_data, chunk_data_count, &mut verts, &mut uvs, &mut mat_ids);
                     debug_assert_eq!(verts.len() / 3, chunk_data_count);
                     debug_assert_eq!(verts.len() % 3, 0);
                 }
                 "VTXW0000" => {
-                    read_wedges(&chunk_data, chunk_data_count, &mut wedges);
+                    read_wedges(&chunk_data, chunk_data_count, &mut wedges, &mut uvs, &mut mat_ids);
                     debug_assert_eq!(wedges.len(), chunk_data_count);
                 }
                 "FACE0000" => {
-                    read_faces(&chunk_data, chunk_data_count, &wedges, &mut ids, &mut uvs, &mut mat_ids);
+                    read_faces(&chunk_data, chunk_data_count, &wedges, &mut ids);
                     debug_assert_eq!(ids.len() / 3, chunk_data_count);
                 }
                 "MATT0000" => {
@@ -1137,7 +1065,7 @@ impl MeshBuilder {
 
 fn process_materials(
     uvs: &mut Vec<[f32; 2]>,
-    ids: &[usize],
+    ids: &[u32],
     extra_uvs: &[Vec<[f32; 2]>],
     num_materials: usize,
     mat_ids: &[usize],

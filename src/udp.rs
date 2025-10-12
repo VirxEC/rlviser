@@ -286,6 +286,12 @@ fn spawn_car(
         .with_children(|parent| {
             const CAR_BOOST_LENGTH: f32 = 50.;
 
+            let wheel_material = materials.add(StandardMaterial {
+                base_color,
+                perceptual_roughness: 0.7,
+                ..default()
+            });
+
             if cfg!(feature = "full_load") {
                 let mesh_materials = get_car_mesh_materials(
                     mesh_id,
@@ -301,10 +307,8 @@ fn spawn_car(
                     parent.spawn((CarBody, Mesh3d(mesh), MeshMaterial3d(material)));
                 }
             } else {
-                let material = materials.add(base_color);
-
                 for mesh in mesh_info {
-                    parent.spawn((CarBody, Mesh3d(mesh), MeshMaterial3d(material.clone())));
+                    parent.spawn((CarBody, Mesh3d(mesh), MeshMaterial3d(wheel_material.clone())));
                 }
             }
 
@@ -326,7 +330,6 @@ fn spawn_car(
                 CarBoost,
             ));
 
-            let wheel_material = materials.add(base_color);
             let wheel_pairs = [car_info.config.front_wheels, car_info.config.back_wheels];
 
             for (i, wheel_pair) in wheel_pairs.iter().enumerate() {
