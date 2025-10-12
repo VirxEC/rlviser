@@ -331,9 +331,11 @@ fn spawn_car(
             ));
 
             let wheel_pairs = [car_info.config.front_wheels, car_info.config.back_wheels];
+            let front_wheel_ratio = wheel_pairs[0].wheel_radius / wheel_pairs[1].wheel_radius;
 
             for (i, wheel_pair) in wheel_pairs.iter().enumerate() {
                 let wheel_offset = -Vec3::Y * (wheel_pair.suspension_rest_length - 12.);
+                let scale = Vec3::splat(if i == 0 { front_wheel_ratio } else { 1.0 });
 
                 for side in 0..=1 {
                     let fside = side as f32;
@@ -345,7 +347,7 @@ fn spawn_car(
                         Transform {
                             translation: wheel_pair.connection_point_offset.to_bevy() * offset + wheel_offset,
                             rotation: Quat::from_rotation_x(PI * fside),
-                            ..default()
+                            scale,
                         },
                         CarWheel::new(i == 0, side == 0),
                     ));

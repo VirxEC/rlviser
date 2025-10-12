@@ -27,44 +27,49 @@ pub struct DebugOverlayPlugin;
 
 impl Plugin for DebugOverlayPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((GameOptions, StateSettingInterface, EguiPlugin::default()))
-            .insert_resource(RenderInfo::default())
-            .insert_resource(UpdateRenderInfoTime::default())
-            .insert_resource(PacketSendTime::default())
-            .add_systems(
-                EguiPrimaryContextPass,
+        app.add_plugins((
+            GameOptions,
+            StateSettingInterface,
+            EguiPlugin {
+                bindless_mode_array_size: None,
+                ..default()
+            },
+        ))
+        .insert_resource(RenderInfo::default())
+        .insert_resource(UpdateRenderInfoTime::default())
+        .insert_resource(PacketSendTime::default())
+        .add_systems(
+            EguiPrimaryContextPass,
+            (
+                listen,
+                (read_speed_update_event, read_paused_update_event),
                 (
-                    listen,
-                    (read_speed_update_event, read_paused_update_event),
+                    advance_time,
+                    ui_system,
+                    toggle_vsync,
+                    toggle_ballcam,
+                    toggle_show_time,
+                    update_daytime,
+                    update_msaa,
+                    update_ui_scale,
+                    update_shadows,
+                    update_sensitivity,
+                    update_allow_rendering,
+                    update_render_info,
+                    update_packet_smoothing,
+                    update_calc_ball_rot,
                     (
-                        advance_time,
-                        ui_system,
-                        toggle_vsync,
-                        toggle_ballcam,
-                        toggle_show_time,
-                        update_daytime,
-                        update_msaa,
-                        update_ui_scale,
-                        update_shadows,
-                        update_sensitivity,
-                        update_allow_rendering,
-                        update_render_info,
-                        update_packet_smoothing,
-                        update_calc_ball_rot,
-                        (
-                            update_speed
-                                .run_if(|options: Res<Options>, last: Res<GameSpeed>| options.game_speed != last.speed),
-                            update_paused
-                                .run_if(|options: Res<Options>, last: Res<GameSpeed>| options.paused != last.paused),
-                        )
-                            .run_if(resource_exists::<Connection>),
+                        update_speed.run_if(|options: Res<Options>, last: Res<GameSpeed>| options.game_speed != last.speed),
+                        update_paused.run_if(|options: Res<Options>, last: Res<GameSpeed>| options.paused != last.paused),
                     )
-                        .run_if(resource_equals(MenuFocused::default())),
-                    update_camera_state,
-                    write_settings_to_file,
+                        .run_if(resource_exists::<Connection>),
                 )
-                    .chain(),
-            );
+                    .run_if(resource_equals(MenuFocused::default())),
+                update_camera_state,
+                write_settings_to_file,
+            )
+                .chain(),
+        );
 
         #[cfg(debug_assertions)]
         app.add_systems(EguiPrimaryContextPass, debug_ui);
@@ -87,18 +92,23 @@ fn debug_ui(
     let ctx = contexts.get_mut();
     let camera_pos = cam_pos.single().unwrap().translation;
 
-    let (he_pos, highlighted_entity_name) = heq.single().map_or_else(
-        |_| (Vec3::default(), Box::from("None")),
-        |(transform, he)| (transform.translation, he.name.clone()),
-    );
-
     egui::Window::new("Debug").show(ctx, |ui| {
         ui.label(format!(
             "Primary camera position: [{:.0}, {:.0}, {:.0}]",
             camera_pos.x, camera_pos.y, camera_pos.z
         ));
-        ui.label(format!("HE position: [{:.0}, {:.0}, {:.0}]", he_pos.x, he_pos.y, he_pos.z));
-        ui.label(format!("Highlighted entity: {highlighted_entity_name}"));
+
+        if heq.is_empty() {
+            ui.label("Highlighted entity: None");
+        }
+
+        for (he_pos, highlighted_entity_name) in heq.iter() {
+            ui.label(format!(
+                "HE position: [{:.0}, {:.0}, {:.0}]",
+                he_pos.translation.x, he_pos.translation.y, he_pos.translation.z
+            ));
+            ui.label(format!("Highlighted entity: {}", highlighted_entity_name.name));
+        }
     });
 }
 
