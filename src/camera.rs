@@ -29,8 +29,8 @@ pub struct TimeDisplay;
 pub enum PrimaryCamera {
     #[default]
     Spectator,
-    Director(u32),
-    TrackCar(u32),
+    Director(u64),
+    TrackCar(u64),
 }
 
 pub const BOOST_INDICATOR_POS: Vec2 = Vec2::new(150., 150.);

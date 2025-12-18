@@ -10,3 +10,4 @@ settings.txt
 /collision_meshes
 /cache
 /.cargo
+/src/flat.rs

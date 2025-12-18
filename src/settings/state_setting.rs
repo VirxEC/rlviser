@@ -1,10 +1,10 @@
 use super::options::MenuFocused;
 use crate::{
-    rocketsim::TileState,
+    flat::rocketsim::{TileState, Vec3},
     udp::{Connection, GameStates, SendableUdp},
 };
 use ahash::AHashMap;
-use bevy::{math::Vec3A, prelude::*};
+use bevy::prelude::*;
 use bevy_egui::{EguiContext, EguiPrimaryContextPass, PrimaryEguiContext, egui};
 
 pub struct StateSettingInterface;
@@ -53,7 +53,7 @@ fn set_f32_from_str(num: &mut f32, s: &str) {
     }
 }
 
-fn set_vec3_from_arr_str(vec: &mut Vec3A, arr: &[String; 3]) {
+fn set_vec3_from_arr_str(vec: &mut Vec3, arr: &[String; 3]) {
     set_f32_from_str(&mut vec.x, &arr[0]);
     set_f32_from_str(&mut vec.y, &arr[1]);
     set_f32_from_str(&mut vec.z, &arr[2]);
@@ -127,7 +127,11 @@ fn update_boost_pad_info(
 
     let ctx = context.get_mut();
 
-    for (i, pad) in game_states.current.pads.iter().enumerate() {
+    let Some(pads) = game_states.current.pads.as_ref() else {
+        return;
+    };
+
+    for (i, pad) in pads.iter().enumerate() {
         let Some(entry) = enable_menu.0.get_mut(&i) else {
             continue;
         };
@@ -138,11 +142,11 @@ fn update_boost_pad_info(
 
         let user_pad = user_pads.0.entry(i).or_default();
 
-        let title = format!("{}Boost pad {}", if pad.is_big { "(Large) " } else { "" }, i);
+        let title = format!("{}Boost pad {}", if pad.config.is_big { "(Large) " } else { "" }, i);
         egui::Window::new(title).open(entry).show(ctx, |ui| {
             ui.label(format!(
                 "Position: [{:.0}, {:.0}, {:.0}]",
-                pad.position.x, pad.position.y, pad.position.z
+                pad.config.pos.x, pad.config.pos.y, pad.config.pos.z
             ));
 
             ui.horizontal(|ui| {
@@ -184,7 +188,11 @@ fn set_user_pad_state(
         };
 
         let (is_active, cooldown) = {
-            let pad = &mut game_states.current.pads[event.0];
+            let Some(current_pads) = game_states.current.pads.as_mut() else {
+                continue;
+            };
+
+            let pad = &mut current_pads[event.0];
 
             set_bool_from_usize(&mut pad.state.is_active, user_pad.is_active);
             set_f32_from_str(&mut pad.state.cooldown, &user_pad.timer);
@@ -192,9 +200,11 @@ fn set_user_pad_state(
             (pad.state.is_active, pad.state.cooldown)
         };
 
-        let pad = &mut game_states.next.pads[event.0];
-        pad.state.is_active = is_active;
-        pad.state.cooldown = cooldown;
+        if let Some(next_pads) = game_states.next.pads.as_mut() {
+            let pad = &mut next_pads[event.0];
+            pad.state.is_active = is_active;
+            pad.state.cooldown = cooldown;
+        }
     }
 
     socket.send(SendableUdp::State(game_states.next.clone())).unwrap();
@@ -240,16 +250,16 @@ fn set_user_ball_state(
     for event in events.read() {
         match event.0 {
             SetBallStateAmount::Pos => {
-                set_vec3_from_arr_str(&mut game_states.current.ball.pos, &user_ball.pos);
-                game_states.next.ball.pos = game_states.current.ball.pos;
+                set_vec3_from_arr_str(&mut game_states.current.ball.physics.pos, &user_ball.pos);
+                game_states.next.ball.physics.pos = game_states.current.ball.physics.pos;
             }
             SetBallStateAmount::Vel => {
-                set_vec3_from_arr_str(&mut game_states.current.ball.vel, &user_ball.vel);
-                game_states.next.ball.vel = game_states.current.ball.vel;
+                set_vec3_from_arr_str(&mut game_states.current.ball.physics.vel, &user_ball.vel);
+                game_states.next.ball.physics.vel = game_states.current.ball.physics.vel;
             }
             SetBallStateAmount::AngVel => {
-                set_vec3_from_arr_str(&mut game_states.current.ball.ang_vel, &user_ball.ang_vel);
-                game_states.next.ball.ang_vel = game_states.current.ball.ang_vel;
+                set_vec3_from_arr_str(&mut game_states.current.ball.physics.ang_vel, &user_ball.ang_vel);
+                game_states.next.ball.physics.ang_vel = game_states.current.ball.physics.ang_vel;
             }
             SetBallStateAmount::Heatseeker => {
                 set_f32_from_str(&mut game_states.current.ball.hs_info.y_target_dir, &user_ball.hs_y_target_dir);
@@ -279,14 +289,14 @@ fn set_user_ball_state(
                 game_states.next.ball.ds_info.y_target_dir = game_states.current.ball.ds_info.y_target_dir;
             }
             SetBallStateAmount::All => {
-                set_vec3_from_arr_str(&mut game_states.current.ball.pos, &user_ball.pos);
-                game_states.next.ball.pos = game_states.current.ball.pos;
+                set_vec3_from_arr_str(&mut game_states.current.ball.physics.pos, &user_ball.pos);
+                game_states.next.ball.physics.pos = game_states.current.ball.physics.pos;
 
-                set_vec3_from_arr_str(&mut game_states.current.ball.vel, &user_ball.vel);
-                game_states.next.ball.vel = game_states.current.ball.vel;
+                set_vec3_from_arr_str(&mut game_states.current.ball.physics.vel, &user_ball.vel);
+                game_states.next.ball.physics.vel = game_states.current.ball.physics.vel;
 
-                set_vec3_from_arr_str(&mut game_states.current.ball.ang_vel, &user_ball.ang_vel);
-                game_states.next.ball.ang_vel = game_states.current.ball.ang_vel;
+                set_vec3_from_arr_str(&mut game_states.current.ball.physics.ang_vel, &user_ball.ang_vel);
+                game_states.next.ball.physics.ang_vel = game_states.current.ball.physics.ang_vel;
 
                 // heatseekr
                 set_f32_from_str(&mut game_states.current.ball.hs_info.y_target_dir, &user_ball.hs_y_target_dir);
@@ -333,7 +343,9 @@ fn update_ball_info(
     egui::Window::new("Ball").open(&mut enable_menu.0).show(ctx, |ui| {
         ui.label(format!(
             "Position: [{:.1}, {:.1}, {:.1}]",
-            game_states.current.ball.pos.x, game_states.current.ball.pos.y, game_states.current.ball.pos.z
+            game_states.current.ball.physics.pos.x,
+            game_states.current.ball.physics.pos.y,
+            game_states.current.ball.physics.pos.z
         ));
         ui.horizontal(|ui| {
             ui.label("X: ");
@@ -348,7 +360,9 @@ fn update_ball_info(
         });
         ui.label(format!(
             "Velocity: [{:.1}, {:.1}, {:.1}]",
-            game_states.current.ball.vel.x, game_states.current.ball.vel.y, game_states.current.ball.vel.z
+            game_states.current.ball.physics.vel.x,
+            game_states.current.ball.physics.vel.y,
+            game_states.current.ball.physics.vel.z
         ));
         ui.horizontal(|ui| {
             ui.label("X: ");
@@ -363,7 +377,9 @@ fn update_ball_info(
         });
         ui.label(format!(
             "Angular velocity: [{:.1}, {:.1}, {:.1}]",
-            game_states.current.ball.ang_vel.x, game_states.current.ball.ang_vel.y, game_states.current.ball.ang_vel.z
+            game_states.current.ball.physics.ang_vel.x,
+            game_states.current.ball.physics.ang_vel.y,
+            game_states.current.ball.physics.ang_vel.z
         ));
         ui.horizontal(|ui| {
             ui.label("X: ");
@@ -512,10 +528,19 @@ fn set_user_tile_state(
             continue;
         };
 
+        let state = TileState::try_from(user_tile.damage_state as u8).unwrap();
+
         match event.1 {
             SetTileStateAmount::All => {
-                game_states.current.tiles[team][index].state = TileState::try_from(user_tile.damage_state as u8).unwrap();
-                game_states.next.tiles[team][index].state = game_states.current.tiles[team][index].state;
+                if let Some(current_tiles) = game_states.current.tiles.as_mut() {
+                    let current_tiles = [&mut current_tiles.blue_tiles, &mut current_tiles.orange_tiles];
+                    current_tiles[team][index].state = state;
+                }
+
+                if let Some(next_tiles) = game_states.next.tiles.as_mut() {
+                    let next_tiles = [&mut next_tiles.blue_tiles, &mut next_tiles.orange_tiles];
+                    next_tiles[team][index].state = state;
+                };
             }
         }
     }
@@ -533,9 +558,13 @@ fn update_tile_info(
     const TEAM_NAMES: [&str; 2] = ["Blue", "Orange"];
     const USER_DAMAGE_NAMES: [&str; 3] = ["Full", "Damaged", "Broken"];
 
+    let Some(tiles) = game_states.current.tiles.as_ref() else {
+        return;
+    };
+
     let ctx = context.get_mut();
 
-    for (team, team_tiles) in game_states.current.tiles.iter().enumerate() {
+    for (team, team_tiles) in [&tiles.blue_tiles, &tiles.orange_tiles].iter().enumerate() {
         for (index, tile) in team_tiles.iter().enumerate() {
             let id = (team, index);
             let Some(entry) = enable_menu.0.get_mut(&id) else {
@@ -570,10 +599,10 @@ fn update_tile_info(
 }
 
 #[derive(Message)]
-struct UserSetCarState(u32, SetCarStateAmount);
+struct UserSetCarState(u64, SetCarStateAmount);
 
 #[derive(Resource, PartialEq, Eq)]
-pub struct EnableCarInfo(AHashMap<u32, bool>);
+pub struct EnableCarInfo(AHashMap<u64, bool>);
 
 impl Default for EnableCarInfo {
     #[inline]
@@ -583,7 +612,7 @@ impl Default for EnableCarInfo {
 }
 
 impl EnableCarInfo {
-    pub fn toggle(&mut self, id: u32) {
+    pub fn toggle(&mut self, id: u64) {
         if let Some(enabled) = self.0.get_mut(&id) {
             *enabled = !*enabled;
         } else {
@@ -605,7 +634,7 @@ struct UserCarState {
 }
 
 #[derive(Resource)]
-pub struct UserCarStates(AHashMap<u32, UserCarState>);
+pub struct UserCarStates(AHashMap<u64, UserCarState>);
 
 impl Default for UserCarStates {
     #[inline]
@@ -619,7 +648,7 @@ impl UserCarStates {
         self.0.clear();
     }
 
-    pub fn remove(&mut self, id: u32) {
+    pub fn remove(&mut self, id: u64) {
         self.0.remove(&id);
     }
 }
@@ -642,8 +671,19 @@ fn set_user_car_state(
     user_cars: Res<UserCarStates>,
     socket: Res<Connection>,
 ) {
+    if game_states.current.cars.is_none() || game_states.next.cars.is_none() {
+        return;
+    }
+
     for event in events.read() {
-        let Some(car_index) = game_states.current.cars.iter().position(|car| car.id == event.0) else {
+        let Some(car_index) = game_states
+            .current
+            .cars
+            .as_ref()
+            .unwrap()
+            .iter()
+            .position(|car| car.id == event.0)
+        else {
             continue;
         };
         let Some(user_car) = user_cars.0.get(&event.0) else {
@@ -652,92 +692,136 @@ fn set_user_car_state(
 
         match event.1 {
             SetCarStateAmount::Pos => {
-                set_vec3_from_arr_str(&mut game_states.current.cars[car_index].state.pos, &user_car.pos);
-                game_states.next.cars[car_index].state.pos = game_states.current.cars[car_index].state.pos;
+                set_vec3_from_arr_str(
+                    &mut game_states.current.cars.as_mut().unwrap()[car_index].state.physics.pos,
+                    &user_car.pos,
+                );
+                game_states.next.cars.as_mut().unwrap()[car_index].state.physics.pos =
+                    game_states.current.cars.as_mut().unwrap()[car_index].state.physics.pos;
             }
             SetCarStateAmount::Vel => {
-                set_vec3_from_arr_str(&mut game_states.current.cars[car_index].state.vel, &user_car.vel);
-                game_states.next.cars[car_index].state.vel = game_states.current.cars[car_index].state.vel;
+                set_vec3_from_arr_str(
+                    &mut game_states.current.cars.as_mut().unwrap()[car_index].state.physics.vel,
+                    &user_car.vel,
+                );
+                game_states.next.cars.as_mut().unwrap()[car_index].state.physics.vel =
+                    game_states.current.cars.as_mut().unwrap()[car_index].state.physics.vel;
             }
             SetCarStateAmount::AngVel => {
-                set_vec3_from_arr_str(&mut game_states.current.cars[car_index].state.ang_vel, &user_car.ang_vel);
-                game_states.next.cars[car_index].state.ang_vel = game_states.current.cars[car_index].state.ang_vel;
+                set_vec3_from_arr_str(
+                    &mut game_states.current.cars.as_mut().unwrap()[car_index].state.physics.ang_vel,
+                    &user_car.ang_vel,
+                );
+                game_states.next.cars.as_mut().unwrap()[car_index].state.physics.ang_vel =
+                    game_states.current.cars.as_mut().unwrap()[car_index].state.physics.ang_vel;
             }
             SetCarStateAmount::Jumped => {
-                set_half_bool_from_usize(&mut game_states.current.cars[car_index].state.has_jumped, user_car.has_jumped);
-                set_half_bool_from_usize(&mut game_states.next.cars[car_index].state.has_jumped, user_car.has_jumped);
+                set_half_bool_from_usize(
+                    &mut game_states.current.cars.as_mut().unwrap()[car_index].state.has_jumped,
+                    user_car.has_jumped,
+                );
+                set_half_bool_from_usize(
+                    &mut game_states.next.cars.as_mut().unwrap()[car_index].state.has_jumped,
+                    user_car.has_jumped,
+                );
             }
             SetCarStateAmount::DoubleJumped => {
                 set_half_bool_from_usize(
-                    &mut game_states.current.cars[car_index].state.has_double_jumped,
+                    &mut game_states.current.cars.as_mut().unwrap()[car_index].state.has_double_jumped,
                     user_car.has_double_jumped,
                 );
-                game_states.next.cars[car_index].state.has_double_jumped =
-                    game_states.current.cars[car_index].state.has_double_jumped;
+                game_states.next.cars.as_mut().unwrap()[car_index].state.has_double_jumped =
+                    game_states.current.cars.as_mut().unwrap()[car_index].state.has_double_jumped;
             }
             SetCarStateAmount::Flipped => {
                 set_half_bool_from_usize(
-                    &mut game_states.current.cars[car_index].state.has_flipped,
+                    &mut game_states.current.cars.as_mut().unwrap()[car_index].state.has_flipped,
                     user_car.has_flipped,
                 );
-                game_states.next.cars[car_index].state.has_flipped = game_states.current.cars[car_index].state.has_flipped;
+                game_states.next.cars.as_mut().unwrap()[car_index].state.has_flipped =
+                    game_states.current.cars.as_mut().unwrap()[car_index].state.has_flipped;
             }
             SetCarStateAmount::Boost => {
-                set_f32_from_str(&mut game_states.current.cars[car_index].state.boost, &user_car.boost);
-                game_states.next.cars[car_index].state.boost = game_states.current.cars[car_index].state.boost;
+                set_f32_from_str(
+                    &mut game_states.current.cars.as_mut().unwrap()[car_index].state.boost,
+                    &user_car.boost,
+                );
+                game_states.next.cars.as_mut().unwrap()[car_index].state.boost =
+                    game_states.current.cars.as_mut().unwrap()[car_index].state.boost;
             }
             SetCarStateAmount::DemoRespawnTimer => {
                 set_f32_from_str(
-                    &mut game_states.current.cars[car_index].state.demo_respawn_timer,
+                    &mut game_states.current.cars.as_mut().unwrap()[car_index].state.demo_respawn_timer,
                     &user_car.demo_respawn_timer,
                 );
-                game_states.next.cars[car_index].state.demo_respawn_timer =
-                    game_states.current.cars[car_index].state.demo_respawn_timer;
+                game_states.next.cars.as_mut().unwrap()[car_index].state.demo_respawn_timer =
+                    game_states.current.cars.as_mut().unwrap()[car_index].state.demo_respawn_timer;
 
-                if game_states.current.cars[car_index].state.demo_respawn_timer != 0. {
-                    game_states.current.cars[car_index].state.is_demoed = true;
-                    game_states.next.cars[car_index].state.is_demoed = true;
+                if game_states.current.cars.as_mut().unwrap()[car_index].state.demo_respawn_timer != 0. {
+                    game_states.current.cars.as_mut().unwrap()[car_index].state.is_demoed = true;
+                    game_states.next.cars.as_mut().unwrap()[car_index].state.is_demoed = true;
                 }
             }
             SetCarStateAmount::All => {
-                set_vec3_from_arr_str(&mut game_states.current.cars[car_index].state.pos, &user_car.pos);
-                game_states.next.cars[car_index].state.pos = game_states.current.cars[car_index].state.pos;
+                set_vec3_from_arr_str(
+                    &mut game_states.current.cars.as_mut().unwrap()[car_index].state.physics.pos,
+                    &user_car.pos,
+                );
+                game_states.next.cars.as_mut().unwrap()[car_index].state.physics.pos =
+                    game_states.current.cars.as_mut().unwrap()[car_index].state.physics.pos;
 
-                set_vec3_from_arr_str(&mut game_states.current.cars[car_index].state.vel, &user_car.vel);
-                game_states.next.cars[car_index].state.vel = game_states.current.cars[car_index].state.vel;
+                set_vec3_from_arr_str(
+                    &mut game_states.current.cars.as_mut().unwrap()[car_index].state.physics.vel,
+                    &user_car.vel,
+                );
+                game_states.next.cars.as_mut().unwrap()[car_index].state.physics.vel =
+                    game_states.current.cars.as_mut().unwrap()[car_index].state.physics.vel;
 
-                set_vec3_from_arr_str(&mut game_states.current.cars[car_index].state.ang_vel, &user_car.ang_vel);
-                game_states.next.cars[car_index].state.ang_vel = game_states.current.cars[car_index].state.ang_vel;
-
-                set_half_bool_from_usize(&mut game_states.current.cars[car_index].state.has_jumped, user_car.has_jumped);
-                game_states.next.cars[car_index].state.has_jumped = game_states.current.cars[car_index].state.has_jumped;
+                set_vec3_from_arr_str(
+                    &mut game_states.current.cars.as_mut().unwrap()[car_index].state.physics.ang_vel,
+                    &user_car.ang_vel,
+                );
+                game_states.next.cars.as_mut().unwrap()[car_index].state.physics.ang_vel =
+                    game_states.current.cars.as_mut().unwrap()[car_index].state.physics.ang_vel;
 
                 set_half_bool_from_usize(
-                    &mut game_states.current.cars[car_index].state.has_double_jumped,
+                    &mut game_states.current.cars.as_mut().unwrap()[car_index].state.has_jumped,
+                    user_car.has_jumped,
+                );
+                game_states.next.cars.as_mut().unwrap()[car_index].state.has_jumped =
+                    game_states.current.cars.as_mut().unwrap()[car_index].state.has_jumped;
+
+                set_half_bool_from_usize(
+                    &mut game_states.current.cars.as_mut().unwrap()[car_index].state.has_double_jumped,
                     user_car.has_double_jumped,
                 );
-                game_states.next.cars[car_index].state.has_double_jumped =
-                    game_states.current.cars[car_index].state.has_double_jumped;
+                game_states.next.cars.as_mut().unwrap()[car_index].state.has_double_jumped =
+                    game_states.current.cars.as_mut().unwrap()[car_index].state.has_double_jumped;
 
                 set_half_bool_from_usize(
-                    &mut game_states.current.cars[car_index].state.has_flipped,
+                    &mut game_states.current.cars.as_mut().unwrap()[car_index].state.has_flipped,
                     user_car.has_flipped,
                 );
-                game_states.next.cars[car_index].state.has_flipped = game_states.current.cars[car_index].state.has_flipped;
-
-                set_f32_from_str(&mut game_states.current.cars[car_index].state.boost, &user_car.boost);
-                game_states.next.cars[car_index].state.boost = game_states.current.cars[car_index].state.boost;
+                game_states.next.cars.as_mut().unwrap()[car_index].state.has_flipped =
+                    game_states.current.cars.as_mut().unwrap()[car_index].state.has_flipped;
 
                 set_f32_from_str(
-                    &mut game_states.current.cars[car_index].state.demo_respawn_timer,
+                    &mut game_states.current.cars.as_mut().unwrap()[car_index].state.boost,
+                    &user_car.boost,
+                );
+                game_states.next.cars.as_mut().unwrap()[car_index].state.boost =
+                    game_states.current.cars.as_mut().unwrap()[car_index].state.boost;
+
+                set_f32_from_str(
+                    &mut game_states.current.cars.as_mut().unwrap()[car_index].state.demo_respawn_timer,
                     &user_car.demo_respawn_timer,
                 );
-                game_states.next.cars[car_index].state.demo_respawn_timer =
-                    game_states.current.cars[car_index].state.demo_respawn_timer;
+                game_states.next.cars.as_mut().unwrap()[car_index].state.demo_respawn_timer =
+                    game_states.current.cars.as_mut().unwrap()[car_index].state.demo_respawn_timer;
 
-                if game_states.current.cars[car_index].state.demo_respawn_timer != 0. {
-                    game_states.current.cars[car_index].state.is_demoed = true;
-                    game_states.next.cars[car_index].state.is_demoed = true;
+                if game_states.current.cars.as_mut().unwrap()[car_index].state.demo_respawn_timer != 0. {
+                    game_states.current.cars.as_mut().unwrap()[car_index].state.is_demoed = true;
+                    game_states.next.cars.as_mut().unwrap()[car_index].state.is_demoed = true;
                 }
             }
         }
@@ -755,9 +839,13 @@ fn update_car_info(
 ) {
     const USER_BOOL_NAMES: [&str; 2] = ["", "False"];
 
+    let Some(cars) = game_states.current.cars.as_ref() else {
+        return;
+    };
+
     let ctx = context.get_mut();
 
-    for car in game_states.current.cars.iter() {
+    for car in cars {
         let Some(entry) = enable_menu.0.get_mut(&car.id) else {
             continue;
         };
@@ -791,7 +879,7 @@ fn update_car_info(
                     ui.vertical(|ui| {
                         ui.label(format!(
                             "Position: [{:.1}, {:.1}, {:.1}]",
-                            car.state.pos.x, car.state.pos.y, car.state.pos.z
+                            car.state.physics.pos.x, car.state.physics.pos.y, car.state.physics.pos.z
                         ));
                         ui.horizontal(|ui| {
                             ui.label("X: ");
@@ -807,7 +895,7 @@ fn update_car_info(
 
                         ui.label(format!(
                             "Velocity: [{:.1}, {:.1}, {:.1}]",
-                            car.state.vel.x, car.state.vel.y, car.state.vel.z
+                            car.state.physics.vel.x, car.state.physics.vel.y, car.state.physics.vel.z
                         ));
                         ui.horizontal(|ui| {
                             ui.label("X: ");
@@ -823,7 +911,7 @@ fn update_car_info(
 
                         ui.label(format!(
                             "Angular velocity: [{:.1}, {:.1}, {:.1}]",
-                            car.state.ang_vel.x, car.state.ang_vel.y, car.state.ang_vel.z
+                            car.state.physics.ang_vel.x, car.state.physics.ang_vel.y, car.state.physics.ang_vel.z
                         ));
                         ui.horizontal(|ui| {
                             ui.label("X: ");

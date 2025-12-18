@@ -1,58 +1,33 @@
-use crate::udp::ToBevyVec;
+use crate::{
+    flat::rocketsim,
+    udp::{ToBevyVec, ToBevyVecFlat},
+};
 use ahash::AHashMap;
 use bevy::prelude::*;
 
-#[derive(Clone, Copy, Debug)]
-pub struct CustomColor {
-    pub r: f32,
-    pub g: f32,
-    pub b: f32,
-    pub a: f32,
-}
-
-impl From<CustomColor> for Color {
-    fn from(color: CustomColor) -> Self {
-        Self::srgba(color.r, color.g, color.b, color.a)
-    }
-}
-
-impl CustomColor {
-    #[inline]
-    pub const fn rgba(r: f32, g: f32, b: f32, a: f32) -> Self {
-        Self { r, g, b, a }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub enum Render {
-    Line2D { start: Vec2, end: Vec2, color: CustomColor },
-    Line { start: Vec3, end: Vec3, color: CustomColor },
-    LineStrip { positions: Vec<Vec3>, color: CustomColor },
-}
-
-#[derive(Clone, Debug)]
-pub enum RenderMessage {
-    AddRender(i32, Vec<Render>),
-    RemoveRender(i32),
-}
-
 #[derive(Resource, Default)]
 pub struct RenderGroups {
-    pub groups: AHashMap<i32, Vec<Render>>,
+    pub groups: AHashMap<i32, Vec<rocketsim::Render>>,
+}
+
+impl From<rocketsim::Color> for Color {
+    fn from(value: rocketsim::Color) -> Self {
+        Self::srgba(value.r, value.g, value.b, value.a)
+    }
 }
 
 fn render_gizmos(renders: Res<RenderGroups>, mut gizmos: Gizmos) {
     for renders in renders.groups.values() {
         for render in renders.iter() {
             match render {
-                Render::Line2D { start, end, color } => {
-                    gizmos.line_2d(*start, *end, *color);
+                rocketsim::Render::Line2D(r) => {
+                    gizmos.line_2d(r.start.to_bevy_flat(), r.end.to_bevy_flat(), r.color);
                 }
-                Render::Line { start, end, color } => {
-                    gizmos.line(start.to_bevy(), end.to_bevy(), *color);
+                rocketsim::Render::Line3D(r) => {
+                    gizmos.line(r.start.to_bevy(), r.end.to_bevy(), r.color);
                 }
-                Render::LineStrip { positions, color } => {
-                    gizmos.linestrip(positions.iter().copied().map(ToBevyVec::to_bevy), *color);
+                rocketsim::Render::LineStrip(r) => {
+                    gizmos.linestrip(r.positions.iter().copied().map(ToBevyVec::to_bevy), r.color);
                 }
             }
         }
