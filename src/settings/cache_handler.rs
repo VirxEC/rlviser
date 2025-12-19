@@ -111,7 +111,9 @@ pub fn get_default_mesh_cache(path: &'static str, assets: &AssetServer, meshes: 
         return meshes[0].clone();
     }
 
-    assert!(cfg!(debug_assertions), "Failed to load mesh {name}");
+    if !cfg!(debug_assertions) {
+        unreachable!("Failed to load mesh {name}");
+    }
 
     let cache_path = format!("./cache/mesh/{name}.bin");
     if let Ok(mesh) = File::open(&cache_path) {
@@ -379,7 +381,9 @@ pub fn get_texture_cache(
         return texture.clone();
     }
 
-    assert!(cfg!(debug_assertions), "Failed to load texture {name}");
+    if !cfg!(debug_assertions) {
+        unreachable!("Failed to load texture {name}");
+    }
 
     let cache_path_name = format!("./cache/textures/{name}.tga");
     let cache_path = Path::new(&cache_path_name);

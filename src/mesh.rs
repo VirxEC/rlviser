@@ -1,7 +1,7 @@
 use crate::{
     GameLoadState,
     assets::*,
-    rocketsim::{GameMode, Team},
+    flat::rocketsim::{GameMode, Team},
     settings::state_setting::{EnableTileInfo, UserTileStates},
     udp::{Ball, Tile, ToBevyVec, ToBevyVecFlat, get_tile_color, target_insert, target_remove, write_message},
 };
@@ -123,10 +123,11 @@ fn change_ball_pos(
         return;
     };
 
-    let target = get_move_object_target(cam_pos, cursor_dir, plane_normal, game_states.current.ball.pos.xzy());
-    let ball_vel = (target.xzy() - game_states.current.ball.pos).normalize() * 2000.;
-    game_states.current.ball.vel = ball_vel;
-    game_states.next.ball.vel = ball_vel;
+    let ball_pos: Vec3A = game_states.current.ball.physics.pos.into();
+    let target = get_move_object_target(cam_pos, cursor_dir, plane_normal, ball_pos.xzy());
+    let ball_vel = (target.xzy() - ball_pos).normalize() * 2000.;
+    game_states.current.ball.physics.vel = ball_vel.into();
+    game_states.next.ball.physics.vel = game_states.current.ball.physics.vel;
 
     last_state_set.0.reset();
     socket.send(SendableUdp::State(game_states.next.clone())).unwrap();
@@ -150,6 +151,11 @@ fn change_car_pos(
     camera: Query<(&Camera, &GlobalTransform), With<PrimaryCamera>>,
     mut last_state_set: ResMut<StateSetTime>,
 ) {
+    if game_states.current.cars.is_none() || game_states.next.cars.is_none() {
+        events.clear();
+        return;
+    }
+
     let Some([cam_pos, cursor_dir, plane_normal]) = project_ray_to_plane(camera, windows) else {
         events.clear();
         return;
@@ -165,18 +171,33 @@ fn change_car_pos(
             return;
         };
 
-        let Some(current_car) = game_states.current.cars.iter_mut().find(|car| car.id == car_id) else {
-            return;
+        let Some(current_car) = game_states
+            .current
+            .cars
+            .as_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|car| car.id == car_id)
+        else {
+            continue;
         };
 
         set_state = true;
 
-        let target = get_move_object_target(cam_pos, cursor_dir, plane_normal, current_car.state.pos.xzy());
-        let car_vel = (target.xzy() - current_car.state.pos).normalize() * 2000.;
-        current_car.state.vel = car_vel;
+        let car_pos: Vec3A = current_car.state.physics.pos.into();
+        let target = get_move_object_target(cam_pos, cursor_dir, plane_normal, car_pos.xzy());
+        let car_vel = (target.xzy() - car_pos).normalize() * 2000.;
+        current_car.state.physics.vel = car_vel.into();
 
-        if let Some(next_car) = game_states.next.cars.iter_mut().find(|car| car.id == car_id) {
-            next_car.state.vel = car_vel;
+        if let Some(next_car) = game_states
+            .current
+            .cars
+            .as_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|car| car.id == car_id)
+        {
+            next_car.state.physics.vel = car_vel.into();
         };
     }
 
@@ -721,34 +742,17 @@ fn load_field(
         raw_full_tile_mesh.compute_normals();
         let full_tile_mesh = meshes.add(raw_full_tile_mesh);
 
-        for (i, team_tiles) in game_states.current.tiles.iter().enumerate() {
-            let team_color = materials.add(StandardMaterial::from(Color::from(if i == 0 {
-                css::BLUE
-            } else {
-                css::ORANGE
-            })));
+        if let Some(tiles) = game_states.current.tiles.as_ref() {
+            for (i, team_tiles) in [&tiles.blue_tiles, &tiles.orange_tiles].into_iter().enumerate() {
+                let team_color = materials.add(StandardMaterial::from(Color::from(if i == 0 {
+                    css::BLUE
+                } else {
+                    css::ORANGE
+                })));
 
-            for (j, tile) in team_tiles.iter().enumerate() {
-                commands
-                    .spawn((
-                        Mesh3d(if tile.pos.y.abs() < 150.0 {
-                            if tile.pos.y.signum().is_sign_positive() {
-                                orange_tile_mesh.clone()
-                            } else {
-                                blue_tile_mesh.clone()
-                            }
-                        } else {
-                            full_tile_mesh.clone()
-                        }),
-                        MeshMaterial3d(team_color.clone()),
-                        Transform::from_translation(tile.pos.to_bevy()),
-                        NotShadowCaster,
-                        StaticFieldEntity,
-                        #[cfg(debug_assertions)]
-                        EntityName::from(format!("dropshot_tile_{}", i * 70 + j)),
-                        Pickable::default(),
-                        children![(
-                            Tile { team: i, index: j },
+                for (j, tile) in team_tiles.iter().enumerate() {
+                    commands
+                        .spawn((
                             Mesh3d(if tile.pos.y.abs() < 150.0 {
                                 if tile.pos.y.signum().is_sign_positive() {
                                     orange_tile_mesh.clone()
@@ -758,14 +762,33 @@ fn load_field(
                             } else {
                                 full_tile_mesh.clone()
                             }),
-                            MeshMaterial3d(materials.add(StandardMaterial::from(get_tile_color(tile.state)))),
+                            MeshMaterial3d(team_color.clone()),
+                            Transform::from_translation(tile.pos.to_bevy()),
                             NotShadowCaster,
-                            Transform::from_translation(Vec3::Y).with_scale(Vec3::splat(0.9)),
-                        )],
-                    ))
-                    .observe(target_insert::<Pointer<Over>>(HighlightedEntity))
-                    .observe(target_remove::<Pointer<Out>, HighlightedEntity>)
-                    .observe(write_message::<Pointer<Click>, TileClicked>);
+                            StaticFieldEntity,
+                            #[cfg(debug_assertions)]
+                            EntityName::from(format!("dropshot_tile_{}", i * 70 + j)),
+                            Pickable::default(),
+                            children![(
+                                Tile { team: i, index: j },
+                                Mesh3d(if tile.pos.y.abs() < 150.0 {
+                                    if tile.pos.y.signum().is_sign_positive() {
+                                        orange_tile_mesh.clone()
+                                    } else {
+                                        blue_tile_mesh.clone()
+                                    }
+                                } else {
+                                    full_tile_mesh.clone()
+                                }),
+                                MeshMaterial3d(materials.add(StandardMaterial::from(get_tile_color(tile.state)))),
+                                NotShadowCaster,
+                                Transform::from_translation(Vec3::Y).with_scale(Vec3::splat(0.9)),
+                            )],
+                        ))
+                        .observe(target_insert::<Pointer<Over>>(HighlightedEntity))
+                        .observe(target_remove::<Pointer<Out>, HighlightedEntity>)
+                        .observe(write_message::<Pointer<Click>, TileClicked>);
+                }
             }
         }
     }

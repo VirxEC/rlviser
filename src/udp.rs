@@ -1,11 +1,12 @@
 use crate::{
     GameLoadState, ServerPort,
     assets::{BoostPickupGlows, CarWheelMesh, get_material, get_mesh_info},
-    bytes::{FromBytes, ToBytes, ToBytesExact},
     camera::{PrimaryCamera, TimeDisplay},
+    flat::rocketsim::{
+        self, AddRender, CarInfo, GameMode, GameState, Mat3, PacketRef, Paused, RemoveRender, Speed, Team, TileState,
+    },
     mesh::LargeBoostPadLocRots,
-    renderer::{RenderGroups, RenderMessage, UdpRendererPlugin},
-    rocketsim::{CarInfo, GameMode, GameState, Team, TileState},
+    renderer::{RenderGroups, UdpRendererPlugin},
     settings::options::{BallCam, CalcBallRot, GameSpeed, Options, PacketSmoothing, ShowTime},
 };
 use ahash::AHashMap;
@@ -22,6 +23,7 @@ use bevy::{
 };
 use crossbeam_channel::{Receiver, Sender};
 use itertools::izip;
+use planus::ReadAsRoot;
 use std::{
     f32::consts::PI,
     fs,
@@ -59,11 +61,11 @@ pub struct Ball;
 
 #[derive(Component)]
 #[require(Mesh3d, MeshMaterial3d<StandardMaterial>)]
-pub struct Car(u32);
+pub struct Car(u64);
 
 impl Car {
     #[inline]
-    pub const fn id(&self) -> u32 {
+    pub const fn id(&self) -> u64 {
         self.0
     }
 }
@@ -98,6 +100,22 @@ fn establish_connection(port: Res<ServerPort>, mut commands: Commands, mut state
     state.set(GameLoadState::FieldExtra);
 }
 
+impl From<crate::flat::rocketsim::Vec3> for Vec3A {
+    fn from(value: crate::flat::rocketsim::Vec3) -> Self {
+        Self::new(value.x, value.y, value.z)
+    }
+}
+
+impl From<Vec3A> for crate::flat::rocketsim::Vec3 {
+    fn from(value: Vec3A) -> Self {
+        Self {
+            x: value.x,
+            y: value.y,
+            z: value.z,
+        }
+    }
+}
+
 pub trait ToBevyVec {
     fn to_bevy(self) -> Vec3;
 }
@@ -113,10 +131,24 @@ impl ToBevyVecFlat for [f32; 3] {
     }
 }
 
+impl ToBevyVecFlat for crate::flat::rocketsim::Vec2 {
+    #[inline]
+    fn to_bevy_flat(self) -> Vec2 {
+        Vec2::new(self.x, self.y)
+    }
+}
+
 impl ToBevyVec for [f32; 3] {
     #[inline]
     fn to_bevy(self) -> Vec3 {
         Vec3::new(self[0], self[2], self[1])
+    }
+}
+
+impl ToBevyVec for crate::flat::rocketsim::Vec3 {
+    #[inline]
+    fn to_bevy(self) -> Vec3 {
+        Vec3::new(self.x, self.z, self.y)
     }
 }
 
@@ -143,6 +175,32 @@ impl ToBevyMat for Mat3A {
     fn to_bevy(self) -> Quat {
         let quat = Quat::from_mat3a(&self);
         Quat::from_xyzw(quat.x, quat.z, quat.y, -quat.w)
+    }
+}
+
+impl From<Mat3> for Mat3A {
+    fn from(value: Mat3) -> Self {
+        Self {
+            x_axis: value.forward.into(),
+            y_axis: value.right.into(),
+            z_axis: value.up.into(),
+        }
+    }
+}
+
+impl From<Mat3A> for Mat3 {
+    fn from(value: Mat3A) -> Self {
+        Self {
+            forward: value.x_axis.into(),
+            right: value.y_axis.into(),
+            up: value.z_axis.into(),
+        }
+    }
+}
+
+impl ToBevyMat for Mat3 {
+    fn to_bevy(self) -> Quat {
+        Mat3A::from(self).to_bevy()
     }
 }
 
@@ -401,30 +459,6 @@ fn get_car_mesh_materials(
     mesh_materials
 }
 
-#[repr(u8)]
-pub enum UdpPacketTypes {
-    Quit,
-    GameState,
-    Connection,
-    Paused,
-    Speed,
-    Render,
-}
-
-impl UdpPacketTypes {
-    const fn new(byte: u8) -> Option<Self> {
-        match byte {
-            0 => Some(Self::Quit),
-            1 => Some(Self::GameState),
-            2 => Some(Self::Connection),
-            3 => Some(Self::Paused),
-            4 => Some(Self::Speed),
-            5 => Some(Self::Render),
-            _ => None,
-        }
-    }
-}
-
 #[derive(Message)]
 pub struct SpeedUpdate(pub f32);
 
@@ -433,7 +467,8 @@ pub struct PausedUpdate(pub bool);
 
 enum UdpUpdate {
     State(GameState),
-    Render(RenderMessage),
+    AddRender(AddRender),
+    RemoveRender(RemoveRender),
     Speed(f32),
     Paused(bool),
     Connection,
@@ -444,45 +479,38 @@ enum UdpUpdate {
 struct UdpUpdateStream(Receiver<UdpUpdate>);
 
 fn start_udp_send_handler(socket: UdpSocket, out_addr: SocketAddr, outgoing: Receiver<SendableUdp>) {
-    socket.send_to(&[UdpPacketTypes::Connection as u8], out_addr).unwrap();
+    let mut builder = planus::Builder::with_capacity(1024);
+
+    let msg = rocketsim::Packet {
+        message: rocketsim::Message::Connection(Box::default()),
+    };
+    let payload = builder.finish(msg, None);
+    let data_len_bin = u64::try_from(payload.len()).unwrap().to_be_bytes();
+    let bytes = [&data_len_bin[..], payload].concat();
+    socket.send_to(&bytes, out_addr).unwrap();
 
     thread::spawn(move || {
         loop {
-            match outgoing.recv() {
-                Ok(SendableUdp::State(state)) => {
-                    let bytes = state.to_bytes();
+            builder.clear();
 
-                    if socket.send_to(&[UdpPacketTypes::GameState as u8], out_addr).is_err() {
-                        continue;
-                    }
-
-                    if socket.send_to(&bytes, out_addr).is_err() {
-                        continue;
-                    }
-                }
-                Ok(SendableUdp::Speed(speed)) => {
-                    let bytes = speed.to_bytes();
-
-                    if socket.send_to(&[UdpPacketTypes::Speed as u8], out_addr).is_err() {
-                        continue;
-                    }
-
-                    if socket.send_to(&bytes, out_addr).is_err() {
-                        continue;
-                    }
-                }
-                Ok(SendableUdp::Paused(paused)) => {
-                    let paused = [paused as u8];
-
-                    if socket.send_to(&[UdpPacketTypes::Paused as u8], out_addr).is_err() {
-                        continue;
-                    }
-
-                    if socket.send_to(&paused, out_addr).is_err() {
-                        continue;
-                    }
-                }
+            let packet = match outgoing.recv() {
+                Ok(SendableUdp::State(state)) => rocketsim::Packet {
+                    message: rocketsim::Message::GameState(Box::new(state)),
+                },
+                Ok(SendableUdp::Speed(speed)) => rocketsim::Packet {
+                    message: rocketsim::Message::Speed(Box::new(Speed { speed })),
+                },
+                Ok(SendableUdp::Paused(paused)) => rocketsim::Packet {
+                    message: rocketsim::Message::Paused(Box::new(Paused { paused })),
+                },
                 Err(_) => return,
+            };
+
+            let payload = builder.finish(packet, None);
+            let data_len_bin = u64::try_from(payload.len()).unwrap().to_be_bytes();
+            let bytes = [&data_len_bin[..], payload].concat();
+            if socket.send_to(&bytes, out_addr).is_err() {
+                continue;
             }
         }
     });
@@ -492,118 +520,77 @@ fn start_udp_recv_handler(socket: UdpSocket, commands: &mut Commands) {
     let (tx, rx) = crossbeam_channel::unbounded();
 
     thread::spawn(move || {
-        let mut packet_type_buffer = [0];
-        let mut initial_state_buffer = [0; GameState::MIN_NUM_BYTES];
-        let mut initial_render_buffer = [0; RenderMessage::MIN_NUM_BYTES];
-        let mut speed_buffer = [0; 4];
-        let mut paused_buffer = [0];
-
-        let mut buf = Vec::new();
-        let mut render_buf = Vec::new();
-        let mut last_game_state = GameState::default();
+        let mut packet_size_buffer = [0; 8];
+        let mut udp_buffer = Vec::with_capacity(1024);
 
         loop {
-            if socket.recv_from(&mut packet_type_buffer).is_err() {
-                return;
+            udp_buffer.clear();
+
+            // read a u64 indicating the size of the incoming packet
+            #[cfg(windows)]
+            {
+                while let Err(e) = socket.peek_from(&mut packet_size_buffer) {
+                    if let Some(code) = e.raw_os_error() {
+                        if code == 10040 {
+                            break;
+                        }
+                    }
+
+                    thread::sleep(Duration::from_millis(100));
+                }
             }
 
-            let Some(packet_type) = UdpPacketTypes::new(packet_type_buffer[0]) else {
-                return;
+            #[cfg(not(windows))]
+            {
+                while socket.peek_from(&mut packet_size_buffer).is_err() {
+                    thread::sleep(Duration::from_millis(100));
+                }
+            }
+
+            let packet_size = packet_size_buffer.len() + u64::from_be_bytes(packet_size_buffer) as usize;
+            udp_buffer.resize(packet_size, 0);
+            if socket.recv_from(&mut udp_buffer).is_err() {
+                continue;
+            }
+
+            let Ok(packet): Result<rocketsim::Packet, _> =
+                PacketRef::read_as_root(&udp_buffer[packet_size_buffer.len()..]).and_then(|packet| packet.try_into())
+            else {
+                continue;
             };
 
-            match packet_type {
-                UdpPacketTypes::Quit => {
+            match packet.message {
+                rocketsim::Message::Quit(_) => {
                     drop(tx.send(UdpUpdate::Exit));
                     return;
                 }
-                UdpPacketTypes::GameState => {
-                    // wait until we receive the packet
-                    // it should arrive VERY quickly, so a loop with no delay is fine
-                    // if it doesn't, then there are other problems lol
-                    // UPDATE: Windows throws a specific error that we need to look for
-                    // despite the fact that it actually worked
-
-                    #[cfg(windows)]
-                    {
-                        while let Err(e) = socket.peek_from(&mut initial_state_buffer) {
-                            if let Some(code) = e.raw_os_error() {
-                                if code == 10040 {
-                                    break;
-                                }
-                            }
-                        }
-                    }
-
-                    #[cfg(not(windows))]
-                    {
-                        while socket.peek_from(&mut initial_state_buffer).is_err() {}
-                    }
-
-                    let new_tick_count = GameState::read_tick_count(&initial_state_buffer);
-                    if new_tick_count > 15 && last_game_state.tick_count > new_tick_count {
-                        drop(socket.recv_from(&mut [0]));
-                        return;
-                    }
-
-                    buf.resize(GameState::get_num_bytes(&initial_state_buffer), 0);
-                    if socket.recv_from(&mut buf).is_err() {
-                        return;
-                    }
-
-                    last_game_state = GameState::from_bytes(&buf);
-                    if tx.send(UdpUpdate::State(last_game_state.clone())).is_err() {
-                        return;
-                    }
-                }
-                UdpPacketTypes::Render => {
-                    #[cfg(windows)]
-                    {
-                        while let Err(e) = socket.peek_from(&mut initial_render_buffer) {
-                            if let Some(code) = e.raw_os_error() {
-                                if code == 10040 {
-                                    break;
-                                }
-                            }
-                        }
-                    }
-
-                    #[cfg(not(windows))]
-                    {
-                        while socket.peek_from(&mut initial_render_buffer).is_err() {}
-                    }
-
-                    render_buf.resize(RenderMessage::get_num_bytes(&initial_render_buffer), 0);
-                    if socket.recv_from(&mut render_buf).is_err() {
-                        return;
-                    }
-
-                    let render_message = RenderMessage::from_bytes(&render_buf);
-                    if tx.send(UdpUpdate::Render(render_message)).is_err() {
-                        return;
-                    }
-                }
-                UdpPacketTypes::Speed => {
-                    if socket.recv_from(&mut speed_buffer).is_err() {
-                        return;
-                    }
-
-                    let speed = f32::from_le_bytes(speed_buffer);
-                    if tx.send(UdpUpdate::Speed(speed)).is_err() {
-                        return;
-                    }
-                }
-                UdpPacketTypes::Paused => {
-                    if socket.recv_from(&mut paused_buffer).is_err() {
-                        return;
-                    }
-
-                    let paused = paused_buffer[0] != 0;
-                    if tx.send(UdpUpdate::Paused(paused)).is_err() {
-                        return;
-                    }
-                }
-                UdpPacketTypes::Connection => {
+                rocketsim::Message::Connection(_) => {
                     if tx.send(UdpUpdate::Connection).is_err() {
+                        return;
+                    }
+                }
+                rocketsim::Message::Speed(speed) => {
+                    if tx.send(UdpUpdate::Speed(speed.speed)).is_err() {
+                        return;
+                    }
+                }
+                rocketsim::Message::Paused(paused) => {
+                    if tx.send(UdpUpdate::Paused(paused.paused)).is_err() {
+                        return;
+                    }
+                }
+                rocketsim::Message::AddRender(add_render) => {
+                    if tx.send(UdpUpdate::AddRender(*add_render)).is_err() {
+                        return;
+                    }
+                }
+                rocketsim::Message::RemoveRender(remove_render) => {
+                    if tx.send(UdpUpdate::RemoveRender(*remove_render)).is_err() {
+                        return;
+                    }
+                }
+                rocketsim::Message::GameState(game_state) => {
+                    if tx.send(UdpUpdate::State(*game_state)).is_err() {
                         return;
                     }
                 }
@@ -643,14 +630,12 @@ fn apply_udp_updates(
             UdpUpdate::State(new_state) => {
                 new_game_state = Some(new_state);
             }
-            UdpUpdate::Render(render_message) => match render_message {
-                RenderMessage::AddRender(group_id, renders) => {
-                    render_groups.groups.insert(group_id, renders);
-                }
-                RenderMessage::RemoveRender(group_id) => {
-                    render_groups.groups.remove(&group_id);
-                }
-            },
+            UdpUpdate::AddRender(add_render) => {
+                render_groups.groups.insert(add_render.id, add_render.commands);
+            }
+            UdpUpdate::RemoveRender(remove_render) => {
+                render_groups.groups.remove(&remove_render.id);
+            }
             UdpUpdate::Speed(speed) => {
                 last_packet_time_elapsed.reset();
                 speed_update.write(SpeedUpdate(speed));
@@ -688,7 +673,7 @@ fn update_ball(
         return;
     };
 
-    let new_pos = states.current.ball.pos.to_bevy();
+    let new_pos = states.current.ball.physics.pos.to_bevy();
     transform.translation = new_pos;
 
     for child in children {
@@ -703,7 +688,7 @@ fn update_ball(
             Color::srgb(0.5, 0.5, amount.max(0.5))
         };
 
-        transform.rotation = states.current.ball.rot_mat.to_bevy();
+        transform.rotation = states.current.ball.physics.rot_mat.to_bevy();
 
         break;
     }
@@ -712,13 +697,17 @@ fn update_ball(
 const MIN_CAMERA_BALLCAM_HEIGHT: f32 = 30.;
 
 fn update_car(states: Res<GameStates>, mut cars: Query<(&mut Transform, &Car)>) {
+    let Some(packet_cars) = states.current.cars.as_ref() else {
+        return;
+    };
+
     for (mut car_transform, car) in &mut cars {
-        let Some(target_car) = states.current.cars.iter().find(|car_info| car.0 == car_info.id) else {
+        let Some(target_car) = packet_cars.iter().find(|car_info| car.0 == car_info.id) else {
             continue;
         };
 
-        car_transform.translation = target_car.state.pos.to_bevy();
-        car_transform.rotation = target_car.state.rot_mat.to_bevy();
+        car_transform.translation = target_car.state.physics.pos.to_bevy();
+        car_transform.rotation = target_car.state.physics.rot_mat.to_bevy();
     }
 }
 
@@ -729,12 +718,16 @@ fn update_car_extra(
     mut car_materials: Query<&MeshMaterial3d<StandardMaterial>, With<CarBody>>,
     mut car_wheels: Query<&MeshMaterial3d<StandardMaterial>, With<CarWheel>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut last_boost_states: Local<Vec<u32>>,
-    mut last_demoed_states: Local<Vec<u32>>,
-    mut last_boost_amounts: Local<AHashMap<u32, f32>>,
+    mut last_boost_states: Local<Vec<u64>>,
+    mut last_demoed_states: Local<Vec<u64>>,
+    mut last_boost_amounts: Local<AHashMap<u64, f32>>,
 ) {
+    let Some(packet_cars) = states.current.cars.as_ref() else {
+        return;
+    };
+
     for (car, children) in &mut cars {
-        let Some(target_car) = states.current.cars.iter().find(|car_info| car.0 == car_info.id) else {
+        let Some(target_car) = packet_cars.iter().find(|car_info| car.0 == car_info.id) else {
             continue;
         };
 
@@ -832,8 +825,12 @@ fn calc_car_wheel_update(
     mut car_wheels: Query<(&mut Transform, &CarWheel), Without<Car>>,
     delta_time: f32,
 ) {
+    let Some(packet_cars) = state.cars.as_ref() else {
+        return;
+    };
+
     for (car_transform, car, children) in &mut cars {
-        let Some(target_car) = state.cars.iter().find(|car_info| car.0 == car_info.id) else {
+        let Some(target_car) = packet_cars.iter().find(|car_info| car.0 == car_info.id) else {
             continue;
         };
 
@@ -848,14 +845,14 @@ fn calc_car_wheel_update(
                 target_car.config.back_wheels.wheel_radius
             };
 
-            let car_vel = target_car.state.vel.to_bevy();
+            let car_vel = target_car.state.physics.vel.to_bevy();
             let mut angular_velocity = car_vel.length() * delta_time / wheel_radius;
 
             if data.left {
                 angular_velocity *= -1.;
             }
 
-            if target_car.state.is_on_ground || target_car.state.wheels_with_contact.into_iter().any(|b| b) {
+            if target_car.state.is_on_ground {
                 // determine if the velocity is in the same direction as the car's forward vector
                 let forward = car_transform.rotation.mul_vec3(Vec3::X);
                 let forward_dot = forward.dot(car_vel);
@@ -915,15 +912,19 @@ fn update_camera(
 ) {
     timer.0.tick(time.delta());
 
+    let Some(packet_cars) = states.current.cars.as_ref() else {
+        return;
+    };
+
     let (mut primary_camera, mut camera_transform) = camera_query.single_mut().unwrap();
 
     let car_id = match primary_camera.as_mut() {
         PrimaryCamera::TrackCar(id) => {
-            if states.current.cars.is_empty() {
+            if packet_cars.is_empty() {
                 return;
             }
 
-            let mut ids = states.current.cars.iter().map(|car_info| car_info.id).collect::<Vec<_>>();
+            let mut ids = packet_cars.iter().map(|car_info| car_info.id).collect::<Vec<_>>();
             ids.sort();
 
             let index = *id as usize - 1;
@@ -938,8 +939,8 @@ fn update_camera(
                 // get the car closest to the ball
                 let mut min_dist = f32::MAX;
                 let mut new_id = *id;
-                for car in &*states.current.cars {
-                    let dist = car.state.pos.distance_squared(states.current.ball.pos);
+                for car in packet_cars {
+                    let dist = Vec3A::from(car.state.physics.pos).distance_squared(states.current.ball.physics.pos.into());
                     if dist < min_dist {
                         new_id = car.id;
                         min_dist = dist;
@@ -958,21 +959,21 @@ fn update_camera(
         return;
     };
 
-    let Some(target_car) = states.current.cars.iter().find(|car_info| car_id == car_info.id) else {
+    let Some(target_car) = packet_cars.iter().find(|car_info| car_id == car_info.id) else {
         return;
     };
 
     let camera_transform = camera_transform.as_mut();
 
     if ballcam.enabled {
-        let ball_pos = states.current.ball.pos.to_bevy();
+        let ball_pos = states.current.ball.physics.pos.to_bevy();
         camera_transform.translation = car_transform.translation + (car_transform.translation - ball_pos).normalize() * 300.;
         camera_transform.look_at(ball_pos, Vec3::Y);
         camera_transform.translation += camera_transform.up() * 150.;
         camera_transform.look_at(ball_pos, Vec3::Y);
         camera_transform.translation.y = camera_transform.translation.y.max(MIN_CAMERA_BALLCAM_HEIGHT);
     } else {
-        let car_look = Vec3::new(target_car.state.vel.x, 0., target_car.state.vel.y)
+        let car_look = Vec3::new(target_car.state.physics.vel.x, 0., target_car.state.physics.vel.y)
             .try_normalize()
             .unwrap_or_else(|| car_transform.forward().into());
         camera_transform.translation = car_transform.translation - car_look * 280. + Vec3::Y * 110.;
@@ -994,17 +995,20 @@ fn correct_car_count(
     images: &mut Assets<Image>,
     render_device: Option<&RenderDevice>,
 ) {
+    let Some(packet_cars) = state.cars.as_ref() else {
+        return;
+    };
+
     // remove cars that no longer exist
     for (entity, car) in car_entities {
-        if !state.cars.iter().any(|car_info| car.0 == car_info.id) {
+        if !packet_cars.iter().any(|car_info| car.0 == car_info.id) {
             user_cars.remove(car.0);
             commands.entity(entity).despawn();
         }
     }
 
     // add new cars
-    let non_existant_cars = state
-        .cars
+    let non_existant_cars = packet_cars
         .iter()
         .filter(|car_info| !cars.iter().any(|id| id.0 == car_info.id));
 
@@ -1031,7 +1035,11 @@ fn update_pads_count(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut commands: Commands,
 ) {
-    if pads.iter().count() == states.current.pads.len() || large_boost_pad_loc_rots.rots.is_empty() {
+    let Some(packet_pads) = states.current.pads.as_ref() else {
+        return;
+    };
+
+    if pads.iter().count() == packet_pads.len() || large_boost_pad_loc_rots.rots.is_empty() {
         return;
     }
 
@@ -1053,15 +1061,17 @@ fn update_pads_count(
         _ => pad_glows.small.clone(),
     };
 
-    for (i, pad) in states.current.pads.iter().enumerate() {
-        let mut transform = Transform::from_translation(pad.position.to_bevy() - Vec3::Y * 70.);
+    let glow_color = LinearRgba::rgb(0.9, 0.9, 0.1);
 
-        let (visual_mesh, hitbox) = if pad.is_big {
+    for (i, pad) in packet_pads.iter().enumerate() {
+        let mut transform = Transform::from_translation(pad.config.pos.to_bevy() - Vec3::Y * 70.);
+
+        let (visual_mesh, hitbox) = if pad.config.is_big {
             let rotation = large_boost_pad_loc_rots
                 .locs
                 .iter()
                 .enumerate()
-                .find(|(_, loc)| loc.distance_squared(pad.position.xy()) < 25.)
+                .find(|(_, loc)| loc.distance_squared(Vec3A::from(pad.config.pos).xy()) < 25.)
                 .map(|(i, _)| large_boost_pad_loc_rots.rots[i]);
             transform.rotate_y(rotation.unwrap_or_default().to_radians());
             if states.current.game_mode == GameMode::Soccar {
@@ -1127,7 +1137,9 @@ fn update_pads_count(
                 SimplifiedMesh(hitbox),
                 Mesh3d(visual_mesh),
                 MeshMaterial3d(materials.add(StandardMaterial {
-                    base_color: Color::srgba(0.9, 0.9, 0.1, 0.6),
+                    base_color: glow_color.with_alpha(0.6).into(),
+                    emissive: glow_color * 0.75,
+                    diffuse_transmission: 1.0,
                     alpha_mode: AlphaMode::Add,
                     double_sided: true,
                     cull_mode: None,
@@ -1152,13 +1164,17 @@ fn update_pad_colors(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut prev_tick_count: Local<u64>,
 ) {
+    let Some(packet_pads) = states.current.pads.as_ref() else {
+        return;
+    };
+
     if *prev_tick_count == states.current.tick_count {
         return;
     }
 
     *prev_tick_count = states.current.tick_count;
     for (pad, material) in query.iter() {
-        let new_alpha = if states.current.pads[pad.idx()].state.is_active {
+        let new_alpha = if packet_pads[pad.idx()].state.is_active {
             0.6
         } else {
             // make the glow on inactive pads disappear
@@ -1181,17 +1197,21 @@ fn update_boost_meter(
     mut boost_amount: Query<(&mut Text, &mut Node, &mut TextFont), With<BoostAmount>>,
     mut was_last_director: Local<bool>,
 ) {
+    let Some(packet_cars) = states.current.cars.as_ref() else {
+        return;
+    };
+
     const START_ANGLE: f32 = 7. * PI / 6.;
     const FULL_ANGLE: f32 = 11. * PI / 6.;
     const UI_BACKGROUND: Color = Color::srgb(0.075, 0.075, 0.15);
 
     let id = match camera.single().unwrap() {
         PrimaryCamera::TrackCar(id) => {
-            if states.current.cars.is_empty() {
+            if packet_cars.is_empty() {
                 return;
             }
 
-            let mut ids = states.current.cars.iter().map(|car_info| car_info.id).collect::<Vec<_>>();
+            let mut ids = packet_cars.iter().map(|car_info| car_info.id).collect::<Vec<_>>();
             ids.sort();
 
             let index = *id as usize - 1;
@@ -1210,7 +1230,7 @@ fn update_boost_meter(
         return;
     }
 
-    let Some(car_state) = &states.current.cars.iter().find(|info| id == info.id).map(|info| info.state) else {
+    let Some(car_state) = packet_cars.iter().find(|info| id == info.id).map(|info| &*info.state) else {
         return;
     };
 
@@ -1360,12 +1380,12 @@ fn update_ball_rotation(
 
     *last_game_tick = states.current.tick_count;
 
-    let ball_ang_vel = states.current.ball.ang_vel * delta_time;
+    let ball_ang_vel = Vec3A::from(states.current.ball.physics.ang_vel) * delta_time;
     let ang_vel = ball_ang_vel.length();
     if ang_vel > f32::EPSILON {
         let axis = ball_ang_vel / ang_vel;
         let rot = Mat3A::from_axis_angle(axis.into(), ang_vel);
-        states.current.ball.rot_mat = rot * states.current.ball.rot_mat;
+        states.current.ball.physics.rot_mat = (rot * Mat3A::from(states.current.ball.physics.rot_mat)).into();
     }
 }
 
@@ -1376,25 +1396,29 @@ fn extrapolate_packet(mut states: ResMut<GameStates>, game_speed: Res<GameSpeed>
 
     let delta_time = time.delta_secs() * game_speed.speed;
 
-    let ball_pos = states.current.ball.vel * delta_time;
-    states.current.ball.pos += ball_pos;
+    let ball_pos = Vec3A::from(states.current.ball.physics.vel) * delta_time;
+    states.current.ball.physics.pos = (ball_pos + Vec3A::from(states.current.ball.physics.pos)).into();
 
-    for car in &mut states.current.cars {
-        let car_pos = car.state.vel * delta_time;
-        car.state.pos += car_pos;
+    let Some(packet_cars) = states.current.cars.as_mut() else {
+        return;
+    };
 
-        let car_ang_vel = car.state.ang_vel * delta_time;
+    for car in packet_cars {
+        let car_pos = Vec3A::from(car.state.physics.vel) * delta_time;
+        car.state.physics.pos = (car_pos + Vec3A::from(car.state.physics.pos)).into();
+
+        let car_ang_vel = Vec3A::from(car.state.physics.ang_vel) * delta_time;
         let ang_vel = car_ang_vel.length();
         if ang_vel > f32::EPSILON {
             let axis = car_ang_vel / ang_vel;
             let rot = Mat3A::from_axis_angle(axis.into(), ang_vel);
-            car.state.rot_mat = rot * car.state.rot_mat;
+            car.state.physics.rot_mat = (rot * Mat3A::from(car.state.physics.rot_mat)).into();
         }
     }
 }
 
 fn interpolate_calc_next_ball_rot(mut states: ResMut<GameStates>) {
-    states.current.ball.rot_mat = states.last.ball.rot_mat;
+    states.current.ball.physics.rot_mat = states.last.ball.physics.rot_mat;
 
     if states.next.tick_count < states.last.tick_count {
         return;
@@ -1402,12 +1426,12 @@ fn interpolate_calc_next_ball_rot(mut states: ResMut<GameStates>) {
 
     let delta_time = (states.next.tick_count - states.last.tick_count) as f32 / states.next.tick_rate;
 
-    let ball_ang_vel = states.last.ball.ang_vel * delta_time;
+    let ball_ang_vel = Vec3A::from(states.last.ball.physics.ang_vel) * delta_time;
     let ang_vel = ball_ang_vel.length();
     if ang_vel > f32::EPSILON {
         let axis = ball_ang_vel / ang_vel;
         let rot = Mat3A::from_axis_angle(axis.into(), ang_vel);
-        states.next.ball.rot_mat = rot * states.last.ball.rot_mat;
+        states.next.ball.physics.rot_mat = (rot * Mat3A::from(states.last.ball.physics.rot_mat)).into();
     }
 }
 
@@ -1433,23 +1457,33 @@ fn interpolate_packets(
 
     let lerp_amount = delta_time / last_packet_time_elapsed.avg();
 
-    states.current.ball.pos = states.last.ball.pos.lerp(states.next.ball.pos, lerp_amount);
+    states.current.ball.physics.pos = Vec3A::from(states.last.ball.physics.pos)
+        .lerp(states.next.ball.physics.pos.into(), lerp_amount)
+        .into();
 
-    let last_ball_quat = Quat::from_mat3a(&states.last.ball.rot_mat);
-    let next_ball_quat = Quat::from_mat3a(&states.next.ball.rot_mat);
+    let last_ball_quat = Quat::from_mat3a(&states.last.ball.physics.rot_mat.into());
+    let next_ball_quat = Quat::from_mat3a(&states.next.ball.physics.rot_mat.into());
 
     let curr_ball_quat = last_ball_quat.slerp(next_ball_quat, lerp_amount);
-    states.current.ball.rot_mat = Mat3A::from_quat(curr_ball_quat);
+    states.current.ball.physics.rot_mat = Mat3A::from_quat(curr_ball_quat).into();
 
-    for (last_car, current_car, next_car) in states.iter_current_cars() {
-        current_car.state.pos = last_car.state.pos.lerp(next_car.state.pos, lerp_amount);
-        current_car.state.vel = last_car.state.vel.lerp(next_car.state.vel, lerp_amount);
+    let Some(car_iter) = states.iter_current_cars() else {
+        return;
+    };
 
-        let last_car_quat = Quat::from_mat3a(&last_car.state.rot_mat);
-        let next_car_quat = Quat::from_mat3a(&next_car.state.rot_mat);
+    for (last_car, current_car, next_car) in car_iter {
+        current_car.state.physics.pos = Vec3A::from(last_car.state.physics.pos)
+            .lerp(next_car.state.physics.pos.into(), lerp_amount)
+            .into();
+        current_car.state.physics.vel = Vec3A::from(last_car.state.physics.vel)
+            .lerp(next_car.state.physics.vel.into(), lerp_amount)
+            .into();
+
+        let last_car_quat = Quat::from_mat3a(&last_car.state.physics.rot_mat.into());
+        let next_car_quat = Quat::from_mat3a(&next_car.state.physics.rot_mat.into());
 
         let curr_car_quat = last_car_quat.slerp(next_car_quat, lerp_amount);
-        current_car.state.rot_mat = Mat3A::from_quat(curr_car_quat);
+        current_car.state.physics.rot_mat = Mat3A::from_quat(curr_car_quat).into();
     }
 }
 
@@ -1466,10 +1500,10 @@ fn listen(
         let pos = Vec3A::new(0., -2000., 1500.);
         let vel = Vec3A::new(50., 1500., 1.);
 
-        game_states.current.ball.pos = pos;
-        game_states.current.ball.vel = vel;
-        game_states.next.ball.pos = pos;
-        game_states.next.ball.vel = vel;
+        game_states.current.ball.physics.pos = pos.into();
+        game_states.current.ball.physics.vel = vel.into();
+        game_states.next.ball.physics.pos = pos.into();
+        game_states.next.ball.physics.vel = vel.into();
     }
 
     if key.just_pressed(KeyCode::KeyP) {
@@ -1516,7 +1550,7 @@ impl GameStates {
                 self.last = replace(&mut self.next, new_state);
 
                 if calc_ball_rot {
-                    self.next.ball.rot_mat = self.current.ball.rot_mat;
+                    self.next.ball.physics.rot_mat = self.current.ball.physics.rot_mat;
                 }
 
                 self.current = self.next.clone();
@@ -1529,8 +1563,16 @@ impl GameStates {
         }
     }
 
-    pub fn iter_current_cars(&mut self) -> impl Iterator<Item = (&CarInfo, &mut CarInfo, &CarInfo)> {
-        izip!(self.last.cars.iter(), self.current.cars.iter_mut(), self.next.cars.iter())
+    pub fn iter_current_cars(&mut self) -> Option<impl Iterator<Item = (&CarInfo, &mut CarInfo, &CarInfo)>> {
+        if self.last.cars.is_none() || self.next.cars.is_none() || self.current.cars.is_none() {
+            return None;
+        }
+
+        Some(izip!(
+            self.last.cars.as_ref().unwrap().iter(),
+            self.current.cars.as_mut().unwrap().iter_mut(),
+            self.next.cars.as_ref().unwrap().iter()
+        ))
     }
 }
 
@@ -1603,9 +1645,15 @@ fn update_tiles(
         return;
     }
 
+    let Some(packet_tiles) = game_states.current.tiles.as_ref() else {
+        return;
+    };
+
+    let packet_tiles = [&packet_tiles.blue_tiles, &packet_tiles.orange_tiles];
+
     *prev_tick_count = game_states.current.tick_count;
-    if tile_states[0].len() != game_states.current.tiles[0].len() {
-        for (sim_team_tiles, world_team_tiles) in game_states.current.tiles.iter().zip(&mut tile_states) {
+    if tile_states[0].len() != packet_tiles[0].len() {
+        for (sim_team_tiles, world_team_tiles) in packet_tiles.into_iter().zip(&mut tile_states) {
             world_team_tiles.clear();
             for tile in sim_team_tiles.iter() {
                 world_team_tiles.push(TileInfo { state: tile.state });
@@ -1616,7 +1664,7 @@ fn update_tiles(
 
     // check if the color needs to be updated because the state has changed
     for (tile, material) in &mut tiles {
-        let proper_state = game_states.current.tiles[tile.team][tile.index].state;
+        let proper_state = packet_tiles[tile.team][tile.index].state;
         if proper_state != tile_states[tile.team][tile.index].state {
             tile_states[tile.team][tile.index].state = proper_state;
             let material = materials.get_mut(material).unwrap();
