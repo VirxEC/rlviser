@@ -91,7 +91,6 @@ struct DropshotInfo {
 
 struct BallState {
     physics: PhysState;
-    tick_count_since_update: ulong;
     hs_info: HeatseekerInfo;
     ds_info: DropshotInfo;
 }
@@ -133,7 +132,6 @@ struct WheelsWithContact {
 
 table CarState {
     physics: PhysState (required);
-    tick_count_since_update: ulong;
     is_on_ground: bool;
     wheels_with_contact: WheelsWithContact (required);
     has_jumped: bool;
@@ -180,5 +178,3 @@ table GameState {
     pads: [BoostPadInfo];
     tiles: DropshotTilesByTeam;
 }
-
-root_type GameState;

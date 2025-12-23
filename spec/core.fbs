@@ -28,3 +28,5 @@ union Message {
 table Packet {
     message: Message (required);
 }
+
+root_type Packet;

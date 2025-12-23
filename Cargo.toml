@@ -1,5 +1,5 @@
 [package]
-version = "0.9.0"
+version = "0.9.1"
 name = "rlviser"
 edition = "2024"
 publish = false
@@ -19,8 +19,8 @@ thiserror = "2.0"
 rust_search = "2.1.0"
 crossbeam-channel = "0.5.12"
 itertools = "0.14.0"
-bincode = "2.0"
-zip = "6.0.0"
+bincode = "3.0"
+zip = "7.0.0"
 image = { version = "0.25.1", features = ["tga"], default-features = false }
 tracing = { version = "*", features = ["release_max_level_error"] }
 itoa = "1.0.15"
