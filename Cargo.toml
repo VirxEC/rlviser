@@ -1,6 +1,6 @@
 [package]
 name = "rlviser"
-version = "0.9.1"
+version = "0.9.2"
 edition = "2024"
 publish = false
 
@@ -8,12 +8,12 @@ publish = false
 
 [dependencies]
 bevy_egui = {
-  version = "0.38.0",
+  version = "0.39.0",
   default-features = false,
   features = ["default_fonts", "render"]
 }
-bevy_framepace = { version = "0.20", default-features = false }
-bevy_vector_shapes = "0.11"
+bevy_framepace = { version = "0.21", default-features = false }
+bevy_vector_shapes = "0.12"
 bincode = "2.0"
 byteorder = "1.4.3"
 crossbeam-channel = "0.5.12"
@@ -32,7 +32,7 @@ walkdir = "2.3.3"
 zip = "8.0.0"
 
 [dependencies.bevy]
-version = "0.17.0"
+version = "0.18.1"
 default-features = false
 features = [
   "default_font",
@@ -46,7 +46,6 @@ features = [
   "bevy_light",
   "bevy_log",
   "bevy_mesh",
-  "bevy_mesh_picking_backend",
   "bevy_pbr",
   "bevy_picking",
   "bevy_render",
@@ -57,6 +56,7 @@ features = [
   "bevy_ui_render",
   "bevy_window",
   "bevy_winit",
+  "mesh_picking",
   "std",
   "tga",
   "wayland",

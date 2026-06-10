@@ -83,7 +83,7 @@ fn main() {
                 })
                 .set(WindowPlugin {
                     primary_window: Some(Window {
-                        title: "RLViser-rs".into(),
+                        title: "RLViser".into(),
                         present_mode: PresentMode::AutoNoVsync,
                         ..default()
                     }),

@@ -4,8 +4,11 @@ use bevy::{
     camera::Exposure,
     color::palettes::css,
     core_pipeline::tonemapping::Tonemapping,
-    light::{CascadeShadowConfigBuilder, DirectionalLightShadowMap, ShadowFilteringMethod, SunDisk, light_consts::lux},
-    pbr::{Atmosphere, AtmosphereSettings},
+    light::{
+        AtmosphereEnvironmentMapLight, CascadeShadowConfigBuilder, DirectionalLightShadowMap, ShadowFilteringMethod,
+        SunDisk, light_consts::lux,
+    },
+    pbr::{Atmosphere, AtmosphereSettings, ScatteringMedium},
     prelude::*,
     render::view::Hdr,
 };
@@ -37,10 +40,14 @@ pub const BOOST_INDICATOR_POS: Vec2 = Vec2::new(150., 150.);
 pub const BOOST_INDICATOR_FONT_SIZE: f32 = 60.0;
 pub const TIME_DISPLAY_POS: Vec2 = Vec2::new(0., 60.);
 
-fn setup(mut commands: Commands, mut egui_global_settings: ResMut<EguiGlobalSettings>) {
+fn setup(
+    mut commands: Commands,
+    mut egui_global_settings: ResMut<EguiGlobalSettings>,
+    mut scattering_mediums: ResMut<Assets<ScatteringMedium>>,
+) {
     egui_global_settings.auto_create_primary_context = false;
 
-    commands.insert_resource(AmbientLight {
+    commands.insert_resource(GlobalAmbientLight {
         brightness: lux::FULL_DAYLIGHT,
         ..default()
     });
@@ -76,7 +83,8 @@ fn setup(mut commands: Commands, mut egui_global_settings: ResMut<EguiGlobalSett
         Msaa::default(),
         Spectator,
         MeshPickingCamera,
-        Atmosphere::EARTH,
+        Atmosphere::earthlike(scattering_mediums.add(ScatteringMedium::default())),
+        AtmosphereEnvironmentMapLight::default(),
         Exposure::SUNLIGHT,
         AtmosphereSettings {
             aerial_view_lut_max_distance: 320.,

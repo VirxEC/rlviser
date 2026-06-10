@@ -584,11 +584,11 @@ pub fn read_materials(chunk_data: &[u8], data_count: usize) -> Vec<String> {
 }
 
 // create new asset loader for pskx files
+#[derive(TypePath)]
 pub struct PskxLoader;
 
 pub const PSK_FILE_HEADER: &[u8] = b"ACTRHEAD\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
 
-#[non_exhaustive]
 #[derive(Debug, Error)]
 pub enum PskxLoaderError {
     #[error("Couldn't read PSK(X): {0}")]
@@ -612,7 +612,7 @@ impl AssetLoader for PskxLoader {
             let mut bytes = Vec::new();
             reader.read_to_end(&mut bytes).await?;
 
-            let asset_name = load_context.path().file_name().and_then(OsStr::to_str).unwrap();
+            let asset_name = load_context.path().path().file_name().and_then(OsStr::to_str).unwrap();
             let mesh = MeshBuilder::from_pskx(asset_name, &bytes)?;
 
             let cache_path = format!("./cache/mesh/{}.bin", asset_name.trim_end_matches(".pskx"));
