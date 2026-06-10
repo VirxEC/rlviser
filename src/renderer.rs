@@ -1,13 +1,14 @@
+use bevy::prelude::*;
+use rustc_hash::FxHashMap;
+
 use crate::{
     flat::rocketsim,
     udp::{ToBevyVec, ToBevyVecFlat},
 };
-use ahash::AHashMap;
-use bevy::prelude::*;
 
 #[derive(Resource, Default)]
 pub struct RenderGroups {
-    pub groups: AHashMap<i32, Vec<rocketsim::Render>>,
+    pub groups: FxHashMap<i32, Vec<rocketsim::Render>>,
 }
 
 impl From<rocketsim::Color> for Color {

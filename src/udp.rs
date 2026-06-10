@@ -1,15 +1,12 @@
-use crate::{
-    GameLoadState, ServerPort,
-    assets::{BoostPickupGlows, CarWheelMesh, get_material, get_mesh_info},
-    camera::{PrimaryCamera, TimeDisplay},
-    flat::rocketsim::{
-        self, AddRender, CarInfo, GameMode, GameState, Mat3, PacketRef, Paused, RemoveRender, Speed, Team, TileState,
-    },
-    mesh::LargeBoostPadLocRots,
-    renderer::{RenderGroups, UdpRendererPlugin},
-    settings::options::{BallCam, CalcBallRot, GameSpeed, Options, PacketSmoothing, ShowTime},
+use std::{
+    f32::consts::PI,
+    fs,
+    mem::{replace, swap},
+    net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket},
+    thread,
+    time::Duration,
 };
-use ahash::AHashMap;
+
 use bevy::{
     app::AppExit,
     asset::LoadState,
@@ -20,29 +17,30 @@ use bevy::{
     prelude::*,
     render::renderer::RenderDevice,
     time::Stopwatch,
+    window::PrimaryWindow,
 };
+use bevy_vector_shapes::prelude::*;
 use crossbeam_channel::{Receiver, Sender};
 use itertools::izip;
 use planus::ReadAsRoot;
-use std::{
-    f32::consts::PI,
-    fs,
-    mem::{replace, swap},
-    net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket},
-    thread,
-    time::Duration,
-};
-
-use crate::{
-    camera::{BOOST_INDICATOR_FONT_SIZE, BOOST_INDICATOR_POS, BoostAmount, HighlightedEntity},
-    mesh::{BoostPadClicked, CarClicked, ChangeCarPos},
-    settings::{options::UiOverlayScale, state_setting::UserCarStates},
-};
-use bevy::window::PrimaryWindow;
-use bevy_vector_shapes::prelude::*;
+use rustc_hash::FxHashMap;
 
 #[cfg(debug_assertions)]
 use crate::camera::EntityName;
+use crate::{
+    GameLoadState, ServerPort,
+    assets::{BoostPickupGlows, CarWheelMesh, get_material, get_mesh_info},
+    camera::{BOOST_INDICATOR_FONT_SIZE, BOOST_INDICATOR_POS, BoostAmount, HighlightedEntity, PrimaryCamera, TimeDisplay},
+    flat::rocketsim::{
+        self, AddRender, CarInfo, GameMode, GameState, Mat3, PacketRef, Paused, RemoveRender, Speed, Team, TileState,
+    },
+    mesh::{BoostPadClicked, CarClicked, ChangeCarPos, LargeBoostPadLocRots},
+    renderer::{RenderGroups, UdpRendererPlugin},
+    settings::{
+        options::{BallCam, CalcBallRot, GameSpeed, Options, PacketSmoothing, ShowTime, UiOverlayScale},
+        state_setting::UserCarStates,
+    },
+};
 
 #[derive(Component)]
 #[require(Mesh3d, MeshMaterial3d<StandardMaterial>, NotShadowCaster, NotShadowReceiver)]
@@ -720,7 +718,7 @@ fn update_car_extra(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut last_boost_states: Local<Vec<u64>>,
     mut last_demoed_states: Local<Vec<u64>>,
-    mut last_boost_amounts: Local<AHashMap<u64, f32>>,
+    mut last_boost_amounts: Local<FxHashMap<u64, f32>>,
 ) {
     let Some(packet_cars) = states.current.cars.as_ref() else {
         return;

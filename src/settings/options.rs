@@ -1,9 +1,11 @@
-use crate::camera::PrimaryCamera;
-use bevy::prelude::*;
 use std::{
     fs,
     io::{self, Write},
 };
+
+use bevy::prelude::*;
+
+use crate::camera::PrimaryCamera;
 
 pub struct GameOptions;
 

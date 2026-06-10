@@ -1,9 +1,10 @@
-use crate::{
-    flat::rocketsim::Team,
-    mesh::{MeshBuilder, MeshBuilderError},
-    settings::cache_handler::{get_default_mesh_cache, get_material_cache, get_mesh_cache, get_texture_cache},
+use std::{
+    ffi::OsStr,
+    io::{self, Read},
+    path::Path,
+    sync::Mutex,
 };
-use ahash::AHashMap;
+
 use bevy::{
     asset::{AssetLoader, io::Reader},
     color::palettes::css,
@@ -13,13 +14,14 @@ use bevy::{
     tasks::ConditionalSendFuture,
 };
 use byteorder::{LittleEndian, ReadBytesExt};
-use std::{
-    ffi::OsStr,
-    io::{self, Read},
-    path::Path,
-    sync::Mutex,
-};
+use rustc_hash::FxHashMap;
 use thiserror::Error;
+
+use crate::{
+    flat::rocketsim::Team,
+    mesh::{MeshBuilder, MeshBuilderError},
+    settings::cache_handler::{get_default_mesh_cache, get_material_cache, get_mesh_cache, get_texture_cache},
+};
 
 pub struct AssetsLoaderPlugin;
 
@@ -410,7 +412,7 @@ fn get_default_material(name: &str, side: Option<Team>) -> Option<StandardMateri
 }
 
 type MaterialsKey = (&'static str, Option<Team>);
-static MATERIALS: Mutex<Option<AHashMap<MaterialsKey, Handle<StandardMaterial>>>> = Mutex::new(None);
+static MATERIALS: Mutex<Option<FxHashMap<MaterialsKey, Handle<StandardMaterial>>>> = Mutex::new(None);
 
 pub fn get_material(
     name: &str,
@@ -422,7 +424,7 @@ pub fn get_material(
     render_device: Option<&RenderDevice>,
 ) -> Handle<StandardMaterial> {
     let mut material_names_lock = MATERIALS.lock().unwrap();
-    let material_names = material_names_lock.get_or_insert_with(AHashMap::new);
+    let material_names = material_names_lock.get_or_insert_with(FxHashMap::default);
 
     if let Some(material) = material_names.get(&(name, side)) {
         return material.clone();
@@ -627,8 +629,6 @@ impl AssetLoader for PskxLoader {
 
 #[cfg(debug_assertions)]
 pub mod umodel {
-    use bevy::prelude::*;
-    use rust_search::{SearchBuilder, similarity_sort};
     use std::{
         fs,
         io::{self, Write},
@@ -636,6 +636,9 @@ pub mod umodel {
         path::Path,
         process::{Command, Stdio},
     };
+
+    use bevy::prelude::*;
+    use rust_search::{SearchBuilder, similarity_sort};
 
     const CANT_FIND_FOLDER: &str = "Couldn't find 'RocketLeague.exe' on your system! Please manually create the file 'assets.path' and add the path in plain text to your 'rocketleague/TAGame/CookedPCConsole' folder. This is needed for UModel to work.";
     const UMODEL: &str = if cfg!(windows) { ".\\umodel.exe" } else { "./umodel" };

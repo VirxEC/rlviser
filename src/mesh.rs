@@ -1,10 +1,13 @@
-use crate::{
-    GameLoadState,
-    assets::*,
-    flat::rocketsim::{GameMode, Team},
-    settings::state_setting::{EnableTileInfo, UserTileStates},
-    udp::{Ball, Tile, ToBevyVec, ToBevyVecFlat, get_tile_color, target_insert, target_remove, write_message},
+use std::{
+    cmp::Ordering,
+    fs::{File, create_dir_all},
+    io::{self, Read},
+    path::Path,
+    rc::Rc,
+    str::Utf8Error,
+    time::Duration,
 };
+
 use bevy::{
     asset::{LoadState, RenderAssetUsages},
     color::palettes::css,
@@ -19,28 +22,25 @@ use bevy::{
 };
 use include_flate::flate;
 use serde::Deserialize;
-use std::{
-    cmp::Ordering,
-    fs::{File, create_dir_all},
-    io::{self, Read},
-    path::Path,
-    rc::Rc,
-    str::Utf8Error,
-};
 use thiserror::Error;
-
-use crate::{
-    camera::{HighlightedEntity, PrimaryCamera},
-    settings::state_setting::{EnableBallInfo, EnableCarInfo, EnablePadInfo, UserCarStates, UserPadStates},
-    udp::{BoostPadI, Car, Connection, GameStates, SendableUdp},
-};
-use std::time::Duration;
-
-#[cfg(feature = "team_goal_barriers")]
-use crate::udp::{BLUE_COLOR, ORANGE_COLOR};
 
 #[cfg(debug_assertions)]
 use crate::camera::EntityName;
+#[cfg(feature = "team_goal_barriers")]
+use crate::udp::{BLUE_COLOR, ORANGE_COLOR};
+use crate::{
+    GameLoadState,
+    assets::*,
+    camera::{HighlightedEntity, PrimaryCamera},
+    flat::rocketsim::{GameMode, Team},
+    settings::state_setting::{
+        EnableBallInfo, EnableCarInfo, EnablePadInfo, EnableTileInfo, UserCarStates, UserPadStates, UserTileStates,
+    },
+    udp::{
+        Ball, BoostPadI, Car, Connection, GameStates, SendableUdp, Tile, ToBevyVec, ToBevyVecFlat, get_tile_color,
+        target_insert, target_remove, write_message,
+    },
+};
 
 pub struct FieldLoaderPlugin;
 

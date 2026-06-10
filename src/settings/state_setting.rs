@@ -1,11 +1,15 @@
+use bevy::prelude::*;
+use bevy_egui::{
+    EguiContext, EguiPrimaryContextPass, PrimaryEguiContext,
+    egui::{self, ahash::HashMapExt},
+};
+use rustc_hash::FxHashMap;
+
 use super::options::MenuFocused;
 use crate::{
     flat::rocketsim::{TileState, Vec3},
     udp::{Connection, GameStates, SendableUdp},
 };
-use ahash::AHashMap;
-use bevy::prelude::*;
-use bevy_egui::{EguiContext, EguiPrimaryContextPass, PrimaryEguiContext, egui};
 
 pub struct StateSettingInterface;
 
@@ -75,12 +79,12 @@ fn set_bool_from_usize(b: &mut bool, i: usize) {
 struct UserSetPadState(usize);
 
 #[derive(Resource, PartialEq, Eq)]
-pub struct EnablePadInfo(AHashMap<usize, bool>);
+pub struct EnablePadInfo(FxHashMap<usize, bool>);
 
 impl Default for EnablePadInfo {
     #[inline]
     fn default() -> Self {
-        Self(AHashMap::with_capacity(48))
+        Self(FxHashMap::with_capacity(48))
     }
 }
 
@@ -101,12 +105,12 @@ struct UserPadState {
 }
 
 #[derive(Resource)]
-pub struct UserPadStates(AHashMap<usize, UserPadState>);
+pub struct UserPadStates(FxHashMap<usize, UserPadState>);
 
 impl Default for UserPadStates {
     #[inline]
     fn default() -> Self {
-        Self(AHashMap::with_capacity(48))
+        Self(FxHashMap::with_capacity(48))
     }
 }
 
@@ -470,12 +474,12 @@ fn update_ball_info(
 struct UserSetTileState((usize, usize), SetTileStateAmount);
 
 #[derive(Resource, PartialEq, Eq)]
-pub struct EnableTileInfo(AHashMap<(usize, usize), bool>);
+pub struct EnableTileInfo(FxHashMap<(usize, usize), bool>);
 
 impl Default for EnableTileInfo {
     #[inline]
     fn default() -> Self {
-        Self(AHashMap::new())
+        Self(FxHashMap::default())
     }
 }
 
@@ -495,12 +499,12 @@ struct UserTileState {
 }
 
 #[derive(Resource)]
-pub struct UserTileStates(AHashMap<(usize, usize), UserTileState>);
+pub struct UserTileStates(FxHashMap<(usize, usize), UserTileState>);
 
 impl Default for UserTileStates {
     #[inline]
     fn default() -> Self {
-        Self(AHashMap::new())
+        Self(FxHashMap::default())
     }
 }
 
@@ -602,12 +606,12 @@ fn update_tile_info(
 struct UserSetCarState(u64, SetCarStateAmount);
 
 #[derive(Resource, PartialEq, Eq)]
-pub struct EnableCarInfo(AHashMap<u64, bool>);
+pub struct EnableCarInfo(FxHashMap<u64, bool>);
 
 impl Default for EnableCarInfo {
     #[inline]
     fn default() -> Self {
-        Self(AHashMap::with_capacity(8))
+        Self(FxHashMap::with_capacity(8))
     }
 }
 
@@ -634,12 +638,12 @@ struct UserCarState {
 }
 
 #[derive(Resource)]
-pub struct UserCarStates(AHashMap<u64, UserCarState>);
+pub struct UserCarStates(FxHashMap<u64, UserCarState>);
 
 impl Default for UserCarStates {
     #[inline]
     fn default() -> Self {
-        Self(AHashMap::with_capacity(8))
+        Self(FxHashMap::with_capacity(8))
     }
 }
 

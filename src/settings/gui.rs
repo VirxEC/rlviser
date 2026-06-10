@@ -1,12 +1,5 @@
-use super::options::{
-    BallCam, CalcBallRot, GameOptions, GameSpeed, MenuFocused, Options, PacketSmoothing, ShowTime, UiOverlayScale,
-};
-use crate::{
-    camera::{DaylightOffset, PrimaryCamera},
-    renderer::{DoRendering, RenderGroups},
-    spectator::SpectatorSettings,
-    udp::{Connection, LastPacketTimesElapsed, PausedUpdate, SendableUdp, SpeedUpdate},
-};
+use std::time::Duration;
+
 use bevy::{
     light::{DirectionalLightShadowMap, SunDisk},
     picking::PickingSettings,
@@ -14,14 +7,23 @@ use bevy::{
     time::Stopwatch,
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
-use std::time::Duration;
-
-use super::state_setting::StateSettingInterface;
 use bevy_egui::{EguiContext, EguiPlugin, EguiPrimaryContextPass, PrimaryEguiContext, egui};
 use bevy_framepace::{FramepaceSettings, Limiter};
 
+use super::{
+    options::{
+        BallCam, CalcBallRot, GameOptions, GameSpeed, MenuFocused, Options, PacketSmoothing, ShowTime, UiOverlayScale,
+    },
+    state_setting::StateSettingInterface,
+};
 #[cfg(debug_assertions)]
 use crate::camera::{EntityName, HighlightedEntity};
+use crate::{
+    camera::{DaylightOffset, PrimaryCamera},
+    renderer::{DoRendering, RenderGroups},
+    spectator::SpectatorSettings,
+    udp::{Connection, LastPacketTimesElapsed, PausedUpdate, SendableUdp, SpeedUpdate},
+};
 
 pub struct DebugOverlayPlugin;
 

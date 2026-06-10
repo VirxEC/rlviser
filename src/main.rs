@@ -15,6 +15,8 @@ mod settings;
 mod spectator;
 mod udp;
 
+use std::env;
+
 use bevy::{
     image::{ImageAddressMode, ImageSamplerDescriptor},
     log::LogPlugin,
@@ -22,7 +24,6 @@ use bevy::{
     window::PresentMode,
 };
 use settings::{cache_handler, gui};
-use std::env;
 use tracing::Level;
 
 #[derive(Clone, Eq, PartialEq, Debug, Hash, Default, States)]

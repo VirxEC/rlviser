@@ -1,4 +1,5 @@
-use crate::spectator::{Spectator, SpectatorPlugin, SpectatorSettings};
+use std::{f32::consts::PI, time::Duration};
+
 use bevy::{
     camera::Exposure,
     color::palettes::css,
@@ -8,13 +9,12 @@ use bevy::{
     prelude::*,
     render::view::Hdr,
 };
-use serde::{Deserialize, Serialize};
-use std::f32::consts::PI;
-
 use bevy_egui::{EguiGlobalSettings, EguiStartupSet, PrimaryEguiContext};
 use bevy_framepace::{FramepacePlugin, FramepaceSettings};
 use bevy_vector_shapes::prelude::*;
-use std::time::Duration;
+use serde::{Deserialize, Serialize};
+
+use crate::spectator::{Spectator, SpectatorPlugin, SpectatorSettings};
 
 #[derive(Resource)]
 struct CycleTimer(Timer);

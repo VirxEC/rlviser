@@ -1,11 +1,12 @@
 //! Copied over from `bevy_spectator` because base functions aren't public and changes are required to make it work nice
 
-use crate::camera::PrimaryCamera;
 use bevy::{
     input::mouse::MouseMotion,
     prelude::*,
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
+
+use crate::camera::PrimaryCamera;
 
 /// A marker `Component` for spectating cameras.
 ///
