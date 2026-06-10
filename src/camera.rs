@@ -4,10 +4,7 @@ use bevy::{
     camera::Exposure,
     color::palettes::css,
     core_pipeline::tonemapping::Tonemapping,
-    light::{
-        AtmosphereEnvironmentMapLight, CascadeShadowConfigBuilder, DirectionalLightShadowMap, ShadowFilteringMethod,
-        SunDisk, light_consts::lux,
-    },
+    light::{CascadeShadowConfigBuilder, DirectionalLightShadowMap, ShadowFilteringMethod, SunDisk, light_consts::lux},
     pbr::{Atmosphere, AtmosphereSettings, ScatteringMedium},
     prelude::*,
     render::view::Hdr,
@@ -84,7 +81,6 @@ fn setup(
         Spectator,
         MeshPickingCamera,
         Atmosphere::earthlike(scattering_mediums.add(ScatteringMedium::default())),
-        AtmosphereEnvironmentMapLight::default(),
         Exposure::SUNLIGHT,
         AtmosphereSettings {
             aerial_view_lut_max_distance: 320.,
