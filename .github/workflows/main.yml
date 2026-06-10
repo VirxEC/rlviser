@@ -21,31 +21,42 @@ jobs:
             bin: rlviser.exe
             name: rlviser-x86_64-pc-windows-msvc.zip
 
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            bin: rlviser
+            name: rlviser-aarch64-apple-darwin.tar.gz
+
     runs-on: ${{ matrix.platform.os }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Get required packages (Linux only)
         if: contains(matrix.platform.os, 'ubuntu')
         run: sudo apt install g++ pkg-config libx11-dev libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
       - name: Cache cargo & target directories
         uses: Swatinem/rust-cache@v2
       - name: Build binary
-        uses: houseabsolute/actions-rust-cross@v0
+        uses: houseabsolute/actions-rust-cross@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: "--release --no-default-features"
+          args: "--release --no-default-features --locked"
       - name: Upload artifact (Windows)
         if: contains(matrix.platform.os, 'windows')
-        uses: actions/upload-artifact@v4.3.3
+        uses: actions/upload-artifact@v7
         with:
           name: windows
           path: target/**/release/rlviser.exe
       - name: Upload artifact (Ubuntu)
         if: contains(matrix.platform.os, 'ubuntu')
-        uses: actions/upload-artifact@v4.3.3
+        uses: actions/upload-artifact@v7
         with:
           name: linux
+          path: target/**/release/rlviser
+      - name: Upload artifact (macOS)
+        if: contains(matrix.platform.os, 'macos')
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos
           path: target/**/release/rlviser
   publish:
     needs: [release]
@@ -53,14 +64,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           path: target/
           merge-multiple: true
       - name: Publish to GitHub Releases
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: ./**/target/**
           generate_release_notes: true
