@@ -32,7 +32,7 @@ jobs:
         uses: actions/checkout@v6
       - name: Get required packages (Linux only)
         if: contains(matrix.platform.os, 'ubuntu')
-        run: sudo apt install g++ pkg-config libx11-dev libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
+        run: sudo apt update && sudo apt install g++ pkg-config libx11-dev libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
       - name: Cache cargo & target directories
         uses: Swatinem/rust-cache@v2
       - name: Build binary
