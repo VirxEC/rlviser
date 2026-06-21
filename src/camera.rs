@@ -61,7 +61,7 @@ fn setup(
 
     commands.spawn((
         DirectionalLight::default(),
-        ShadowFilteringMethod::Gaussian,
+        ShadowFilteringMethod::Hardware2x2,
         cascade_shadow_config,
         SunDisk::EARTH,
     ));

@@ -26,8 +26,6 @@ use thiserror::Error;
 
 #[cfg(debug_assertions)]
 use crate::camera::EntityName;
-#[cfg(feature = "team_goal_barriers")]
-use crate::udp::{BLUE_COLOR, ORANGE_COLOR};
 use crate::{
     GameLoadState,
     assets::*,
@@ -37,8 +35,8 @@ use crate::{
         EnableBallInfo, EnableCarInfo, EnablePadInfo, EnableTileInfo, UserCarStates, UserPadStates, UserTileStates,
     },
     udp::{
-        Ball, BoostPadI, Car, Connection, GameStates, SendableUdp, Tile, ToBevyVec, ToBevyVecFlat, get_tile_color,
-        target_insert, target_remove, write_message,
+        BLUE_COLOR, Ball, BoostPadI, Car, Connection, GameStates, ORANGE_COLOR, SendableUdp, Tile, ToBevyVec, ToBevyVecFlat,
+        get_tile_color, target_insert, target_remove, write_message,
     },
 };
 
@@ -490,7 +488,6 @@ fn despawn_old_field(
     state.set(GameLoadState::Field);
 }
 
-#[cfg(feature = "team_goal_barriers")]
 fn load_goals(
     game_mode: GameMode,
     commands: &mut Commands,
@@ -503,11 +500,7 @@ fn load_goals(
                 .spawn((
                     Mesh3d(meshes.add(Rectangle::from_size(Vec2::splat(1000.)))),
                     MeshMaterial3d(materials.add(StandardMaterial {
-                        base_color: {
-                            let mut color = BLUE_COLOR.with_alpha(0.8);
-                            color.blue *= 2.;
-                            Color::Srgba(color)
-                        },
+                        base_color: Color::Srgba(BLUE_COLOR.with_alpha(0.7)),
                         emissive: LinearRgba::from(BLUE_COLOR.with_alpha(0.5)),
                         double_sided: true,
                         cull_mode: None,
@@ -530,11 +523,7 @@ fn load_goals(
                 .spawn((
                     Mesh3d(meshes.add(Rectangle::from_size(Vec2::splat(1000.)))),
                     MeshMaterial3d(materials.add(StandardMaterial {
-                        base_color: {
-                            let mut color = ORANGE_COLOR.with_alpha(0.8);
-                            color.red *= 2.;
-                            Color::Srgba(color)
-                        },
+                        base_color: Color::Srgba(ORANGE_COLOR.with_alpha(0.7)),
                         emissive: LinearRgba::from(ORANGE_COLOR.with_alpha(0.5)),
                         double_sided: true,
                         cull_mode: None,
@@ -798,7 +787,6 @@ fn load_field(
         }
     }
 
-    #[cfg(feature = "team_goal_barriers")]
     load_goals(*game_mode, &mut commands, &mut materials, &mut meshes);
 
     state.set(GameLoadState::None);

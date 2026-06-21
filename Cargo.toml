@@ -76,7 +76,6 @@ planus-translation = "1.3.0"
 [features]
 default = ["bevy/dynamic_linking"]
 full_load = []
-team_goal_barriers = []
 threaded = ["bevy/multi_threaded"]
 
 [lints.clippy]
