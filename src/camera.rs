@@ -1,13 +1,15 @@
 use std::{f32::consts::PI, time::Duration};
 
 use bevy::{
-    camera::Exposure,
+    camera::{Exposure, Hdr},
     color::palettes::css,
     core_pipeline::tonemapping::Tonemapping,
-    light::{CascadeShadowConfigBuilder, DirectionalLightShadowMap, ShadowFilteringMethod, SunDisk, light_consts::lux},
-    pbr::{Atmosphere, AtmosphereSettings, ScatteringMedium},
+    light::{
+        Atmosphere, CascadeShadowConfigBuilder, DirectionalLightShadowMap, ShadowFilteringMethod, SunDisk,
+        atmosphere::ScatteringMedium, light_consts::lux,
+    },
+    pbr::{AtmosphereSettings, ContactShadows},
     prelude::*,
-    render::view::Hdr,
 };
 use bevy_egui::{EguiGlobalSettings, EguiStartupSet, PrimaryEguiContext};
 use bevy_framepace::{FramepacePlugin, FramepaceSettings};
@@ -59,10 +61,16 @@ fn setup(
 
     commands.spawn((
         DirectionalLight::default(),
-        ShadowFilteringMethod::Hardware2x2,
+        ShadowFilteringMethod::Gaussian,
         cascade_shadow_config,
         SunDisk::EARTH,
     ));
+
+    let atmosphere_scale = 100.0;
+    let earth = Atmosphere::earth(scattering_mediums.add(ScatteringMedium::default()));
+    let transform = Transform::from_scale(Vec3::splat(atmosphere_scale))
+        .with_translation(-Vec3::Y * earth.inner_radius * atmosphere_scale);
+    commands.spawn((earth, transform));
 
     commands.spawn((
         PrimaryCamera::default(),
@@ -77,16 +85,12 @@ fn setup(
         Transform::from_translation(Vec3::new(-3000., 1000., 0.)).looking_to(Vec3::X, Vec3::Y),
         Tonemapping::ReinhardLuminance,
         ShadowFilteringMethod::Gaussian,
+        ContactShadows::default(),
         Msaa::default(),
         Spectator,
         MeshPickingCamera,
-        Atmosphere::earthlike(scattering_mediums.add(ScatteringMedium::default())),
         Exposure::SUNLIGHT,
-        AtmosphereSettings {
-            aerial_view_lut_max_distance: 320.,
-            scene_units_to_m: 0.01,
-            ..default()
-        },
+        AtmosphereSettings::default(),
     ));
 
     commands.spawn((
@@ -103,11 +107,10 @@ fn setup(
     commands.spawn((
         Text::new(""),
         TextFont {
-            font_size: BOOST_INDICATOR_FONT_SIZE,
+            font_size: FontSize::Px(BOOST_INDICATOR_FONT_SIZE),
             ..default()
         },
         TextColor(Color::from(css::SILVER)),
-        Transform::from_translation(Vec3::Z),
         Node {
             position_type: PositionType::Absolute,
             right: Val::Px(BOOST_INDICATOR_POS.x - 25.),
@@ -129,7 +132,7 @@ fn setup(
         children![(
             Text::new("00m:00s"),
             TextFont {
-                font_size: 40.0,
+                font_size: FontSize::Px(40.0),
                 ..default()
             },
             TextColor(Color::from(css::DARK_GRAY)),

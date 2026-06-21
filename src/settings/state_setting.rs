@@ -36,7 +36,7 @@ impl Plugin for StateSettingInterface {
                     update_tile_info.run_if(|enable_menu: Res<EnableTileInfo>| !enable_menu.0.is_empty()),
                 )
                     .chain()
-                    .run_if(resource_exists::<Connection>.and(resource_equals(MenuFocused::default()))),
+                    .run_if(resource_exists::<Connection>.and_then(resource_equals(MenuFocused::default()))),
             )
             .add_systems(
                 Update,
@@ -46,7 +46,7 @@ impl Plugin for StateSettingInterface {
                     set_user_pad_state.run_if(on_message::<UserSetPadState>),
                     set_user_tile_state.run_if(on_message::<UserSetTileState>),
                 )
-                    .run_if(resource_exists::<Connection>.and(resource_equals(MenuFocused::default()))),
+                    .run_if(resource_exists::<Connection>.and_then(resource_equals(MenuFocused::default()))),
             );
     }
 }

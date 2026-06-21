@@ -738,7 +738,7 @@ fn update_car_extra(
                     continue;
                 };
 
-                let material = materials.get_mut(material_handle).unwrap();
+                let mut material = materials.get_mut(material_handle).unwrap();
                 if is_demoed {
                     material.base_color.set_alpha(0.);
                     material.alpha_mode = AlphaMode::Add;
@@ -754,7 +754,7 @@ fn update_car_extra(
                     continue;
                 };
 
-                let material = materials.get_mut(material_handle).unwrap();
+                let mut material = materials.get_mut(material_handle).unwrap();
                 if is_demoed {
                     material.base_color.set_alpha(0.);
                     material.alpha_mode = AlphaMode::Add;
@@ -781,7 +781,7 @@ fn update_car_extra(
                     continue;
                 };
 
-                let material = materials.get_mut(material_handle).unwrap();
+                let mut material = materials.get_mut(material_handle).unwrap();
                 if is_boosting {
                     material.base_color.set_alpha(0.7);
                     last_boost_states.push(car.id());
@@ -1258,7 +1258,7 @@ fn update_boost_meter(
 
     text_display.clear();
     text_display.push_str(itoa::Buffer::new().format(boost_val));
-    font.font_size = BOOST_INDICATOR_FONT_SIZE * ui_scale.scale;
+    font.font_size = FontSize::Px(BOOST_INDICATOR_FONT_SIZE * ui_scale.scale);
 
     *was_last_director = true;
 }
@@ -1665,7 +1665,7 @@ fn update_tiles(
         let proper_state = packet_tiles[tile.team][tile.index].state;
         if proper_state != tile_states[tile.team][tile.index].state {
             tile_states[tile.team][tile.index].state = proper_state;
-            let material = materials.get_mut(material).unwrap();
+            let mut material = materials.get_mut(material).unwrap();
             material.base_color = get_tile_color(proper_state);
         }
     }
@@ -1681,7 +1681,7 @@ fn dropshot_update_ball(
         return;
     }
 
-    let material = materials.get_mut(ball.single().unwrap()).unwrap();
+    let mut material = materials.get_mut(ball.single().unwrap()).unwrap();
     *y_target_dir = game_state.current.ball.ds_info.y_target_dir;
 
     let base_color = if game_state.current.ball.ds_info.y_target_dir < 0.0 {

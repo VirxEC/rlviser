@@ -310,7 +310,10 @@ fn update_shadows(
     mut query: Query<&mut DirectionalLight, With<SunDisk>>,
     mut shadow_map: ResMut<DirectionalLightShadowMap>,
 ) {
-    query.single_mut().unwrap().shadows_enabled = options.shadows != 0;
+    let mut light = query.single_mut().unwrap();
+    light.shadow_maps_enabled = options.shadows != 0;
+    light.contact_shadows_enabled = options.shadows != 0;
+
     shadow_map.size = 2048 * 2usize.pow(options.shadows.max(1) as u32 - 1);
 }
 

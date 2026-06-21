@@ -8,7 +8,6 @@ use std::{
 use bevy::{
     asset::{AssetLoader, io::Reader},
     color::palettes::css,
-    mesh::CylinderMeshBuilder,
     prelude::*,
     render::renderer::RenderDevice,
     tasks::ConditionalSendFuture,
@@ -49,9 +48,9 @@ pub fn load_assets(
 
     commands.insert_resource(BoostPickupGlows {
         small: get_default_mesh_cache("Pickup_Boost/StaticMesh3/BoostPad_Small_02_SM.pskx", &assets, &mut meshes),
-        small_hitbox: meshes.add(CylinderMeshBuilder::new(144. / 2., 165., 32)),
+        small_hitbox: meshes.add(Cylinder::new(144. / 2., 165.)),
         large: get_default_mesh_cache("Pickup_Boost/StaticMesh3/BoostPad_Large_Glow.pskx", &assets, &mut meshes),
-        large_hitbox: meshes.add(CylinderMeshBuilder::new(208. / 2., 168., 32)),
+        large_hitbox: meshes.add(Cylinder::new(208. / 2., 168.)),
     });
 
     commands.insert_resource(BallAssets {
