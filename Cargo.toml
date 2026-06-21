@@ -14,14 +14,14 @@ bevy_egui = {
 }
 bevy_framepace = { version = "0.21", default-features = false }
 bevy_vector_shapes = "0.12"
-bincode = "2.0"
 byteorder = "1.4.3"
 crossbeam-channel = "0.5.12"
 image = { version = "0.25.1", default-features = false, features = ["tga"] }
-include-flate = "0.3.0"
-itertools = "0.14.0"
+itertools = "0.15.0"
 itoa = "1.0.15"
-planus = { git = "https://github.com/swz-git/planus", rev = "a0b1fbf" }
+planus = "1.3.0"
+rkyv = { version = "0.8", features = ["alloc", "bytecheck"] }
+rust-embed = { version = "8", features = ["include-exclude"] }
 rust_search = "2.1.0"
 rustc-hash = "2.1.2"
 serde = { version = "1.0.160", features = ["derive", "rc"] }
@@ -64,12 +64,8 @@ features = [
 ]
 
 [build-dependencies]
-planus-codegen = { git = "https://github.com/swz-git/planus", rev = "a0b1fbf" }
-planus-translation = {
-  git = "https://github.com/swz-git/planus",
-  rev = "a0b1fbf"
-}
-planus-types = { git = "https://github.com/swz-git/planus", rev = "a0b1fbf" }
+planus-codegen = "1.3.0"
+planus-translation = "1.3.0"
 
 [features]
 default = ["bevy/dynamic_linking"]

@@ -8,7 +8,10 @@
 
 mod assets;
 mod camera;
-mod flat;
+#[allow(dead_code, clippy::wrong_self_convention)]
+mod flat {
+    include!(concat!(env!("OUT_DIR"), "/flat.rs"));
+}
 mod mesh;
 mod renderer;
 mod settings;

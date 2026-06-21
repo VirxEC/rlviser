@@ -1,7 +1,7 @@
 use std::{
     cmp::Ordering,
     fs::{File, create_dir_all},
-    io::{self, Read},
+    io::{self, Read, Write},
     path::Path,
     rc::Rc,
     str::Utf8Error,
@@ -20,7 +20,7 @@ use bevy::{
     time::Stopwatch,
     window::PrimaryWindow,
 };
-use include_flate::flate;
+use rkyv::{Archive, from_bytes, rancor::Error, to_bytes};
 use serde::Deserialize;
 use thiserror::Error;
 
@@ -465,9 +465,11 @@ pub struct LargeBoostPadLocRots {
 #[require(Mesh3d, MeshMaterial3d<StandardMaterial>, NotShadowCaster)]
 pub struct StaticFieldEntity;
 
-flate!(pub static STADIUM_P_LAYOUT: str from "stadiums/Stadium_P_MeshObjects.json");
-flate!(pub static HOOPS_STADIUM_P_LAYOUT: str from "stadiums/HoopsStadium_P_MeshObjects.json");
-flate!(pub static SHATTER_SHOT_P_LAYOUT: str from "stadiums/ShatterShot_P_MeshObjects.json");
+use rust_embed::Embed;
+
+#[derive(Embed)]
+#[folder = "stadiums/"]
+struct StadiumLayouts;
 
 fn despawn_old_field(
     mut commands: Commands,
@@ -598,37 +600,40 @@ fn load_field(
     asset_server: Res<AssetServer>,
     game_states: Res<GameStates>,
 ) {
-    let layout: &str = match *game_mode {
+    let (the_world, structures) = match *game_mode {
         GameMode::TheVoid => {
             state.set(GameLoadState::None);
             return;
         }
-        GameMode::Hoops => &HOOPS_STADIUM_P_LAYOUT,
-        GameMode::Dropshot => &SHATTER_SHOT_P_LAYOUT,
-        _ => &STADIUM_P_LAYOUT,
-    };
-
-    let (the_world, structures) = match *game_mode {
         GameMode::Dropshot => {
+            let file = StadiumLayouts::get("ShatterShot_P_MeshObjects.json").unwrap();
+            let layout = std::str::from_utf8(&file.data).unwrap();
             let (the_world,): (Node,) = serde_json::from_str(layout).unwrap();
 
             (the_world, None)
         }
-        _ => {
+        GameMode::Hoops => {
+            let file = StadiumLayouts::get("HoopsStadium_P_MeshObjects.json").unwrap();
+            let layout = std::str::from_utf8(&file.data).unwrap();
             let (_pickup_boost, structures, the_world): (Section, Node, Node) = serde_json::from_str(layout).unwrap();
 
             #[cfg(debug_assertions)]
             {
-                // this double-layer of debug_assertion checks is because 'name' won't be present in release mode
                 debug_assert_eq!(_pickup_boost.name.as_ref(), "Pickup_Boost");
+                debug_assert_eq!(structures.name.as_ref(), "Archetypes");
+            }
 
-                debug_assert_eq!(
-                    structures.name.as_ref(),
-                    match *game_mode {
-                        GameMode::Hoops => "Archetypes",
-                        _ => "Standard_Common_Prefab",
-                    }
-                );
+            (the_world, Some(structures))
+        }
+        _ => {
+            let file = StadiumLayouts::get("Stadium_P_MeshObjects.json").unwrap();
+            let layout = std::str::from_utf8(&file.data).unwrap();
+            let (_pickup_boost, structures, the_world): (Section, Node, Node) = serde_json::from_str(layout).unwrap();
+
+            #[cfg(debug_assertions)]
+            {
+                debug_assert_eq!(_pickup_boost.name.as_ref(), "Pickup_Boost");
+                debug_assert_eq!(structures.name.as_ref(), "Standard_Common_Prefab");
             }
 
             (the_world, Some(structures))
@@ -897,7 +902,7 @@ pub enum MeshBuilderError {
 }
 
 /// A collection of inter-connected triangles.
-#[derive(Clone, Debug, Default, bincode::Encode, bincode::Decode)]
+#[derive(Clone, Debug, Default, Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct MeshBuilder {
     ids: Vec<u32>,
     verts: Vec<f32>,
@@ -910,12 +915,15 @@ pub struct MeshBuilder {
 impl MeshBuilder {
     pub fn create_cache(&self, path: &Path) {
         create_dir_all(path.parent().unwrap()).unwrap();
+        let bytes = to_bytes::<Error>(self).unwrap();
         let mut file = File::create(path).unwrap();
-        bincode::encode_into_std_write(self, &mut file, bincode::config::legacy()).unwrap();
+        file.write_all(&bytes).unwrap();
     }
 
     pub fn from_cache<R: Read>(mut reader: R) -> Self {
-        bincode::decode_from_std_read(&mut reader, bincode::config::legacy()).unwrap()
+        let mut bytes = Vec::new();
+        reader.read_to_end(&mut bytes).unwrap();
+        from_bytes::<Self, Error>(&bytes).unwrap()
     }
 
     #[must_use]
