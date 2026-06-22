@@ -802,16 +802,21 @@ fn update_car_wheels(
     car_wheels: Query<(&mut Transform, &CarWheel), Without<Car>>,
     game_speed: Res<GameSpeed>,
     time: Res<Time>,
-    key: Res<ButtonInput<KeyCode>>,
+    smoothing: Res<PacketSmoothing>,
+    mut last_wheel_update: Local<Option<f32>>,
 ) {
     if game_speed.paused {
         return;
     }
 
-    let delta_time = if key.pressed(KeyCode::KeyI) {
-        game_speed.speed / states.current.tick_rate
-    } else {
-        time.delta_secs() * game_speed.speed
+    let delta_time = match *smoothing {
+        PacketSmoothing::None => {
+            let now = time.elapsed_secs();
+            let delta = last_wheel_update.map_or(0.0, |last| now - last);
+            *last_wheel_update = Some(now);
+            delta * game_speed.speed
+        }
+        PacketSmoothing::Extrapolate | PacketSmoothing::Interpolate => time.delta_secs() * game_speed.speed,
     };
 
     calc_car_wheel_update(&states.current, cars, car_wheels, delta_time);
@@ -832,33 +837,30 @@ fn calc_car_wheel_update(
             continue;
         };
 
+        let car_vel = target_car.state.physics.vel.to_bevy();
+        let car_speed = car_vel.length();
+
+        let forward_dir = if target_car.state.is_on_ground {
+            // determine if the velocity is in the same direction as the car's forward vector
+            let forward = car_transform.rotation.mul_vec3(Vec3::X);
+            let forward_dot = forward.dot(car_vel);
+            forward_dot.signum()
+        } else {
+            target_car.state.last_controls.throttle.signum()
+        };
+
+        let delta_forward_vel = car_speed * delta_time * forward_dir;
+        let front_wheel_delta = delta_forward_vel / target_car.config.front_wheels.wheel_radius;
+        let back_wheel_delta = delta_forward_vel / target_car.config.back_wheels.wheel_radius;
+
         for child in children {
             let Ok((mut wheel_transform, data)) = car_wheels.get_mut(*child) else {
                 continue;
             };
 
-            let wheel_radius = if data.front {
-                target_car.config.front_wheels.wheel_radius
-            } else {
-                target_car.config.back_wheels.wheel_radius
-            };
-
-            let car_vel = target_car.state.physics.vel.to_bevy();
-            let mut angular_velocity = car_vel.length() * delta_time / wheel_radius;
-
+            let mut angular_velocity = if data.front { front_wheel_delta } else { back_wheel_delta };
             if data.left {
                 angular_velocity *= -1.;
-            }
-
-            if target_car.state.is_on_ground {
-                // determine if the velocity is in the same direction as the car's forward vector
-                let forward = car_transform.rotation.mul_vec3(Vec3::X);
-                let forward_dot = forward.dot(car_vel);
-                let forward_dir = forward_dot.signum();
-
-                angular_velocity *= forward_dir;
-            } else {
-                angular_velocity *= target_car.state.last_controls.throttle;
             }
 
             wheel_transform.rotation *= Quat::from_rotation_z(angular_velocity);
@@ -1032,12 +1034,13 @@ fn update_pads_count(
     large_boost_pad_loc_rots: Res<LargeBoostPadLocRots>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut commands: Commands,
+    mut prev_pad_count: Local<usize>,
 ) {
     let Some(packet_pads) = states.current.pads.as_ref() else {
         return;
     };
 
-    if pads.iter().count() == packet_pads.len() || large_boost_pad_loc_rots.rots.is_empty() {
+    if packet_pads.len() == *prev_pad_count || large_boost_pad_loc_rots.rots.is_empty() {
         return;
     }
 
@@ -1154,6 +1157,8 @@ fn update_pads_count(
             .observe(target_remove::<Pointer<Out>, HighlightedEntity>)
             .observe(write_message::<Pointer<Click>, BoostPadClicked>);
     }
+
+    *prev_pad_count = packet_pads.len();
 }
 
 fn update_pad_colors(

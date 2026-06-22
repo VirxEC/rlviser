@@ -65,7 +65,7 @@ fn main() {
         .add_plugins((
             DefaultPlugins
                 .set(TaskPoolPlugin {
-                    task_pool_options: TaskPoolOptions::with_num_threads(if cfg!(feature = "threaded") { 3 } else { 1 }),
+                    task_pool_options: TaskPoolOptions::with_num_threads(if cfg!(feature = "threaded") { 8 } else { 1 }),
                 })
                 .set(LogPlugin {
                     level: if cfg!(debug_assertions) { Level::INFO } else { Level::ERROR },
