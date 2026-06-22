@@ -41,13 +41,12 @@ impl Plugin for DebugOverlayPlugin {
         .insert_resource(UpdateRenderInfoTime::default())
         .insert_resource(PacketSendTime::default())
         .add_systems(
-            EguiPrimaryContextPass,
+            Update,
             (
                 listen,
                 (read_speed_update_event, read_paused_update_event),
                 (
                     advance_time,
-                    ui_system,
                     toggle_vsync,
                     toggle_ballcam,
                     toggle_show_time,
@@ -65,12 +64,14 @@ impl Plugin for DebugOverlayPlugin {
                         update_paused.run_if(|options: Res<Options>, last: Res<GameSpeed>| options.paused != last.paused),
                     )
                         .run_if(resource_exists::<Connection>),
-                )
-                    .run_if(resource_equals(MenuFocused::default())),
-                update_camera_state,
-                write_settings_to_file,
-            )
-                .chain(),
+                    update_camera_state,
+                    write_settings_to_file,
+                ),
+            ),
+        )
+        .add_systems(
+            EguiPrimaryContextPass,
+            (ui_system.run_if(resource_equals(MenuFocused::default())),),
         );
 
         #[cfg(debug_assertions)]
@@ -310,7 +311,10 @@ fn update_shadows(
     mut query: Query<&mut DirectionalLight, With<SunDisk>>,
     mut shadow_map: ResMut<DirectionalLightShadowMap>,
 ) {
-    query.single_mut().unwrap().shadows_enabled = options.shadows != 0;
+    let mut light = query.single_mut().unwrap();
+    light.shadow_maps_enabled = options.shadows != 0;
+    light.contact_shadows_enabled = options.shadows != 0;
+
     shadow_map.size = 2048 * 2usize.pow(options.shadows.max(1) as u32 - 1);
 }
 

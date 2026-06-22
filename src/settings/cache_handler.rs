@@ -1,6 +1,6 @@
 use std::{
     fs::{File, copy, create_dir_all, read_to_string},
-    io::Read,
+    io::{Read, Write},
     path::{MAIN_SEPARATOR, Path},
     sync::RwLock,
 };
@@ -11,6 +11,7 @@ use bevy::{
     prelude::*,
     render::renderer::RenderDevice,
 };
+use rkyv::{Archive, from_bytes, rancor::Error, to_bytes};
 use rustc_hash::FxHashMap;
 use walkdir::WalkDir;
 
@@ -36,13 +37,16 @@ mod cache {
     use std::io::Cursor;
 
     use bevy::{prelude::*, render::renderer::RenderDevice};
-    use include_flate::flate;
+    use rust_embed::Embed;
     use rustc_hash::FxHashMap;
     use zip::ZipArchive;
 
     use crate::GameLoadState;
 
-    flate!(static CACHED_ASSETS: [u8] from "cache.zip");
+    #[derive(Embed)]
+    #[folder = "."]
+    #[include = "cache.zip"]
+    struct CachedAssets;
 
     pub fn load_cache(
         mut state: ResMut<NextState<GameLoadState>>,
@@ -50,7 +54,8 @@ mod cache {
         mut images: ResMut<Assets<Image>>,
         render_device: Option<Res<RenderDevice>>,
     ) {
-        let seeker = Cursor::new(&*CACHED_ASSETS);
+        let file = CachedAssets::get("cache.zip").unwrap();
+        let seeker = Cursor::new(&*file.data);
         let mut archive = ZipArchive::new(seeker).unwrap();
 
         let mut mesh_cache_lock = super::MESHES.write().unwrap();
@@ -190,7 +195,7 @@ fn insert_mesh_cache(name: String, builder: MeshBuilder, meshes: &mut Assets<Mes
     meshes
 }
 
-#[derive(Clone, Copy, bincode::Encode, bincode::Decode)]
+#[derive(Clone, Copy, Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub enum CAlphaMode {
     Opaque,
     Mask(f32),
@@ -215,7 +220,7 @@ impl From<CAlphaMode> for AlphaMode {
     }
 }
 
-#[derive(Clone, bincode::Encode, bincode::Decode)]
+#[derive(Clone, Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct MeshMaterial {
     pub diffuse: Option<String>,
     pub normal: Option<String>,
@@ -317,12 +322,14 @@ impl MeshMaterial {
 
     fn create_cache(&self, path: &Path) {
         create_dir_all(path.parent().unwrap()).unwrap();
-        let mut file = File::create(path).unwrap();
-        bincode::encode_into_std_write(self, &mut file, bincode::config::legacy()).unwrap();
+        let bytes = to_bytes::<Error>(self).unwrap();
+        File::create(path).unwrap().write_all(&bytes).unwrap();
     }
 
     fn from_cache<R: Read>(mut file: R) -> Self {
-        bincode::decode_from_std_read(&mut file, bincode::config::legacy()).unwrap()
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes).unwrap();
+        from_bytes::<Self, Error>(&bytes).unwrap()
     }
 }
 

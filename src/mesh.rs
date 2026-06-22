@@ -1,7 +1,7 @@
 use std::{
     cmp::Ordering,
     fs::{File, create_dir_all},
-    io::{self, Read},
+    io::{self, Read, Write},
     path::Path,
     rc::Rc,
     str::Utf8Error,
@@ -20,14 +20,12 @@ use bevy::{
     time::Stopwatch,
     window::PrimaryWindow,
 };
-use include_flate::flate;
+use rkyv::{Archive, from_bytes, rancor::Error, to_bytes};
 use serde::Deserialize;
 use thiserror::Error;
 
 #[cfg(debug_assertions)]
 use crate::camera::EntityName;
-#[cfg(feature = "team_goal_barriers")]
-use crate::udp::{BLUE_COLOR, ORANGE_COLOR};
 use crate::{
     GameLoadState,
     assets::*,
@@ -37,8 +35,8 @@ use crate::{
         EnableBallInfo, EnableCarInfo, EnablePadInfo, EnableTileInfo, UserCarStates, UserPadStates, UserTileStates,
     },
     udp::{
-        Ball, BoostPadI, Car, Connection, GameStates, SendableUdp, Tile, ToBevyVec, ToBevyVecFlat, get_tile_color,
-        target_insert, target_remove, write_message,
+        BLUE_COLOR, Ball, BoostPadI, Car, Connection, GameStates, ORANGE_COLOR, SendableUdp, Tile, ToBevyVec, ToBevyVecFlat,
+        get_tile_color, target_insert, target_remove, write_message,
     },
 };
 
@@ -465,9 +463,11 @@ pub struct LargeBoostPadLocRots {
 #[require(Mesh3d, MeshMaterial3d<StandardMaterial>, NotShadowCaster)]
 pub struct StaticFieldEntity;
 
-flate!(pub static STADIUM_P_LAYOUT: str from "stadiums/Stadium_P_MeshObjects.json");
-flate!(pub static HOOPS_STADIUM_P_LAYOUT: str from "stadiums/HoopsStadium_P_MeshObjects.json");
-flate!(pub static SHATTER_SHOT_P_LAYOUT: str from "stadiums/ShatterShot_P_MeshObjects.json");
+use rust_embed::Embed;
+
+#[derive(Embed)]
+#[folder = "stadiums/"]
+struct StadiumLayouts;
 
 fn despawn_old_field(
     mut commands: Commands,
@@ -488,7 +488,6 @@ fn despawn_old_field(
     state.set(GameLoadState::Field);
 }
 
-#[cfg(feature = "team_goal_barriers")]
 fn load_goals(
     game_mode: GameMode,
     commands: &mut Commands,
@@ -501,11 +500,7 @@ fn load_goals(
                 .spawn((
                     Mesh3d(meshes.add(Rectangle::from_size(Vec2::splat(1000.)))),
                     MeshMaterial3d(materials.add(StandardMaterial {
-                        base_color: {
-                            let mut color = BLUE_COLOR.with_alpha(0.8);
-                            color.blue *= 2.;
-                            Color::Srgba(color)
-                        },
+                        base_color: Color::Srgba(BLUE_COLOR.with_alpha(0.7)),
                         emissive: LinearRgba::from(BLUE_COLOR.with_alpha(0.5)),
                         double_sided: true,
                         cull_mode: None,
@@ -528,11 +523,7 @@ fn load_goals(
                 .spawn((
                     Mesh3d(meshes.add(Rectangle::from_size(Vec2::splat(1000.)))),
                     MeshMaterial3d(materials.add(StandardMaterial {
-                        base_color: {
-                            let mut color = ORANGE_COLOR.with_alpha(0.8);
-                            color.red *= 2.;
-                            Color::Srgba(color)
-                        },
+                        base_color: Color::Srgba(ORANGE_COLOR.with_alpha(0.7)),
                         emissive: LinearRgba::from(ORANGE_COLOR.with_alpha(0.5)),
                         double_sided: true,
                         cull_mode: None,
@@ -598,37 +589,40 @@ fn load_field(
     asset_server: Res<AssetServer>,
     game_states: Res<GameStates>,
 ) {
-    let layout: &str = match *game_mode {
+    let (the_world, structures) = match *game_mode {
         GameMode::TheVoid => {
             state.set(GameLoadState::None);
             return;
         }
-        GameMode::Hoops => &HOOPS_STADIUM_P_LAYOUT,
-        GameMode::Dropshot => &SHATTER_SHOT_P_LAYOUT,
-        _ => &STADIUM_P_LAYOUT,
-    };
-
-    let (the_world, structures) = match *game_mode {
         GameMode::Dropshot => {
+            let file = StadiumLayouts::get("ShatterShot_P_MeshObjects.json").unwrap();
+            let layout = std::str::from_utf8(&file.data).unwrap();
             let (the_world,): (Node,) = serde_json::from_str(layout).unwrap();
 
             (the_world, None)
         }
-        _ => {
+        GameMode::Hoops => {
+            let file = StadiumLayouts::get("HoopsStadium_P_MeshObjects.json").unwrap();
+            let layout = std::str::from_utf8(&file.data).unwrap();
             let (_pickup_boost, structures, the_world): (Section, Node, Node) = serde_json::from_str(layout).unwrap();
 
             #[cfg(debug_assertions)]
             {
-                // this double-layer of debug_assertion checks is because 'name' won't be present in release mode
                 debug_assert_eq!(_pickup_boost.name.as_ref(), "Pickup_Boost");
+                debug_assert_eq!(structures.name.as_ref(), "Archetypes");
+            }
 
-                debug_assert_eq!(
-                    structures.name.as_ref(),
-                    match *game_mode {
-                        GameMode::Hoops => "Archetypes",
-                        _ => "Standard_Common_Prefab",
-                    }
-                );
+            (the_world, Some(structures))
+        }
+        _ => {
+            let file = StadiumLayouts::get("Stadium_P_MeshObjects.json").unwrap();
+            let layout = std::str::from_utf8(&file.data).unwrap();
+            let (_pickup_boost, structures, the_world): (Section, Node, Node) = serde_json::from_str(layout).unwrap();
+
+            #[cfg(debug_assertions)]
+            {
+                debug_assert_eq!(_pickup_boost.name.as_ref(), "Pickup_Boost");
+                debug_assert_eq!(structures.name.as_ref(), "Standard_Common_Prefab");
             }
 
             (the_world, Some(structures))
@@ -793,7 +787,6 @@ fn load_field(
         }
     }
 
-    #[cfg(feature = "team_goal_barriers")]
     load_goals(*game_mode, &mut commands, &mut materials, &mut meshes);
 
     state.set(GameLoadState::None);
@@ -897,7 +890,7 @@ pub enum MeshBuilderError {
 }
 
 /// A collection of inter-connected triangles.
-#[derive(Clone, Debug, Default, bincode::Encode, bincode::Decode)]
+#[derive(Clone, Debug, Default, Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct MeshBuilder {
     ids: Vec<u32>,
     verts: Vec<f32>,
@@ -910,12 +903,15 @@ pub struct MeshBuilder {
 impl MeshBuilder {
     pub fn create_cache(&self, path: &Path) {
         create_dir_all(path.parent().unwrap()).unwrap();
+        let bytes = to_bytes::<Error>(self).unwrap();
         let mut file = File::create(path).unwrap();
-        bincode::encode_into_std_write(self, &mut file, bincode::config::legacy()).unwrap();
+        file.write_all(&bytes).unwrap();
     }
 
     pub fn from_cache<R: Read>(mut reader: R) -> Self {
-        bincode::decode_from_std_read(&mut reader, bincode::config::legacy()).unwrap()
+        let mut bytes = Vec::new();
+        reader.read_to_end(&mut bytes).unwrap();
+        from_bytes::<Self, Error>(&bytes).unwrap()
     }
 
     #[must_use]
